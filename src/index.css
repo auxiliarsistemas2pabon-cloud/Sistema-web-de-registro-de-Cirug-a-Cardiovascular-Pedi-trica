@@ -2,6 +2,27 @@
 
 :root {
   color-scheme: light dark;
+
+  /* Paleta de indicadores (skill de dataviz) */
+  --chart-azul: #2a78d6;
+  --chart-rojo: #e34948;
+  --chart-verde: #1baf7a;
+  --chart-texto-secundario: #52514e;
+  --chart-grid: #e1e0d9;
+  --status-good: #0ca30c;
+  --status-critical: #d03b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --chart-azul: #3987e5;
+    --chart-rojo: #e66767;
+    --chart-verde: #199e70;
+    --chart-texto-secundario: #c3c2b7;
+    --chart-grid: #2c2c2a;
+    --status-good: #0ca30c;
+    --status-critical: #e66767;
+  }
 }
 
 html,

@@ -24,10 +24,12 @@ select
     else null
   end as dias_hospitalizacion_posqx,
   p.estado_modulo as estado_m1,
-  d.estado_modulo as estado_m2,
-  c.estado_modulo as estado_m3,
-  po.estado_modulo as estado_m4,
-  s.estado_modulo as estado_m5,
+  -- coalesce a 'pendiente': un módulo cuya tabla todavía no tiene fila (paciente recién
+  -- creado) está pendiente, no en un estado "vacío" sin representar en el enum.
+  coalesce(d.estado_modulo, 'pendiente') as estado_m2,
+  coalesce(c.estado_modulo, 'pendiente') as estado_m3,
+  coalesce(po.estado_modulo, 'pendiente') as estado_m4,
+  coalesce(s.estado_modulo, 'pendiente') as estado_m5,
   dg.valor as diagnostico_valor,
   rc.valor as rachs_valor,
   eps.valor as eps_valor,
