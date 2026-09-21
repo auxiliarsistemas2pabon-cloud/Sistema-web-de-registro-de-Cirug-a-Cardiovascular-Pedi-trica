@@ -9,7 +9,7 @@ import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1 } from '../../lib/completitud'
 import { hoyIso } from '../../lib/fechas'
-import { supabase } from '../../lib/supabase'
+import { api, mensajeDe } from '../../lib/api'
 import type { PacienteDetalle } from '../../types/db'
 
 const esquema = z
@@ -69,6 +69,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data: opcionesProcedencia } = useOpciones('PROCEDENCIA')
+  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
 
@@ -100,7 +101,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   }, [procedenciaEsNarino, setValue])
 
   async function onSubmit(valores: Valores) {
-    if (!perfil) return
+    if (!perfil || !puedeEditar) return
     setErrorGuardado(null)
     setGuardando(true)
 
@@ -133,47 +134,29 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
       estado_modulo,
     }
 
-    if (paciente) {
-      const { error } = await supabase
-        .from('pacientes')
-        .update({ ...payload, actualizado_por: perfil.id })
-        .eq('id', paciente.id)
-
-      setGuardando(false)
-      if (error) {
-        setErrorGuardado(
-          error.message.includes('pacientes_identificacion_key')
-            ? 'Ya existe un paciente con esa identificación.'
-            : 'No se pudo guardar el Módulo 1.',
-        )
-        return
+    try {
+      if (paciente) {
+        await api.put(`/pacientes/${paciente.id}`, payload)
+        queryClient.invalidateQueries({ queryKey: ['paciente', paciente.id] })
+        queryClient.invalidateQueries({ queryKey: ['pacientes'] })
+        queryClient.invalidateQueries({ queryKey: ['paciente-resumen', paciente.id] })
+        onGuardado(paciente.id)
+      } else {
+        const { id } = await api.post<{ id: string }>('/pacientes', payload)
+        queryClient.invalidateQueries({ queryKey: ['pacientes'] })
+        onGuardado(id)
       }
-      queryClient.invalidateQueries({ queryKey: ['paciente', paciente.id] })
-      queryClient.invalidateQueries({ queryKey: ['pacientes'] })
-      onGuardado(paciente.id)
-    } else {
-      const { data, error } = await supabase
-        .from('pacientes')
-        .insert({ ...payload, creado_por: perfil.id })
-        .select('id')
-        .single()
-
+    } catch (causa) {
+      setErrorGuardado(mensajeDe(causa, 'No se pudo guardar el Módulo 1.'))
+    } finally {
       setGuardando(false)
-      if (error || !data) {
-        setErrorGuardado(
-          error?.message.includes('pacientes_identificacion_key')
-            ? 'Ya existe un paciente con esa identificación.'
-            : 'No se pudo crear el paciente.',
-        )
-        return
-      }
-      queryClient.invalidateQueries({ queryKey: ['pacientes'] })
-      onGuardado(data.id)
     }
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Nombre completo *" error={errors.nombre_completo?.message} className="sm:col-span-2">
           <input {...register('nombre_completo')} className={claseInput} />
@@ -196,11 +179,11 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
         </Campo>
 
         <Campo etiqueta="Peso (kg)" error={errors.peso_kg?.message}>
-          <input type="number" step="0.1" {...register('peso_kg')} className={claseInput} />
+          <input type="number" min="0.5" max="150" step="0.1" {...register('peso_kg')} className={claseInput} />
         </Campo>
 
         <Campo etiqueta="Talla (cm)" error={errors.talla_cm?.message}>
-          <input type="number" {...register('talla_cm')} className={claseInput} />
+          <input type="number" min="30" max="220" step="1" {...register('talla_cm')} className={claseInput} />
         </Campo>
 
         <Campo etiqueta="Procedencia">
@@ -265,6 +248,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 1'}
       </button>
+      </fieldset>
     </form>
   )
 }

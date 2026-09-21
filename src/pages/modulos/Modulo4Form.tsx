@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo4 } from '../../lib/completitud'
-import { supabase } from '../../lib/supabase'
+import { api, mensajeDe } from '../../lib/api'
 
 interface PostoperatorioDetalle {
   id: string
@@ -31,20 +31,13 @@ function usePostoperatorio(pacienteId: string) {
     queryKey: ['postoperatorio', pacienteId],
     queryFn: async () => {
       const [postoperatorio, cirugia] = await Promise.all([
-        supabase
-          .from('postoperatorio')
-          .select(
-            'id, unidad_pop_id, horas_ventilacion_mecanica, complicacion_pop_id, fecha_traslado_intermedio, fecha_salida, condicion_salida_id',
-          )
-          .eq('paciente_id', pacienteId)
-          .maybeSingle(),
-        supabase.from('cirugias').select('extubacion_quirofano').eq('paciente_id', pacienteId).maybeSingle(),
+        api.get<PostoperatorioDetalle | null>(`/pacientes/${pacienteId}/postoperatorio`),
+        api.get<{ extubacion_quirofano: 'SI' | 'NO' | null; fecha_cirugia: string | null } | null>(`/pacientes/${pacienteId}/cirugia`),
       ])
-      if (postoperatorio.error) throw postoperatorio.error
-      if (cirugia.error) throw cirugia.error
       return {
-        postoperatorio: postoperatorio.data as PostoperatorioDetalle | null,
-        extubacionQuirofano: cirugia.data?.extubacion_quirofano ?? null,
+        postoperatorio,
+        extubacionQuirofano: cirugia?.extubacion_quirofano ?? null,
+        fechaCirugia: cirugia?.fecha_cirugia ?? null,
       }
     },
   })
@@ -66,6 +59,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data, isLoading } = usePostoperatorio(pacienteId)
+  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -82,7 +76,15 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
   if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
 
   async function onSubmit(valores: Valores) {
-    if (!perfil) return
+    if (!perfil || !puedeEditar) return
+    if (data?.fechaCirugia && valores.fecha_traslado_intermedio && valores.fecha_traslado_intermedio < data.fechaCirugia) {
+      setError('La fecha de traslado a intermedio no puede ser anterior a la fecha de cirugía.')
+      return
+    }
+    if (data?.fechaCirugia && valores.fecha_salida && valores.fecha_salida < data.fechaCirugia) {
+      setError('La fecha de salida no puede ser anterior a la fecha de cirugía.')
+      return
+    }
     if (
       valores.fecha_traslado_intermedio &&
       valores.fecha_salida &&
@@ -101,42 +103,41 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
       condicionSalidaId: valores.condicion_salida_id,
     })
 
-    const payload = {
-      paciente_id: pacienteId,
-      unidad_pop_id: valores.unidad_pop_id || null,
-      horas_ventilacion_mecanica:
-        valores.horas_ventilacion_mecanica !== '' ? Number(valores.horas_ventilacion_mecanica) : null,
-      complicacion_pop_id: valores.complicacion_pop_id || null,
-      fecha_traslado_intermedio: valores.fecha_traslado_intermedio || null,
-      fecha_salida: valores.fecha_salida || null,
-      condicion_salida_id: valores.condicion_salida_id || null,
-      estado_modulo,
-      actualizado_por: perfil.id,
+    try {
+      await api.put(`/pacientes/${pacienteId}/postoperatorio`, {
+        unidad_pop_id: valores.unidad_pop_id || null,
+        horas_ventilacion_mecanica:
+          valores.horas_ventilacion_mecanica !== '' ? Number(valores.horas_ventilacion_mecanica) : null,
+        complicacion_pop_id: valores.complicacion_pop_id || null,
+        fecha_traslado_intermedio: valores.fecha_traslado_intermedio || null,
+        fecha_salida: valores.fecha_salida || null,
+        condicion_salida_id: valores.condicion_salida_id || null,
+        estado_modulo,
+      })
+      queryClient.invalidateQueries({ queryKey: ['postoperatorio', pacienteId] })
+      // Guardar el Módulo 4 puede crear o bloquear el Módulo 5 (condición de salida = Muerte).
+      queryClient.invalidateQueries({ queryKey: ['seguimiento', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] })
+      queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['alertas'] })
+    } catch (causa) {
+      setError(mensajeDe(causa, 'No se pudo guardar el Módulo 4.'))
+    } finally {
+      setGuardando(false)
     }
-
-    const { error: errorUpsert } = data?.postoperatorio
-      ? await supabase.from('postoperatorio').update(payload).eq('paciente_id', pacienteId)
-      : await supabase.from('postoperatorio').insert({ ...payload, creado_por: perfil.id })
-
-    setGuardando(false)
-    if (errorUpsert) {
-      setError(errorUpsert.message)
-      return
-    }
-    queryClient.invalidateQueries({ queryKey: ['postoperatorio', pacienteId] })
-    queryClient.invalidateQueries({ queryKey: ['pacientes'] })
-    queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Unidad postoperatoria *">
           <SelectOpciones categoria="UNIDAD_POP" registro={register('unidad_pop_id')} />
         </Campo>
 
         <Campo etiqueta="Horas de ventilación mecánica *">
-          <input type="number" {...register('horas_ventilacion_mecanica')} className={claseInput} />
+          <input type="number" min="0" step="1" {...register('horas_ventilacion_mecanica')} className={claseInput} />
         </Campo>
 
         <Campo etiqueta="Complicación postoperatoria *" className="sm:col-span-2">
@@ -144,11 +145,11 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
         </Campo>
 
         <Campo etiqueta="Fecha de traslado a intermedio">
-          <input type="date" {...register('fecha_traslado_intermedio')} className={claseInput} />
+          <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_traslado_intermedio')} className={claseInput} />
         </Campo>
 
         <Campo etiqueta="Fecha de salida">
-          <input type="date" {...register('fecha_salida')} className={claseInput} />
+          <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_salida')} className={claseInput} />
         </Campo>
 
         <Campo etiqueta="Condición en que sale el paciente *">
@@ -165,6 +166,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 4'}
       </button>
+      </fieldset>
     </form>
   )
 }

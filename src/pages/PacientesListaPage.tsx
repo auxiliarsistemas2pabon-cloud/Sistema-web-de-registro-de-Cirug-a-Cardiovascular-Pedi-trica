@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { EstadoModuloChip } from '../components/EstadoModuloChip'
 import { useOpciones } from '../hooks/useOpciones'
-import { supabase } from '../lib/supabase'
+import { api, consulta } from '../lib/api'
 import { formatearEdad } from '../lib/fechas'
 import type { PacienteResumen } from '../types/db'
 
@@ -31,24 +31,19 @@ const FILTROS_INICIALES: Filtros = {
 function usePacientes(filtros: Filtros) {
   return useQuery({
     queryKey: ['pacientes', filtros],
-    queryFn: async (): Promise<PacienteResumen[]> => {
-      let query = supabase.from('v_pacientes_resumen').select('*').eq('eliminado', false)
-
-      if (filtros.busqueda.trim()) {
-        const termino = filtros.busqueda.trim()
-        query = query.or(`nombre_completo.ilike.%${termino}%,identificacion.ilike.%${termino}%`)
-      }
-      if (filtros.epsValor) query = query.eq('eps_valor', filtros.epsValor)
-      if (filtros.diagnosticoValor) query = query.eq('diagnostico_valor', filtros.diagnosticoValor)
-      if (filtros.rachsValor) query = query.eq('rachs_valor', filtros.rachsValor)
-      if (filtros.condicionSalidaValor) query = query.eq('condicion_salida_valor', filtros.condicionSalidaValor)
-      if (filtros.fechaCirugiaDesde) query = query.gte('fecha_cirugia', filtros.fechaCirugiaDesde)
-      if (filtros.fechaCirugiaHasta) query = query.lte('fecha_cirugia', filtros.fechaCirugiaHasta)
-
-      const { data, error } = await query.order('numero_paciente', { ascending: false })
-      if (error) throw error
-      return data
-    },
+    queryFn: () =>
+      api.get<PacienteResumen[]>(
+        '/pacientes' +
+          consulta({
+            busqueda: filtros.busqueda.trim(),
+            eps: filtros.epsValor,
+            diagnostico: filtros.diagnosticoValor,
+            rachs: filtros.rachsValor,
+            condicionSalida: filtros.condicionSalidaValor,
+            fechaCirugiaDesde: filtros.fechaCirugiaDesde,
+            fechaCirugiaHasta: filtros.fechaCirugiaHasta,
+          }),
+      ),
   })
 }
 

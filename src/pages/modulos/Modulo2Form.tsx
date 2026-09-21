@@ -7,7 +7,7 @@ import { SelectOpciones } from '../../components/SelectOpciones'
 import { SeleccionRiesgos } from '../../components/SeleccionRiesgos'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo2 } from '../../lib/completitud'
-import { supabase } from '../../lib/supabase'
+import { api, mensajeDe } from '../../lib/api'
 import type { DiagnosticoDetalle } from '../../types/db'
 
 interface Valores {
@@ -21,21 +21,8 @@ function useDiagnostico(pacienteId: string) {
   return useQuery({
     queryKey: ['diagnostico', pacienteId],
     queryFn: async (): Promise<{ diagnostico: DiagnosticoDetalle | null; riesgoIds: string[] }> => {
-      const { data: diagnostico, error } = await supabase
-        .from('diagnosticos')
-        .select('id, paciente_id, diagnostico_id, valvulopatia_id, rachs_id, estado_modulo')
-        .eq('paciente_id', pacienteId)
-        .maybeSingle()
-      if (error) throw error
-      if (!diagnostico) return { diagnostico: null, riesgoIds: [] }
-
-      const { data: riesgos, error: errorRiesgos } = await supabase
-        .from('diagnosticos_riesgos')
-        .select('riesgo_id')
-        .eq('diagnostico_id', diagnostico.id)
-      if (errorRiesgos) throw errorRiesgos
-
-      return { diagnostico, riesgoIds: riesgos.map((r) => r.riesgo_id) }
+      const datos = await api.get<(DiagnosticoDetalle & { riesgo_ids: string[] }) | null>(`/pacientes/${pacienteId}/diagnostico`)
+      return datos ? { diagnostico: datos, riesgoIds: datos.riesgo_ids } : { diagnostico: null, riesgoIds: [] }
     },
   })
 }
@@ -54,6 +41,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   const queryClient = useQueryClient()
   const { data, isLoading } = useDiagnostico(pacienteId)
   const { data: opcionesDiagnostico } = useOpciones('DIAGNOSTICO')
+  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
 
@@ -76,7 +64,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
 
   async function onSubmit(valores: Valores) {
-    if (!perfil) return
+    if (!perfil || !puedeEditar) return
     setErrorGuardado(null)
     setGuardando(true)
 
@@ -88,28 +76,28 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
       riesgoIds: valores.riesgo_ids,
     })
 
-    const { error } = await supabase.rpc('fn_guardar_diagnostico', {
-      p_paciente_id: pacienteId,
-      p_diagnostico_id: valores.diagnostico_id || null,
-      p_rachs_id: valores.rachs_id || null,
-      p_valvulopatia_id: esValvulopatias ? valores.valvulopatia_id || null : null,
-      p_riesgo_ids: valores.riesgo_ids,
-      p_estado_modulo: estado_modulo,
-      p_usuario_id: perfil.id,
-    })
-
-    setGuardando(false)
-    if (error) {
-      setErrorGuardado(error.message)
-      return
+    try {
+      await api.put(`/pacientes/${pacienteId}/diagnostico`, {
+        diagnostico_id: valores.diagnostico_id || null,
+        rachs_id: valores.rachs_id || null,
+        valvulopatia_id: esValvulopatias ? valores.valvulopatia_id || null : null,
+        riesgo_ids: valores.riesgo_ids,
+        estado_modulo,
+      })
+      queryClient.invalidateQueries({ queryKey: ['diagnostico', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] })
+      queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
+    } catch (causa) {
+      setErrorGuardado(mensajeDe(causa, 'No se pudo guardar el Módulo 2.'))
+    } finally {
+      setGuardando(false)
     }
-    queryClient.invalidateQueries({ queryKey: ['diagnostico', pacienteId] })
-    queryClient.invalidateQueries({ queryKey: ['pacientes'] })
-    queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Diagnóstico *">
           <SelectOpciones categoria="DIAGNOSTICO" registro={register('diagnostico_id')} />
@@ -145,6 +133,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 2'}
       </button>
+      </fieldset>
     </form>
   )
 }

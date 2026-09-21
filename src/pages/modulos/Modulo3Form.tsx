@@ -5,7 +5,8 @@ import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo3 } from '../../lib/completitud'
-import { supabase } from '../../lib/supabase'
+import { api, mensajeDe } from '../../lib/api'
+import type { PacienteDetalle } from '../../types/db'
 
 interface CirugiaDetalle {
   id: string
@@ -37,25 +38,16 @@ interface Valores {
 function useCirugia(pacienteId: string) {
   return useQuery({
     queryKey: ['cirugia', pacienteId],
-    queryFn: async (): Promise<{ cirugia: CirugiaDetalle | null; procedimientoIds: string[] }> => {
-      const { data: cirugia, error } = await supabase
-        .from('cirugias')
-        .select(
-          'id, fecha_cirugia, implante_id, uso_cec, tiempo_cec_min, tiempo_clamp_min, complicacion_intraqx_id, cierre_esternal_diferido, extubacion_quirofano, estado_modulo',
-        )
-        .eq('paciente_id', pacienteId)
-        .maybeSingle()
-      if (error) throw error
-      if (!cirugia) return { cirugia: null, procedimientoIds: [] }
-
-      const { data: procedimientos, error: errorProc } = await supabase
-        .from('cirugias_procedimientos')
-        .select('procedimiento_id, orden')
-        .eq('cirugia_id', cirugia.id)
-        .order('orden')
-      if (errorProc) throw errorProc
-
-      return { cirugia, procedimientoIds: procedimientos.map((p) => p.procedimiento_id) }
+    queryFn: async (): Promise<{ cirugia: CirugiaDetalle | null; procedimientoIds: string[]; fechaNacimiento: string | null }> => {
+      const [cirugia, paciente] = await Promise.all([
+        api.get<(CirugiaDetalle & { procedimiento_ids: string[] }) | null>(`/pacientes/${pacienteId}/cirugia`),
+        api.get<PacienteDetalle>(`/pacientes/${pacienteId}`),
+      ])
+      return {
+        cirugia,
+        procedimientoIds: cirugia?.procedimiento_ids ?? [],
+        fechaNacimiento: paciente.fecha_nacimiento,
+      }
     },
   })
 }
@@ -80,6 +72,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data, isLoading } = useCirugia(pacienteId)
+  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -102,7 +95,11 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
     (!!p1 && !!p2 && p1 === p2) || (!!p1 && !!p3 && p1 === p3) || (!!p2 && !!p3 && p2 === p3)
 
   async function onSubmit(valores: Valores) {
-    if (!perfil) return
+    if (!perfil || !puedeEditar) return
+    if (data?.fechaNacimiento && valores.fecha_cirugia && valores.fecha_cirugia < data.fechaNacimiento) {
+      setError('La fecha de cirugía no puede ser anterior a la fecha de nacimiento.')
+      return
+    }
     if ((!!valores.procedimiento_1_id && !!valores.procedimiento_2_id && valores.procedimiento_1_id === valores.procedimiento_2_id) ||
         (!!valores.procedimiento_1_id && !!valores.procedimiento_3_id && valores.procedimiento_1_id === valores.procedimiento_3_id) ||
         (!!valores.procedimiento_2_id && !!valores.procedimiento_3_id && valores.procedimiento_2_id === valores.procedimiento_3_id)) {
@@ -128,36 +125,36 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
       tiempoCecMin: valores.tiempo_cec_min,
     })
 
-    const { error: errorRpc } = await supabase.rpc('fn_guardar_cirugia', {
-      p_paciente_id: pacienteId,
-      p_fecha_cirugia: valores.fecha_cirugia || null,
-      p_implante_id: valores.implante_id || null,
-      p_uso_cec: valores.uso_cec || null,
-      p_tiempo_cec_min: valores.uso_cec === 'SI' && valores.tiempo_cec_min ? Number(valores.tiempo_cec_min) : null,
-      p_tiempo_clamp_min: valores.uso_cec === 'SI' && valores.tiempo_clamp_min ? Number(valores.tiempo_clamp_min) : null,
-      p_complicacion_intraqx_id: valores.complicacion_intraqx_id || null,
-      p_cierre_esternal_diferido: valores.cierre_esternal_diferido || null,
-      p_extubacion_quirofano: valores.extubacion_quirofano || null,
-      p_procedimiento_ids: procedimientoIds,
-      p_estado_modulo: estado_modulo,
-      p_usuario_id: perfil.id,
-    })
-
-    setGuardando(false)
-    if (errorRpc) {
-      setError(errorRpc.message)
-      return
+    try {
+      await api.put(`/pacientes/${pacienteId}/cirugia`, {
+        fecha_cirugia: valores.fecha_cirugia || null,
+        implante_id: valores.implante_id || null,
+        uso_cec: valores.uso_cec || null,
+        tiempo_cec_min: valores.uso_cec === 'SI' && valores.tiempo_cec_min ? Number(valores.tiempo_cec_min) : null,
+        tiempo_clamp_min: valores.uso_cec === 'SI' && valores.tiempo_clamp_min ? Number(valores.tiempo_clamp_min) : null,
+        complicacion_intraqx_id: valores.complicacion_intraqx_id || null,
+        cierre_esternal_diferido: valores.cierre_esternal_diferido || null,
+        extubacion_quirofano: valores.extubacion_quirofano || null,
+        procedimiento_ids: procedimientoIds,
+        estado_modulo,
+      })
+      queryClient.invalidateQueries({ queryKey: ['cirugia', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] })
+      queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
+    } catch (causa) {
+      setError(mensajeDe(causa, 'No se pudo guardar el Módulo 3.'))
+    } finally {
+      setGuardando(false)
     }
-    queryClient.invalidateQueries({ queryKey: ['cirugia', pacienteId] })
-    queryClient.invalidateQueries({ queryKey: ['pacientes'] })
-    queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Fecha de cirugía *">
-          <input type="date" {...register('fecha_cirugia')} className={claseInput} />
+          <input type="date" min={data?.fechaNacimiento ?? undefined} {...register('fecha_cirugia')} className={claseInput} />
         </Campo>
 
         <Campo etiqueta="Tipo de implante">
@@ -187,6 +184,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         <Campo etiqueta="Tiempo de CEC (min)">
           <input
             type="number"
+            min="0"
             disabled={usoCec !== 'SI'}
             {...register('tiempo_cec_min')}
             className={claseInput}
@@ -195,6 +193,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         <Campo etiqueta="Tiempo de clamp de aorta (min)">
           <input
             type="number"
+            min="0"
             disabled={usoCec !== 'SI'}
             {...register('tiempo_clamp_min')}
             className={claseInput}
@@ -232,6 +231,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 3'}
       </button>
+      </fieldset>
     </form>
   )
 }

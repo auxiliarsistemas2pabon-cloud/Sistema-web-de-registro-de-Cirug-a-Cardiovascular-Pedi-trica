@@ -1,16 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
-import { supabase } from '../lib/supabase'
+import { ErrorApi } from '../lib/api'
 
 export function LoginPage() {
-  const { session, cargando } = useAuth()
+  const { perfil, cargando, iniciarSesion } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
 
-  if (!cargando && session) {
+  if (!cargando && perfil) {
     return <Navigate to="/pacientes" replace />
   }
 
@@ -18,10 +18,12 @@ export function LoginPage() {
     e.preventDefault()
     setError(null)
     setEnviando(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    setEnviando(false)
-    if (error) {
-      setError('Correo o contraseña incorrectos.')
+    try {
+      await iniciarSesion(email, password)
+    } catch (causa) {
+      setError(causa instanceof ErrorApi ? causa.message : 'No se pudo iniciar sesión. Intente de nuevo.')
+    } finally {
+      setEnviando(false)
     }
   }
 

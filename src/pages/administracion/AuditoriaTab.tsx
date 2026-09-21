@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Fragment, useState } from 'react'
 import { claseInput } from '../../components/Campo'
-import { supabase } from '../../lib/supabase'
+import { api, consulta } from '../../lib/api'
 import type { RegistroAuditoria } from '../../types/db'
 
 const TABLAS = [
@@ -17,15 +17,7 @@ const TABLAS = [
 function useAuditoria(tabla: string, desde: string, hasta: string) {
   return useQuery({
     queryKey: ['auditoria', tabla, desde, hasta],
-    queryFn: async (): Promise<RegistroAuditoria[]> => {
-      let query = supabase.from('v_auditoria').select('*').order('fecha', { ascending: false }).limit(200)
-      if (tabla) query = query.eq('tabla', tabla)
-      if (desde) query = query.gte('fecha', desde)
-      if (hasta) query = query.lte('fecha', `${hasta}T23:59:59`)
-      const { data, error } = await query
-      if (error) throw error
-      return data
-    },
+    queryFn: () => api.get<RegistroAuditoria[]>('/admin/auditoria' + consulta({ tabla, desde, hasta })),
   })
 }
 

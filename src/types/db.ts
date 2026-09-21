@@ -4,6 +4,7 @@ export type EstadoModulo = 'pendiente' | 'completo' | 'no_aplica'
 
 export interface Perfil {
   id: string
+  email?: string
   nombre_completo: string
   rol: Rol
   activo: boolean

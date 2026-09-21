@@ -1,0 +1,27 @@
+# MySQL para desarrollo local. En producción use su propio servidor MySQL 8.x.
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: cardio-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: cardio_root_dev
+      MYSQL_DATABASE: ${DB_NAME:-cardio_pediatrica}
+      MYSQL_USER: ${DB_USER:-cardio}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-cardio_dev_pass}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --default-time-zone=+00:00
+    ports:
+      - "127.0.0.1:${DB_PORT:-3307}:3306"
+    volumes:
+      - cardio_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pcardio_root_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  cardio_mysql_data:

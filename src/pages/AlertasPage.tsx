@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import { formatearFecha } from '../lib/fechas'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 
 interface Alerta {
   paciente_id: string
@@ -16,14 +16,7 @@ interface Alerta {
 function useAlertas() {
   return useQuery({
     queryKey: ['alertas'],
-    queryFn: async (): Promise<Alerta[]> => {
-      const { data, error } = await supabase
-        .from('v_alertas_seguimiento')
-        .select('*')
-        .order('dias_desde_referencia', { ascending: false })
-      if (error) throw error
-      return data
-    },
+    queryFn: () => api.get<Alerta[]>('/alertas'),
   })
 }
 
