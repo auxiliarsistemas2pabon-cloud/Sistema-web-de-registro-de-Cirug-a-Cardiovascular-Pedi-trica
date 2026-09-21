@@ -6,7 +6,7 @@ import { Campo, claseInput } from '../../components/Campo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo5 } from '../../lib/completitud'
 import { hoyIso } from '../../lib/fechas'
-import { supabase } from '../../lib/supabase'
+import { api, mensajeDe } from '../../lib/api'
 
 interface SeguimientoDetalle {
   no_aplica: boolean
@@ -44,20 +44,10 @@ function useSeguimiento(pacienteId: string) {
     queryKey: ['seguimiento', pacienteId],
     queryFn: async () => {
       const [seguimiento, postoperatorio] = await Promise.all([
-        supabase
-          .from('seguimientos')
-          .select(
-            'no_aplica, fecha_control_cirugia, rehabilitacion_cardiaca, estado_herida_id, fecha_llamada_15_dias, persona_recibe_llamada, reingreso_30_dias, fecha_reingreso, causa_reingreso_id, observaciones',
-          )
-          .eq('paciente_id', pacienteId)
-          .maybeSingle(),
-        supabase.from('postoperatorio').select('fecha_salida').eq('paciente_id', pacienteId).maybeSingle(),
+        api.get<SeguimientoDetalle | null>(`/pacientes/${pacienteId}/seguimiento`),
+        api.get<{ fecha_salida: string | null } | null>(`/pacientes/${pacienteId}/postoperatorio`),
       ])
-      if (seguimiento.error) throw seguimiento.error
-      return {
-        seguimiento: seguimiento.data as SeguimientoDetalle | null,
-        fechaSalida: postoperatorio.data?.fecha_salida ?? null,
-      }
+      return { seguimiento, fechaSalida: postoperatorio?.fecha_salida ?? null }
     },
   })
 }
@@ -80,6 +70,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data, isLoading } = useSeguimiento(pacienteId)
+  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -117,9 +108,18 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
   const llamadaPendiente = !llamadaHecha && !!fechaLlamada && fechaLlamada >= hoyIso()
 
   async function onSubmit(valores: Valores) {
-    if (!perfil) return
+    if (!perfil || !puedeEditar) return
     if (valores.reingreso_30_dias === 'SI' && (!valores.fecha_reingreso || !valores.causa_reingreso_id)) {
       setError('Si hubo reingreso, la fecha y la causa son obligatorias.')
+      return
+    }
+    if (
+      valores.reingreso_30_dias === 'SI' &&
+      data?.fechaSalida &&
+      valores.fecha_reingreso &&
+      (valores.fecha_reingreso < data.fechaSalida || valores.fecha_reingreso > sumarDias(data.fechaSalida, 30))
+    ) {
+      setError('La fecha de reingreso debe estar dentro de los 30 días posteriores a la fecha de salida.')
       return
     }
     setError(null)
@@ -136,9 +136,8 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
       causaReingresoId: valores.causa_reingreso_id,
     })
 
-    const { error: errorUpdate } = await supabase
-      .from('seguimientos')
-      .update({
+    try {
+      await api.put(`/pacientes/${pacienteId}/seguimiento`, {
         fecha_control_cirugia: valores.fecha_control_cirugia || null,
         rehabilitacion_cardiaca: valores.rehabilitacion_cardiaca || null,
         estado_herida_id: valores.estado_herida_id || null,
@@ -149,22 +148,22 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
         causa_reingreso_id: valores.reingreso_30_dias === 'SI' ? valores.causa_reingreso_id || null : null,
         observaciones: valores.observaciones.trim() || null,
         estado_modulo,
-        actualizado_por: perfil.id,
       })
-      .eq('paciente_id', pacienteId)
-
-    setGuardando(false)
-    if (errorUpdate) {
-      setError(errorUpdate.message)
-      return
+      queryClient.invalidateQueries({ queryKey: ['seguimiento', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['pacientes'] })
+      queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['alertas'] })
+    } catch (causa) {
+      setError(mensajeDe(causa, 'No se pudo guardar el Módulo 5.'))
+    } finally {
+      setGuardando(false)
     }
-    queryClient.invalidateQueries({ queryKey: ['seguimiento', pacienteId] })
-    queryClient.invalidateQueries({ queryKey: ['pacientes'] })
-    queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Fecha de control por cirugía cardiovascular *">
           <input type="date" {...register('fecha_control_cirugia')} className={claseInput} />
@@ -212,6 +211,8 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
           <input
             type="date"
             disabled={reingreso !== 'SI'}
+            min={data.fechaSalida ?? undefined}
+            max={data.fechaSalida ? sumarDias(data.fechaSalida, 30) : undefined}
             {...register('fecha_reingreso')}
             className={claseInput}
           />
@@ -238,6 +239,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 5'}
       </button>
+      </fieldset>
     </form>
   )
 }

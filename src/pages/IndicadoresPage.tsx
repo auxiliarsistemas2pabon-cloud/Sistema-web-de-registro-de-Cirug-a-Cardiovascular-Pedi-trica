@@ -4,7 +4,7 @@ import { GraficoBarras } from '../components/GraficoBarras'
 import { GraficoBarrasTiempo } from '../components/GraficoBarrasTiempo'
 import { TarjetaKpi } from '../components/TarjetaKpi'
 import { hoyIso } from '../lib/fechas'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 
 const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
@@ -38,48 +38,24 @@ function useIndicadores(desde: string, hasta: string) {
   return useQuery({
     queryKey: ['indicadores', desde, hasta],
     queryFn: async () => {
-      const [resumen, porMes, porDiagnostico, porProcedimiento, porRachs, porEps, porProcedencia] =
-        await Promise.all([
-          supabase.rpc('fn_indicador_resumen', { fecha_desde: desde, fecha_hasta: hasta }).single(),
-          supabase.rpc('fn_indicador_por_mes', { fecha_desde: desde, fecha_hasta: hasta }),
-          supabase.rpc('fn_indicador_por_diagnostico', { fecha_desde: desde, fecha_hasta: hasta }),
-          supabase.rpc('fn_indicador_por_procedimiento', { fecha_desde: desde, fecha_hasta: hasta }),
-          supabase.rpc('fn_indicador_por_rachs', { fecha_desde: desde, fecha_hasta: hasta }),
-          supabase.rpc('fn_indicador_por_eps', { fecha_desde: desde, fecha_hasta: hasta }),
-          supabase.rpc('fn_indicador_por_procedencia', { fecha_desde: desde, fecha_hasta: hasta }),
-        ])
-
-      for (const r of [resumen, porMes, porDiagnostico, porProcedimiento, porRachs, porEps, porProcedencia]) {
-        if (r.error) throw r.error
-      }
-
+      const r = await api.get<{
+        resumen: Resumen
+        por_mes: { anio: number; mes: number; total_cirugias: number }[]
+        por_diagnostico: { diagnostico: string; total_cirugias: number }[]
+        por_procedimiento: { procedimiento: string; total_cirugias: number }[]
+        por_rachs: { rachs: string; total_cirugias: number; mortalidad_pct: number }[]
+        por_eps: { eps: string; total_cirugias: number }[]
+        por_procedencia: { procedencia: string; total_cirugias: number }[]
+      }>(`/indicadores?desde=${desde}&hasta=${hasta}`)
       return {
-        resumen: resumen.data as Resumen,
-        porMes: (porMes.data as { anio: number; mes: number; total_cirugias: number }[]).map((d) => ({
-          etiqueta: `${MESES[d.mes]} ${d.anio}`,
-          valor: d.total_cirugias,
-        })),
-        porDiagnostico: (porDiagnostico.data as { diagnostico: string; total_cirugias: number }[]).map((d) => ({
-          etiqueta: d.diagnostico,
-          valor: d.total_cirugias,
-        })),
-        porProcedimiento: (porProcedimiento.data as { procedimiento: string; total_cirugias: number }[]).map(
-          (d) => ({ etiqueta: d.procedimiento, valor: d.total_cirugias }),
-        ),
-        porRachsTotal: (porRachs.data as { rachs: string; total_cirugias: number; mortalidad_pct: number }[]).map(
-          (d) => ({ etiqueta: `RACHS ${d.rachs}`, valor: d.total_cirugias }),
-        ),
-        porRachsMortalidad: (
-          porRachs.data as { rachs: string; total_cirugias: number; mortalidad_pct: number }[]
-        ).map((d) => ({ etiqueta: `RACHS ${d.rachs}`, valor: d.mortalidad_pct ?? 0 })),
-        porEps: (porEps.data as { eps: string; total_cirugias: number }[]).map((d) => ({
-          etiqueta: d.eps,
-          valor: d.total_cirugias,
-        })),
-        porProcedencia: (porProcedencia.data as { procedencia: string; total_cirugias: number }[]).map((d) => ({
-          etiqueta: d.procedencia,
-          valor: d.total_cirugias,
-        })),
+        resumen: r.resumen,
+        porMes: r.por_mes.map((d) => ({ etiqueta: `${MESES[d.mes]} ${d.anio}`, valor: d.total_cirugias })),
+        porDiagnostico: r.por_diagnostico.map((d) => ({ etiqueta: d.diagnostico, valor: d.total_cirugias })),
+        porProcedimiento: r.por_procedimiento.map((d) => ({ etiqueta: d.procedimiento, valor: d.total_cirugias })),
+        porRachsTotal: r.por_rachs.map((d) => ({ etiqueta: `RACHS ${d.rachs}`, valor: d.total_cirugias })),
+        porRachsMortalidad: r.por_rachs.map((d) => ({ etiqueta: `RACHS ${d.rachs}`, valor: d.mortalidad_pct ?? 0 })),
+        porEps: r.por_eps.map((d) => ({ etiqueta: d.eps, valor: d.total_cirugias })),
+        porProcedencia: r.por_procedencia.map((d) => ({ etiqueta: d.procedencia, valor: d.total_cirugias })),
       }
     },
   })

@@ -7,7 +7,7 @@ interface Props {
 }
 
 export function ProtectedRoute({ rolesPermitidos }: Props) {
-  const { session, perfil, cargando } = useAuth()
+  const { perfil, cargando } = useAuth()
 
   if (cargando) {
     return (
@@ -17,11 +17,11 @@ export function ProtectedRoute({ rolesPermitidos }: Props) {
     )
   }
 
-  if (!session) {
+  if (!perfil) {
     return <Navigate to="/login" replace />
   }
 
-  if (rolesPermitidos && (!perfil || !rolesPermitidos.includes(perfil.rol))) {
+  if (rolesPermitidos && !rolesPermitidos.includes(perfil.rol)) {
     return <Navigate to="/pacientes" replace />
   }
 

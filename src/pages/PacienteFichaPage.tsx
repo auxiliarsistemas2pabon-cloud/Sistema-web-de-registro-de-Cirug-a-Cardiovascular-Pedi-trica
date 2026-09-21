@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { EstadoModuloChip } from '../components/EstadoModuloChip'
-import { supabase } from '../lib/supabase'
+import { api } from '../lib/api'
 import { formatearEdad } from '../lib/fechas'
-import type { PacienteDetalle } from '../types/db'
+import type { PacienteDetalle, PacienteResumen } from '../types/db'
 import { Modulo1Form } from './modulos/Modulo1Form'
 import { Modulo2Form } from './modulos/Modulo2Form'
 import { Modulo3Form } from './modulos/Modulo3Form'
@@ -23,17 +23,7 @@ function usePaciente(id: string | undefined) {
   return useQuery({
     queryKey: ['paciente', id],
     enabled: !!id && id !== 'nuevo',
-    queryFn: async (): Promise<PacienteDetalle> => {
-      const { data, error } = await supabase
-        .from('pacientes')
-        .select(
-          'id, numero_paciente, nombre_completo, identificacion, sexo_id, fecha_nacimiento, peso_kg, talla_cm, procedencia_id, municipio_narino_id, telefonos, sin_telefono, eps_id, estado_modulo, eliminado',
-        )
-        .eq('id', id)
-        .single()
-      if (error) throw error
-      return data
-    },
+    queryFn: () => api.get<PacienteDetalle>(`/pacientes/${id}`),
   })
 }
 
@@ -41,15 +31,10 @@ function useResumenEdad(id: string | undefined) {
   return useQuery({
     queryKey: ['paciente-resumen', id],
     enabled: !!id && id !== 'nuevo',
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('v_pacientes_resumen')
-        .select('edad_dias, diagnostico_valor, estado_m1, estado_m2, estado_m3, estado_m4, estado_m5')
-        .eq('paciente_id', id)
-        .single()
-      if (error) throw error
-      return data
-    },
+    queryFn: () =>
+      api.get<Pick<PacienteResumen, 'edad_dias' | 'diagnostico_valor' | 'estado_m1' | 'estado_m2' | 'estado_m3' | 'estado_m4' | 'estado_m5'>>(
+        `/pacientes/${id}/resumen`,
+      ),
   })
 }
 

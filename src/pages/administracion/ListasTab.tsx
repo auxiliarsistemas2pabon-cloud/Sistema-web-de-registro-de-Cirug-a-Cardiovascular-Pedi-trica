@@ -1,17 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { claseInput } from '../../components/Campo'
-import { supabase } from '../../lib/supabase'
+import { api, mensajeDe } from '../../lib/api'
 import type { CategoriaLista, OpcionLista } from '../../types/db'
 
 function useCategorias() {
   return useQuery({
     queryKey: ['categorias_lista'],
-    queryFn: async (): Promise<CategoriaLista[]> => {
-      const { data, error } = await supabase.from('categorias_lista').select('id, codigo, nombre').order('nombre')
-      if (error) throw error
-      return data
-    },
+    queryFn: () => api.get<CategoriaLista[]>('/admin/listas/categorias'),
   })
 }
 
@@ -19,15 +15,7 @@ function useOpcionesAdmin(categoriaId: string | undefined) {
   return useQuery({
     queryKey: ['opciones_admin', categoriaId],
     enabled: !!categoriaId,
-    queryFn: async (): Promise<OpcionLista[]> => {
-      const { data, error } = await supabase
-        .from('opciones_lista')
-        .select('id, categoria_id, codigo, valor, orden, activo')
-        .eq('categoria_id', categoriaId)
-        .order('orden')
-      if (error) throw error
-      return data
-    },
+    queryFn: () => api.get<OpcionLista[]>(`/admin/listas/categorias/${categoriaId}/opciones`),
   })
 }
 
@@ -39,38 +27,33 @@ export function ListasTab() {
   const categoriaActiva = categoriaId || categorias?.[0]?.id || ''
   const [nuevoValor, setNuevoValor] = useState('')
   const [nuevoOrden, setNuevoOrden] = useState('0')
+  const [error, setError] = useState<string | null>(null)
 
   function invalidar() {
     queryClient.invalidateQueries({ queryKey: ['opciones_admin', categoriaActiva] })
     queryClient.invalidateQueries({ queryKey: ['opciones'] })
   }
 
-  async function guardarValor(id: string, valor: string) {
-    await supabase.from('opciones_lista').update({ valor }).eq('id', id)
+  async function ejecutar(accion: () => Promise<unknown>) {
+    setError(null)
+    try {
+      await accion()
+    } catch (causa) {
+      setError(mensajeDe(causa))
+    }
     invalidar()
   }
 
-  async function guardarOrden(id: string, orden: number) {
-    await supabase.from('opciones_lista').update({ orden }).eq('id', id)
-    invalidar()
-  }
-
-  async function alternarActivo(id: string, activo: boolean) {
-    await supabase.from('opciones_lista').update({ activo: !activo }).eq('id', id)
-    invalidar()
-  }
+  const guardarValor = (id: string, valor: string) => ejecutar(() => api.patch(`/admin/listas/opciones/${id}`, { valor }))
+  const guardarOrden = (id: string, orden: number) => ejecutar(() => api.patch(`/admin/listas/opciones/${id}`, { orden }))
+  const alternarActivo = (id: string, activo: boolean) => ejecutar(() => api.patch(`/admin/listas/opciones/${id}`, { activo: !activo }))
 
   async function agregarOpcion(e: FormEvent) {
     e.preventDefault()
     if (!nuevoValor.trim() || !categoriaActiva) return
-    await supabase.from('opciones_lista').insert({
-      categoria_id: categoriaActiva,
-      valor: nuevoValor.trim(),
-      orden: Number(nuevoOrden) || 0,
-    })
+    await ejecutar(() => api.post('/admin/listas/opciones', { categoria_id: categoriaActiva, valor: nuevoValor.trim(), orden: Number(nuevoOrden) || 0 }))
     setNuevoValor('')
     setNuevoOrden('0')
-    invalidar()
   }
 
   return (
@@ -102,6 +85,7 @@ export function ListasTab() {
         </button>
       </form>
 
+      {error && <p className="text-sm text-red-600">{error}</p>}
       {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
 
       {opciones && (

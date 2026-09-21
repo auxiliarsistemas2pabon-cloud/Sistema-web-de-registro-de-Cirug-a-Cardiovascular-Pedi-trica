@@ -1,73 +1,50 @@
-import type { Session } from '@supabase/supabase-js'
-import { createContext, use, useEffect, useState, type ReactNode } from 'react'
-import { supabase } from '../lib/supabase'
+import { useQueryClient } from '@tanstack/react-query'
+import { createContext, use, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { alExpirar, api, borrarToken, guardarToken, obtenerToken } from '../lib/api'
 import type { Perfil } from '../types/db'
 
 interface AuthState {
-  session: Session | null
   perfil: Perfil | null
   cargando: boolean
-  cerrarSesion: () => Promise<void>
+  iniciarSesion: (email: string, password: string) => Promise<void>
+  cerrarSesion: () => void
 }
 
 const AuthContext = createContext<AuthState | null>(null)
 
-async function cargarPerfil(userId: string): Promise<Perfil | null> {
-  const { data, error } = await supabase
-    .from('perfiles')
-    .select('id, nombre_completo, rol, activo')
-    .eq('id', userId)
-    .maybeSingle()
-
-  if (error) {
-    console.error('No se pudo cargar el perfil del usuario', error)
-    return null
-  }
-  return data
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<Session | null>(null)
   const [perfil, setPerfil] = useState<Perfil | null>(null)
   const [cargando, setCargando] = useState(true)
+  const queryClient = useQueryClient()
+
+  const cerrarSesion = useCallback(() => {
+    borrarToken()
+    setPerfil(null)
+    // Los datos clínicos en caché no deben sobrevivir al cierre de sesión.
+    queryClient.clear()
+  }, [queryClient])
 
   useEffect(() => {
-    let activo = true
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!activo) return
-      setSession(data.session)
-      if (data.session) {
-        setPerfil(await cargarPerfil(data.session.user.id))
-      }
+    alExpirar(cerrarSesion)
+    if (!obtenerToken()) {
       setCargando(false)
-    })
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_evento, nuevaSesion) => {
-      if (!activo) return
-      setSession(nuevaSesion)
-      if (nuevaSesion) {
-        setPerfil(await cargarPerfil(nuevaSesion.user.id))
-      } else {
-        setPerfil(null)
-      }
-    })
-
-    return () => {
-      activo = false
-      listener.subscription.unsubscribe()
+      return () => alExpirar(null)
     }
-  }, [])
+    api
+      .get<Perfil>('/auth/me')
+      .then(setPerfil)
+      .catch(() => borrarToken())
+      .finally(() => setCargando(false))
+    return () => alExpirar(null)
+  }, [cerrarSesion])
 
-  async function cerrarSesion() {
-    await supabase.auth.signOut()
+  async function iniciarSesion(email: string, password: string) {
+    const { token, perfil: perfilNuevo } = await api.post<{ token: string; perfil: Perfil }>('/auth/login', { email, password })
+    guardarToken(token)
+    setPerfil(perfilNuevo)
   }
 
-  return (
-    <AuthContext.Provider value={{ session, perfil, cargando, cerrarSesion }}>
-      {children}
-    </AuthContext.Provider>
-  )
+  return <AuthContext.Provider value={{ perfil, cargando, iniciarSesion, cerrarSesion }}>{children}</AuthContext.Provider>
 }
 
 export function useAuth() {
