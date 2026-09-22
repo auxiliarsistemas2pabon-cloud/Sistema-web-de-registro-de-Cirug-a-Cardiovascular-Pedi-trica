@@ -98,7 +98,7 @@ Todos llevan `estado_modulo` (`pendiente | completo | no_aplica`), calculado por
 | Ruta | Campos |
 | --- | --- |
 | `/diagnostico` | `diagnostico_id, valvulopatia_id, rachs_id, riesgo_ids: string[], estado_modulo` |
-| `/cirugia` | `fecha_cirugia, implante_id, uso_cec, tiempo_cec_min, tiempo_clamp_min, complicacion_intraqx_id, cierre_esternal_diferido, extubacion_quirofano, procedimiento_ids: string[] (máx. 3, el orden del arreglo es el orden), estado_modulo` |
+| `/cirugia` | `fecha_cirugia, implante_id, uso_cec, tiempo_cec_min, tiempo_clamp_min, complicacion_intraqx_id, cierre_esternal_diferido, extubacion_quirofano, procedimiento_ids: string[] (máx. 3, el orden del arreglo es el orden), fecha_procedimiento_2, fecha_procedimiento_3, estado_modulo`. Cada procedimiento adicional (2 y 3) requiere su propia fecha, estrictamente posterior a la del procedimiento anterior: no pueden compartir el mismo día. |
 | `/postoperatorio` | `unidad_pop_id, horas_ventilacion_mecanica, complicacion_pop_id, fecha_traslado_intermedio, fecha_salida, condicion_salida_id, estado_modulo` |
 | `/seguimiento` | `fecha_control_cirugia, rehabilitacion_cardiaca, estado_herida_id, fecha_llamada_15_dias, persona_recibe_llamada, reingreso_30_dias, fecha_reingreso, causa_reingreso_id, observaciones, estado_modulo`; el `GET` añade `no_aplica` (solo lectura) |
 

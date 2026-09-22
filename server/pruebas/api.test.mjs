@@ -114,6 +114,25 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.equal(c.procedimiento_ids.length, 1)
     })
 
+    it('Módulo 3: cada procedimiento adicional exige su propia fecha, posterior a la anterior', async () => {
+      const base = { fecha_cirugia: '2023-06-01', procedimiento_ids: [porValor('PROCEDIMIENTOS', 'Cirugía de coartación de aorta'), porValor('PROCEDIMIENTOS', 'Otro')], estado_modulo: 'pendiente' }
+      // Falta la fecha del procedimiento 2.
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: base })).estado, 422)
+      // Mismo día que el procedimiento 1: no está permitido.
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-01' } })).estado, 422)
+      // Anterior al procedimiento 1: tampoco.
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, fecha_procedimiento_2: '2023-05-01' } })).estado, 422)
+      const ok = await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-15' } })
+      assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
+      const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: registrador })).datos
+      assert.equal(c.fecha_procedimiento_2, '2023-06-15')
+      // Al quitar el procedimiento 2, su fecha se descarta en silencio.
+      const sinP2 = await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { fecha_cirugia: '2023-06-01', procedimiento_ids: [base.procedimiento_ids[0]], estado_modulo: 'completo' } })
+      assert.equal(sinP2.estado, 200, JSON.stringify(sinP2.datos))
+      const c2 = (await api('GET', `/pacientes/${id}/cirugia`, { token: registrador })).datos
+      assert.equal(c2.fecha_procedimiento_2, null)
+    })
+
     it('Módulo 5 exige Módulo 4; Muerte bloquea el Módulo 5 y se revierte', async () => {
       const seg = { fecha_control_cirugia: '2023-06-20', rehabilitacion_cardiaca: 'NO', reingreso_30_dias: 'NO', persona_recibe_llamada: 'Madre', estado_modulo: 'pendiente' }
       const antes = await api('PUT', `/pacientes/${id}/seguimiento`, { token: registrador, cuerpo: seg })

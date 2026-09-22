@@ -11,6 +11,8 @@ import type { PacienteDetalle } from '../../types/db'
 interface CirugiaDetalle {
   id: string
   fecha_cirugia: string | null
+  fecha_procedimiento_2: string | null
+  fecha_procedimiento_3: string | null
   implante_id: string | null
   uso_cec: 'SI' | 'NO' | null
   tiempo_cec_min: number | null
@@ -25,7 +27,9 @@ interface Valores {
   fecha_cirugia: string
   procedimiento_1_id: string
   procedimiento_2_id: string
+  fecha_procedimiento_2: string
   procedimiento_3_id: string
+  fecha_procedimiento_3: string
   implante_id: string
   uso_cec: 'SI' | 'NO' | ''
   tiempo_cec_min: string
@@ -33,6 +37,14 @@ interface Valores {
   complicacion_intraqx_id: string
   cierre_esternal_diferido: 'SI' | 'NO' | ''
   extubacion_quirofano: 'SI' | 'NO' | ''
+}
+
+/** Día siguiente a una fecha ISO (aaaa-mm-dd): sirve de límite mínimo para que un procedimiento
+ * posterior no pueda quedar el mismo día que el anterior. */
+function diaSiguiente(fechaIso: string): string {
+  const fecha = new Date(`${fechaIso}T00:00:00Z`)
+  fecha.setUTCDate(fecha.getUTCDate() + 1)
+  return fecha.toISOString().slice(0, 10)
 }
 
 function useCirugia(pacienteId: string) {
@@ -57,7 +69,9 @@ function valoresIniciales(cirugia: CirugiaDetalle | null, procedimientoIds: stri
     fecha_cirugia: cirugia?.fecha_cirugia ?? '',
     procedimiento_1_id: procedimientoIds[0] ?? '',
     procedimiento_2_id: procedimientoIds[1] ?? '',
+    fecha_procedimiento_2: cirugia?.fecha_procedimiento_2 ?? '',
     procedimiento_3_id: procedimientoIds[2] ?? '',
+    fecha_procedimiento_3: cirugia?.fecha_procedimiento_3 ?? '',
     implante_id: cirugia?.implante_id ?? '',
     uso_cec: cirugia?.uso_cec ?? '',
     tiempo_cec_min: cirugia?.tiempo_cec_min?.toString() ?? '',
@@ -76,23 +90,51 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const { register, handleSubmit, watch, reset } = useForm<Valores>({
+  const { register, handleSubmit, watch, reset, setValue } = useForm<Valores>({
     defaultValues: valoresIniciales(data?.cirugia ?? null, data?.procedimientoIds ?? []),
   })
 
+  // El procedimiento 2 y el 3 quedan ocultos hasta que se agregan: cada uno es una intervención
+  // aparte, con su propia fecha, no una casilla más del mismo formulario.
+  const [mostrarP2, setMostrarP2] = useState(!!data?.procedimientoIds[1])
+  const [mostrarP3, setMostrarP3] = useState(!!data?.procedimientoIds[2])
+
   useEffect(() => {
-    if (data) reset(valoresIniciales(data.cirugia, data.procedimientoIds))
+    if (data) {
+      reset(valoresIniciales(data.cirugia, data.procedimientoIds))
+      setMostrarP2(!!data.procedimientoIds[1])
+      setMostrarP3(!!data.procedimientoIds[2])
+    }
   }, [data, reset])
 
   const usoCec = watch('uso_cec')
   const p1 = watch('procedimiento_1_id')
   const p2 = watch('procedimiento_2_id')
   const p3 = watch('procedimiento_3_id')
+  const fechaCirugia = watch('fecha_cirugia')
+  const fechaP2 = watch('fecha_procedimiento_2')
+  const fechaP3 = watch('fecha_procedimiento_3')
 
   if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
 
   const repetido =
     (!!p1 && !!p2 && p1 === p2) || (!!p1 && !!p3 && p1 === p3) || (!!p2 && !!p3 && p2 === p3)
+
+  const fecha2Invalida = mostrarP2 && !!fechaCirugia && !!fechaP2 && fechaP2 <= fechaCirugia
+  const fecha3Invalida = mostrarP3 && !!fechaP2 && !!fechaP3 && fechaP3 <= fechaP2
+
+  function quitarProcedimiento2() {
+    setValue('procedimiento_2_id', '')
+    setValue('fecha_procedimiento_2', '')
+    setMostrarP2(false)
+    quitarProcedimiento3()
+  }
+
+  function quitarProcedimiento3() {
+    setValue('procedimiento_3_id', '')
+    setValue('fecha_procedimiento_3', '')
+    setMostrarP3(false)
+  }
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
@@ -105,6 +147,28 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         (!!valores.procedimiento_2_id && !!valores.procedimiento_3_id && valores.procedimiento_2_id === valores.procedimiento_3_id)) {
       setError('Los procedimientos 1, 2 y 3 no pueden repetirse.')
       return
+    }
+    // Cada procedimiento agregado es una intervención propia: necesita su fecha y no puede coincidir
+    // (ni ser anterior) con la del procedimiento previo.
+    if (valores.procedimiento_2_id) {
+      if (!valores.fecha_procedimiento_2) {
+        setError('La fecha del procedimiento quirúrgico 2 es obligatoria.')
+        return
+      }
+      if (!valores.fecha_cirugia || valores.fecha_procedimiento_2 <= valores.fecha_cirugia) {
+        setError('La fecha del procedimiento quirúrgico 2 debe ser posterior a la del procedimiento 1: no pueden hacerse el mismo día.')
+        return
+      }
+    }
+    if (valores.procedimiento_3_id) {
+      if (!valores.fecha_procedimiento_3) {
+        setError('La fecha del procedimiento quirúrgico 3 es obligatoria.')
+        return
+      }
+      if (!valores.fecha_procedimiento_2 || valores.fecha_procedimiento_3 <= valores.fecha_procedimiento_2) {
+        setError('La fecha del procedimiento quirúrgico 3 debe ser posterior a la del procedimiento 2: no pueden hacerse el mismo día.')
+        return
+      }
     }
     if (valores.uso_cec === 'SI' && valores.tiempo_clamp_min && valores.tiempo_cec_min &&
         Number(valores.tiempo_clamp_min) > Number(valores.tiempo_cec_min)) {
@@ -128,6 +192,8 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
     try {
       await api.put(`/pacientes/${pacienteId}/cirugia`, {
         fecha_cirugia: valores.fecha_cirugia || null,
+        fecha_procedimiento_2: valores.procedimiento_2_id ? valores.fecha_procedimiento_2 || null : null,
+        fecha_procedimiento_3: valores.procedimiento_3_id ? valores.fecha_procedimiento_3 || null : null,
         implante_id: valores.implante_id || null,
         uso_cec: valores.uso_cec || null,
         tiempo_cec_min: valores.uso_cec === 'SI' && valores.tiempo_cec_min ? Number(valores.tiempo_cec_min) : null,
@@ -160,17 +226,79 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         <Campo etiqueta="Tipo de implante">
           <SelectOpciones categoria="IMPLANTE" registro={register('implante_id')} />
         </Campo>
-
-        <Campo etiqueta="Procedimiento quirúrgico 1 *">
-          <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_1_id')} />
-        </Campo>
-        <Campo etiqueta="Procedimiento quirúrgico 2">
-          <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_2_id')} />
-        </Campo>
-        <Campo etiqueta="Procedimiento quirúrgico 3">
-          <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_3_id')} />
-        </Campo>
       </div>
+
+      <Campo etiqueta="Procedimiento quirúrgico 1 *">
+        <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_1_id')} />
+      </Campo>
+
+      {/* Cada procedimiento adicional es una intervención aparte: se habilita al agregarla y exige su
+          propia fecha, distinta de la del procedimiento anterior. */}
+      {!mostrarP2 ? (
+        <button
+          type="button"
+          disabled={!p1}
+          onClick={() => setMostrarP2(true)}
+          className="rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 dark:border-sky-500 dark:text-sky-400 dark:hover:bg-sky-950 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+        >
+          + Agregar otro procedimiento quirúrgico
+        </button>
+      ) : (
+        <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Procedimiento quirúrgico 2 *">
+              <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_2_id')} />
+            </Campo>
+            <Campo etiqueta="Fecha del procedimiento 2 *">
+              <input
+                type="date"
+                min={fechaCirugia ? diaSiguiente(fechaCirugia) : (data?.fechaNacimiento ?? undefined)}
+                {...register('fecha_procedimiento_2')}
+                className={claseInput}
+              />
+            </Campo>
+          </div>
+          {fecha2Invalida && (
+            <p className="text-sm text-red-600">No puede ser el mismo día ni anterior a la fecha del procedimiento 1.</p>
+          )}
+          <button type="button" onClick={quitarProcedimiento2} className="text-xs font-medium text-red-600 hover:underline">
+            Quitar procedimiento 2
+          </button>
+
+          {!mostrarP3 ? (
+            <button
+              type="button"
+              disabled={!p2}
+              onClick={() => setMostrarP3(true)}
+              className="block rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 dark:border-sky-500 dark:text-sky-400 dark:hover:bg-sky-950 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+            >
+              + Agregar otro procedimiento quirúrgico
+            </button>
+          ) : (
+            <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <Campo etiqueta="Procedimiento quirúrgico 3 *">
+                  <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_3_id')} />
+                </Campo>
+                <Campo etiqueta="Fecha del procedimiento 3 *">
+                  <input
+                    type="date"
+                    min={fechaP2 ? diaSiguiente(fechaP2) : undefined}
+                    {...register('fecha_procedimiento_3')}
+                    className={claseInput}
+                  />
+                </Campo>
+              </div>
+              {fecha3Invalida && (
+                <p className="text-sm text-red-600">No puede ser el mismo día ni anterior a la fecha del procedimiento 2.</p>
+              )}
+              <button type="button" onClick={quitarProcedimiento3} className="text-xs font-medium text-red-600 hover:underline">
+                Quitar procedimiento 3
+              </button>
+            </div>
+          )}
+        </div>
+      )}
       {repetido && <p className="text-sm text-red-600">Los procedimientos no pueden repetirse.</p>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
