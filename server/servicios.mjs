@@ -223,6 +223,8 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
   const v = new Validador(cuerpo)
   const datos = {
     fecha_cirugia: v.fecha('fecha_cirugia'),
+    fecha_procedimiento_2: v.fecha('fecha_procedimiento_2'),
+    fecha_procedimiento_3: v.fecha('fecha_procedimiento_3'),
     implante_id: v.id('implante_id'),
     uso_cec: v.opcion('uso_cec', ['SI', 'NO']),
     tiempo_cec_min: v.entero('tiempo_cec_min', { min: 0 }),
@@ -248,6 +250,26 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
   const paciente = await una(conexion, 'SELECT fecha_nacimiento FROM pacientes WHERE id = ?', [pacienteId])
   if (datos.fecha_cirugia && datos.fecha_cirugia < paciente.fecha_nacimiento) {
     throw reglaNegocio('La fecha de cirugía no puede ser anterior a la fecha de nacimiento del paciente.')
+  }
+
+  // Cada procedimiento agregado es una intervención propia: exige su fecha y no permite que coincida
+  // (ni sea anterior) con la del procedimiento previo. Regla silenciosa: sin ese procedimiento, se
+  // descarta cualquier fecha residual que haya llegado.
+  if (procedimientoIds.length >= 2) {
+    if (!datos.fecha_procedimiento_2) throw reglaNegocio('La fecha del procedimiento quirúrgico 2 es obligatoria.')
+    if (!datos.fecha_cirugia || datos.fecha_procedimiento_2 <= datos.fecha_cirugia) {
+      throw reglaNegocio('La fecha del procedimiento quirúrgico 2 debe ser posterior a la del procedimiento 1: no pueden hacerse el mismo día.')
+    }
+  } else {
+    datos.fecha_procedimiento_2 = null
+  }
+  if (procedimientoIds.length >= 3) {
+    if (!datos.fecha_procedimiento_3) throw reglaNegocio('La fecha del procedimiento quirúrgico 3 es obligatoria.')
+    if (!datos.fecha_procedimiento_2 || datos.fecha_procedimiento_3 <= datos.fecha_procedimiento_2) {
+      throw reglaNegocio('La fecha del procedimiento quirúrgico 3 debe ser posterior a la del procedimiento 2: no pueden hacerse el mismo día.')
+    }
+  } else {
+    datos.fecha_procedimiento_3 = null
   }
 
   const existente = await una(conexion, 'SELECT id FROM cirugias WHERE paciente_id = ?', [pacienteId])

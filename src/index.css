@@ -1,10 +1,51 @@
 @import "tailwindcss";
 
-:root {
-  color-scheme: light dark;
+/* La app usa una marca institucional fija (Clínica Pabón): las clases `dark:` de Tailwind
+   solo deben activarse si algo le pone la clase "dark" al <html>. Como nada en la app hace
+   eso todavía, esto mantiene toda la interfaz en los colores institucionales sin importar
+   el tema (claro/oscuro) del sistema operativo del usuario. */
+@custom-variant dark (&:where(.dark, .dark *));
 
-  /* Paleta de indicadores (skill de dataviz) */
-  --chart-azul: #2a78d6;
+/* Toda la app usa la paleta "sky" de Tailwind como color de acento (botones, pestañas activas,
+   enlaces, anillos de foco). En vez de cambiar cada botón uno por uno, se redefine la propia
+   paleta para que apunte al azul institucional del Centro de Cuidados Cardioneurovasculares
+   Pabón (azul oscuro = sky-600, el tono más usado). Así todo el acento de la interfaz queda en
+   los colores de marca de una sola vez. */
+@theme {
+  --color-sky-50: #f2f7fd;
+  --color-sky-100: #e0edfa;
+  --color-sky-200: #bdd9f4;
+  --color-sky-300: #89baec;
+  --color-sky-400: #4594e3;
+  --color-sky-500: #1670ca;
+  --color-sky-600: #0e5093;
+  --color-sky-700: #0a4076;
+  --color-sky-800: #08335e;
+  --color-sky-900: #082949;
+  --color-sky-950: #061728;
+
+  /* Esquinas ligeramente más suaves en toda la app (botones, tarjetas, campos), sin tocar
+     cada componente: la mayoría usa "rounded-md"/"rounded-lg" de Tailwind. */
+  --radius-md: 0.5rem;
+  --radius-lg: 0.625rem;
+}
+
+:root {
+  color-scheme: light;
+
+  /* Marca institucional Pabón (manuales de identidad corporativa):
+     Clínica Pabón usa el rojo como color principal; el Centro de Cuidados
+     Cardioneurovasculares (producto bajo esa marca) usa azul oscuro/claro y gris. */
+  --pabon-rojo: #c1272e;
+  --pabon-rojo-oscuro: #5c0f10;
+  --pabon-azul-oscuro: #0e5093;
+  --pabon-azul-oscuro-2: #051e38;
+  --pabon-azul-claro: #37a2c2;
+  --pabon-gris: #bdbdc0;
+
+  /* Paleta de indicadores (skill de dataviz). El azul neutro usa el institucional; los colores
+     semánticos (rojo/verde de estado clínico) se mantienen aparte por legibilidad. */
+  --chart-azul: #0e5093;
   --chart-rojo: #e34948;
   --chart-verde: #1baf7a;
   --chart-texto-secundario: #52514e;
@@ -13,16 +54,15 @@
   --status-critical: #d03b3b;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --chart-azul: #3987e5;
-    --chart-rojo: #e66767;
-    --chart-verde: #199e70;
-    --chart-texto-secundario: #c3c2b7;
-    --chart-grid: #2c2c2a;
-    --status-good: #0ca30c;
-    --status-critical: #e66767;
-  }
+/* Igual que arriba: solo aplica si algo agrega la clase "dark" al <html>, no por el tema del sistema. */
+:root.dark {
+  --chart-azul: #3987e5;
+  --chart-rojo: #e66767;
+  --chart-verde: #199e70;
+  --chart-texto-secundario: #c3c2b7;
+  --chart-grid: #2c2c2a;
+  --status-good: #0ca30c;
+  --status-critical: #e66767;
 }
 
 html,
@@ -34,4 +74,19 @@ body,
 body {
   margin: 0;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Transiciones suaves en toda la app: sin esto, los estados de hover/foco de botones y campos
+   cambian de golpe, lo que se siente tosco. Aplica a cualquier control interactivo sin tener
+   que agregar "transition-colors" en cada uno. */
+button,
+a,
+input,
+select,
+textarea {
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
 }

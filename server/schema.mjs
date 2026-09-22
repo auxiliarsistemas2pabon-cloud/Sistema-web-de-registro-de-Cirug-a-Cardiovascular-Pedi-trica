@@ -104,6 +104,8 @@ const tablas = [
     id CHAR(36) PRIMARY KEY,
     paciente_id CHAR(36) NOT NULL UNIQUE,
     fecha_cirugia DATE NULL,
+    fecha_procedimiento_2 DATE NULL,
+    fecha_procedimiento_3 DATE NULL,
     implante_id CHAR(36) NULL,
     uso_cec ENUM('SI','NO') NULL,
     tiempo_cec_min INT NULL,
@@ -114,6 +116,10 @@ const tablas = [
     estado_modulo ${ESTADO},${AUDITORIA_COLS},
     CONSTRAINT ck_cir_tiempos CHECK (tiempo_cec_min IS NULL OR tiempo_cec_min >= 0),
     CONSTRAINT ck_cir_clamp CHECK (tiempo_clamp_min IS NULL OR (tiempo_cec_min IS NOT NULL AND tiempo_clamp_min >= 0 AND tiempo_clamp_min <= tiempo_cec_min)),
+    -- Cada procedimiento adicional necesita su propia fecha y no puede compartir día con el anterior:
+    -- son intervenciones distintas, no procedimientos simultáneos de una misma cirugía.
+    CONSTRAINT ck_cir_fecha2_posterior CHECK (fecha_procedimiento_2 IS NULL OR (fecha_cirugia IS NOT NULL AND fecha_procedimiento_2 > fecha_cirugia)),
+    CONSTRAINT ck_cir_fecha3_posterior CHECK (fecha_procedimiento_3 IS NULL OR (fecha_procedimiento_2 IS NOT NULL AND fecha_procedimiento_3 > fecha_procedimiento_2)),
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
     ${opcion('implante_id')}, ${opcion('complicacion_intraqx_id')}
   )`,
@@ -189,9 +195,44 @@ const tablas = [
   )`,
 ]
 
+// Columnas y restricciones que se agregaron después de la creación inicial de las tablas: `CREATE TABLE
+// IF NOT EXISTS` no las añade a una base ya existente, así que se aplican aparte y de forma idempotente.
+// MySQL (a diferencia de MariaDB) no soporta "ADD COLUMN/CONSTRAINT IF NOT EXISTS", así que cada
+// alteración se intenta y se ignora si ya fue aplicada en una ejecución anterior.
+const alteraciones = [
+  ['cirugias', 'fecha_procedimiento_2', `ALTER TABLE cirugias ADD COLUMN fecha_procedimiento_2 DATE NULL AFTER fecha_cirugia`],
+  ['cirugias', 'fecha_procedimiento_3', `ALTER TABLE cirugias ADD COLUMN fecha_procedimiento_3 DATE NULL AFTER fecha_procedimiento_2`],
+]
+
+const restricciones = [
+  ['ck_cir_fecha2_posterior', 'cirugias', 'CHECK (fecha_procedimiento_2 IS NULL OR (fecha_cirugia IS NOT NULL AND fecha_procedimiento_2 > fecha_cirugia))'],
+  ['ck_cir_fecha3_posterior', 'cirugias', 'CHECK (fecha_procedimiento_3 IS NULL OR (fecha_procedimiento_2 IS NOT NULL AND fecha_procedimiento_3 > fecha_procedimiento_2))'],
+]
+
+/** Agrega una columna si no existe (errno 1060 = ER_DUP_FIELDNAME, ya fue creada antes). */
+async function agregarColumnaSiNoExiste(pool, tabla, columna, sentencia) {
+  try {
+    await pool.query(sentencia)
+  } catch (err) {
+    if (err?.errno !== 1060) throw err
+  }
+}
+
+/** Agrega una restricción CHECK si no existe. MySQL no soporta "ADD CONSTRAINT IF NOT EXISTS", así que se
+ * ignora el error de nombre duplicado (errno 3822) cuando ya fue creada en una ejecución anterior. */
+async function agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion) {
+  try {
+    await pool.query(`ALTER TABLE ${tabla} ADD CONSTRAINT ${nombre} ${definicion}`)
+  } catch (err) {
+    if (err?.errno !== 3822) throw err
+  }
+}
+
 /** Crea las tablas si no existen, siembra las listas y, si no hay usuarios, el primer administrador. */
 export async function inicializarBase(pool, admin) {
   for (const sentencia of tablas) await pool.query(sentencia)
+  for (const [tabla, columna, sentencia] of alteraciones) await agregarColumnaSiNoExiste(pool, tabla, columna, sentencia)
+  for (const [nombre, tabla, definicion] of restricciones) await agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion)
 
   for (const [codigo, nombre] of categorias) {
     await pool.query('INSERT IGNORE INTO categorias_lista (id, codigo, nombre) VALUES (?, ?, ?)', [nuevoId(), codigo, nombre])

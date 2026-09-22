@@ -24,7 +24,7 @@ categorias_lista ─────┤        │
 | `perfiles` | Rol y estado activo de cada usuario autenticado. |
 | `pacientes` | Módulo 1, identidad, contacto, procedencia y borrado lógico. |
 | `diagnosticos` / `diagnosticos_riesgos` | Módulo 2 y la selección múltiple de riesgos. |
-| `cirugias` / `cirugias_procedimientos` | Módulo 3 y hasta tres procedimientos ordenados. |
+| `cirugias` / `cirugias_procedimientos` | Módulo 3 y hasta tres procedimientos ordenados; el 2° y el 3° tienen su propia fecha (`fecha_procedimiento_2`, `fecha_procedimiento_3`), posterior a la del procedimiento anterior. |
 | `postoperatorio` | Módulo 4, estancia y condición de salida. |
 | `seguimientos` | Módulo 5; se bloquea automáticamente como no aplicable en caso de muerte. |
 | `categorias_lista` / `opciones_lista` | Listas editables por administración, sin valores codificados en la interfaz. |
