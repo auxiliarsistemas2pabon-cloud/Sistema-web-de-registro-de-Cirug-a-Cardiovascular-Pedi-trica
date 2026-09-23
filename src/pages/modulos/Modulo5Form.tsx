@@ -2,12 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput } from '../../components/Campo'
+import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo5 } from '../../lib/completitud'
 import { hoyIso } from '../../lib/fechas'
 import { api, mensajeDe } from '../../lib/api'
-import { Cargando, MensajeError } from '../../components/Estados'
+import { Cargando, MensajeError, AvisoSoloLectura } from '../../components/Estados'
 
 interface SeguimientoDetalle {
   no_aplica: boolean
@@ -99,8 +99,15 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
 
   if (data.seguimiento.no_aplica) {
     return (
-      <div className="rounded-md bg-slate-100 p-4 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-        Este módulo no aplica: la condición de salida del paciente fue <strong>Muerte</strong>.
+      <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-slate-200 text-slate-400">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4">
+            <path d="M6 12h12" strokeLinecap="round" />
+          </svg>
+        </span>
+        <span>
+          Este módulo no aplica: la condición de salida del paciente fue <strong className="font-semibold text-slate-800">Muerte</strong>.
+        </span>
       </div>
     )
   }
@@ -163,7 +170,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
-      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      {!puedeEditar && <AvisoSoloLectura />}
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Fecha de control por cirugía cardiovascular *">
@@ -236,7 +243,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
       <button
         type="submit"
         disabled={guardando}
-        className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+        className={claseBotonPrimario}
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 5'}
       </button>

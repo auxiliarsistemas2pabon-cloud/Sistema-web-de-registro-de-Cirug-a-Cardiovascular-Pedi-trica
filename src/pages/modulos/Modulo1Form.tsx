@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput } from '../../components/Campo'
+import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
+import { AvisoSoloLectura } from '../../components/Estados'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1 } from '../../lib/completitud'
@@ -159,7 +160,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
-      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      {!puedeEditar && <AvisoSoloLectura />}
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Nombre completo *" error={errors.nombre_completo?.message} className="sm:col-span-2">
@@ -205,10 +206,10 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        <label className="mb-1 block text-sm font-medium text-slate-700">
           Teléfono(s)
         </label>
-        <label className="mb-2 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+        <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
           <input type="checkbox" {...register('sin_telefono')} />
           No tiene teléfono
         </label>
@@ -225,7 +226,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
                   <button
                     type="button"
                     onClick={() => setValue('telefonos', telefonos.filter((_, j) => j !== i))}
-                    className="rounded-md px-2 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700"
+                    className="rounded-md px-2 text-sm text-slate-500 hover:bg-slate-100"
                   >
                     Quitar
                   </button>
@@ -248,7 +249,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
       <button
         type="submit"
         disabled={guardando}
-        className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+        className={claseBotonPrimario}
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 1'}
       </button>

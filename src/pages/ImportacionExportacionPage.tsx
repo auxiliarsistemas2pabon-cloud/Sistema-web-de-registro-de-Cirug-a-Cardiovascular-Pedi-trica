@@ -3,6 +3,11 @@ import { saveAs } from 'file-saver'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRef, useState } from 'react'
 import { useAuth } from '../auth/AuthProvider'
+import { claseBotonPrimario, claseBotonSecundario, claseBotonTexto } from '../components/Campo'
+import { EncabezadoPagina } from '../components/EncabezadoPagina'
+import { MensajeAdvertencia, MensajeError, MensajeExito } from '../components/Estados'
+import { Tarjeta } from '../components/Tarjeta'
+import { IconoBajar, IconoDocumento, IconoSubir } from '../components/iconos'
 import {
   ENCABEZADOS_EXPORTACION,
   marcarIdentificacionesDuplicadas,
@@ -113,6 +118,20 @@ function añadirErroresPorExistentes(filas: FilaImportacion[], existentes: Set<s
   })
 }
 
+function PildoraEstado({ estado }: { estado: FilaImportacion['estado'] }) {
+  const estilos = {
+    importado: 'bg-emerald-100 text-emerald-700',
+    valido: 'bg-sky-100 text-sky-700',
+    con_errores: 'bg-red-100 text-red-700',
+  } as const
+  const etiquetas = { importado: 'Importada', valido: 'Válida', con_errores: 'Con errores' } as const
+  return (
+    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${estilos[estado]}`}>
+      {etiquetas[estado]}
+    </span>
+  )
+}
+
 export function ImportacionExportacionPage() {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
@@ -129,6 +148,7 @@ export function ImportacionExportacionPage() {
   const puedeImportar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const validas = filas.filter((fila) => fila.estado === 'valido')
   const conErrores = filas.filter((fila) => fila.estado === 'con_errores')
+  const importadas = filas.filter((fila) => fila.estado === 'importado')
 
   async function descargarExcel() {
     setError(null)
@@ -164,7 +184,7 @@ export function ImportacionExportacionPage() {
         columnas.map(([, etiqueta]) => escaparCsv(etiqueta)).join(','),
         ...filasExportacion.map((fila) => columnas.map(([clave]) => escaparCsv(fila[clave])).join(',')),
       ].join('\r\n')
-      saveAs(new Blob([`\ufeff${contenido}`], { type: 'text/csv;charset=utf-8' }), `cirugia-cardiovascular-${fechaArchivo()}.csv`)
+      saveAs(new Blob([`﻿${contenido}`], { type: 'text/csv;charset=utf-8' }), `cirugia-cardiovascular-${fechaArchivo()}.csv`)
       setMensaje(`Se exportaron ${filasExportacion.length} pacientes en CSV.`)
     } catch {
       setError('No se pudo generar el archivo CSV.')
@@ -239,7 +259,7 @@ export function ImportacionExportacionPage() {
     if (validas.length === 0) return
     setImportando(true)
     setError(null)
-    let importadas = 0
+    let contador = 0
     const actualizadas = [...filas]
     for (let indice = 0; indice < actualizadas.length; indice += 1) {
       const fila = actualizadas[indice]
@@ -247,14 +267,14 @@ export function ImportacionExportacionPage() {
       try {
         await api.post(`/importaciones/filas/${fila.idStaging}/aplicar`)
         actualizadas[indice] = { ...fila, estado: 'importado' }
-        importadas += 1
+        contador += 1
       } catch (causa) {
         // El servidor ya dejó la fila en "con_errores" con el motivo; aquí solo se refleja en pantalla.
         actualizadas[indice] = { ...fila, normalizado: null, estado: 'con_errores', errores: [...fila.errores, mensajeDe(causa)] }
       }
     }
     setFilas(actualizadas)
-    setMensaje(`${importadas} ${importadas === 1 ? 'fila fue importada' : 'filas fueron importadas'}.`)
+    setMensaje(`${contador} ${contador === 1 ? 'fila fue importada' : 'filas fueron importadas'}.`)
     setImportando(false)
     queryClient.invalidateQueries({ queryKey: ['pacientes'] })
     queryClient.invalidateQueries({ queryKey: ['indicadores'] })
@@ -262,115 +282,135 @@ export function ImportacionExportacionPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Importar y exportar datos</h1>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Los archivos se procesan en formato Excel (.xlsx). La vista previa no crea pacientes hasta confirmar la importación.
-        </p>
-      </div>
+    <div>
+      <EncabezadoPagina
+        icono={<IconoDocumento className="h-5 w-5" />}
+        titulo="Importar y exportar datos"
+        subtitulo="Los archivos se procesan en formato Excel (.xlsx). La vista previa no crea pacientes hasta confirmar la importación."
+      />
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-        <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Exportar registros</h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Incluye pacientes activos y todos sus módulos, en una hoja plana y hojas separadas por módulo.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button type="button" onClick={() => void descargarExcel()} disabled={exportando} className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60">
-            {exportando ? 'Generando…' : 'Descargar Excel'}
-          </button>
-          <button type="button" onClick={() => void descargarCsv()} disabled={exportando} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-60 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700">
-            Descargar CSV
-          </button>
-        </div>
-      </section>
+      <div className="space-y-6">
+        <Tarjeta titulo="Exportar registros" icono={<IconoBajar />}>
+          <p className="text-sm text-slate-500">
+            Incluye pacientes activos y todos sus módulos, en una hoja plana y hojas separadas por módulo.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" onClick={() => void descargarExcel()} disabled={exportando} className={claseBotonPrimario}>
+              <IconoBajar className="h-4 w-4" /> {exportando ? 'Generando…' : 'Descargar Excel'}
+            </button>
+            <button type="button" onClick={() => void descargarCsv()} disabled={exportando} className={claseBotonSecundario}>
+              <IconoBajar className="h-4 w-4" /> Descargar CSV
+            </button>
+          </div>
+        </Tarjeta>
 
-      {puedeImportar && (
-        <section className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Importar base existente</h2>
-              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        {puedeImportar && (
+          <Tarjeta titulo="Importar base existente" icono={<IconoSubir />}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <p className="max-w-lg text-sm text-slate-500">
                 Se limpian espacios y valores N/A, se convierten los números y se validan fechas, listas y duplicados.
               </p>
+              <button type="button" onClick={() => void descargarPlantilla()} className={claseBotonTexto}>
+                Descargar plantilla
+              </button>
             </div>
-            <button type="button" onClick={() => void descargarPlantilla()} className="text-sm font-medium text-sky-600 hover:underline">
-              Descargar plantilla
-            </button>
-          </div>
 
-          <div className="mt-4 flex flex-wrap items-center gap-3">
-            <input
-              ref={inputArchivo}
-              type="file"
-              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-              onChange={(evento) => {
-                setArchivo(evento.target.files?.[0] ?? null)
-                setFilas([])
-                setError(null)
-                setMensaje(null)
-              }}
-              className="max-w-full text-sm text-slate-600 dark:text-slate-300"
-            />
-            <button type="button" onClick={() => void prepararImportacion()} disabled={!archivo || cargandoOpciones || procesando} className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60">
-              {procesando ? 'Analizando…' : 'Crear vista previa'}
-            </button>
-          </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <input
+                ref={inputArchivo}
+                type="file"
+                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                onChange={(evento) => {
+                  setArchivo(evento.target.files?.[0] ?? null)
+                  setFilas([])
+                  setError(null)
+                  setMensaje(null)
+                }}
+                className="hidden"
+                id="archivo-importacion"
+              />
+              <label
+                htmlFor="archivo-importacion"
+                className="inline-flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-slate-300 bg-slate-50/50 px-3.5 py-2 text-sm font-medium text-slate-600 hover:border-[var(--pabon-azul-claro)] hover:bg-sky-50/50"
+              >
+                <IconoSubir className="h-4 w-4" />
+                {archivo ? archivo.name : 'Elegir archivo .xlsx'}
+              </label>
+              <button
+                type="button"
+                onClick={() => void prepararImportacion()}
+                disabled={!archivo || cargandoOpciones || procesando}
+                className={claseBotonPrimario}
+              >
+                {procesando ? 'Analizando…' : 'Crear vista previa'}
+              </button>
+            </div>
 
-          {filas.length > 0 && (
-            <div className="mt-5 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-slate-50 p-3 text-sm dark:bg-slate-900">
-                <span className="text-slate-700 dark:text-slate-200">
-                  {filas.length} filas: <strong className="text-emerald-700 dark:text-emerald-400">{validas.length} válidas</strong>,{' '}
-                  <strong className="text-red-700 dark:text-red-400">{conErrores.length} con errores</strong>,{' '}
-                  {filas.filter((fila) => fila.estado === 'importado').length} importadas.
-                </span>
-                {validas.length > 0 && (
-                  <button type="button" onClick={() => void importarFilasValidas()} disabled={importando} className="rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-60">
-                    {importando ? 'Importando…' : `Importar ${validas.length} filas válidas`}
-                  </button>
+            {filas.length > 0 && (
+              <div className="mt-5 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50 p-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2 text-slate-600">
+                    <span>{filas.length} filas:</span>
+                    <span className="inline-flex rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-700">{validas.length} válidas</span>
+                    <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700">{conErrores.length} con errores</span>
+                    <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">{importadas.length} importadas</span>
+                  </div>
+                  {validas.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => void importarFilasValidas()}
+                      disabled={importando}
+                      className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3.5 py-2 text-sm font-medium text-white shadow-sm hover:bg-emerald-700 disabled:opacity-60"
+                    >
+                      {importando ? 'Importando…' : `Importar ${validas.length} filas válidas`}
+                    </button>
+                  )}
+                </div>
+
+                {conErrores.length > 0 && (
+                  <MensajeAdvertencia>
+                    Corrija las filas con error en el archivo y vuelva a cargarlo. Las filas válidas pueden importarse ahora.
+                  </MensajeAdvertencia>
                 )}
+
+                <div className="max-h-96 overflow-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-slate-50/95 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2.5 font-semibold">Fila</th>
+                        <th className="px-3 py-2.5 font-semibold">Paciente</th>
+                        <th className="px-3 py-2.5 font-semibold">Estado</th>
+                        <th className="px-3 py-2.5 font-semibold">Detalle</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filas.slice(0, 100).map((fila) => {
+                        const paciente = fila.normalizado?.paciente as { nombre_completo?: string; identificacion?: string } | undefined
+                        const nombreOriginal = fila.datosOriginales['Nombre completo'] ?? fila.datosOriginales['nombre_completo'] ?? '—'
+                        return (
+                          <tr key={fila.numeroFila} className="align-top">
+                            <td className="px-3 py-2.5 text-slate-400">{fila.numeroFila}</td>
+                            <td className="px-3 py-2.5 text-slate-800">
+                              {paciente?.nombre_completo ?? nombreOriginal}
+                              {paciente?.identificacion ? ` · ${paciente.identificacion}` : ''}
+                            </td>
+                            <td className="px-3 py-2.5"><PildoraEstado estado={fila.estado} /></td>
+                            <td className="px-3 py-2.5 text-xs text-slate-500">{fila.errores.join(' ') || 'Lista para importar.'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {filas.length > 100 && <p className="text-xs text-slate-500">Se muestran las primeras 100 filas de la vista previa.</p>}
               </div>
+            )}
+          </Tarjeta>
+        )}
 
-              {conErrores.length > 0 && (
-                <p className="text-sm text-amber-700 dark:text-amber-400">
-                  Corrija las filas con error en el archivo y vuelva a cargarlo. Las filas válidas pueden importarse ahora.
-                </p>
-              )}
-
-              <div className="max-h-96 overflow-auto rounded-md border border-slate-200 dark:border-slate-700">
-                <table className="w-full text-left text-sm">
-                  <thead className="sticky top-0 bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-900 dark:text-slate-400">
-                    <tr><th className="px-3 py-2">Fila</th><th className="px-3 py-2">Paciente</th><th className="px-3 py-2">Estado</th><th className="px-3 py-2">Detalle</th></tr>
-                  </thead>
-                  <tbody>
-                    {filas.slice(0, 100).map((fila) => {
-                      const paciente = fila.normalizado?.paciente as { nombre_completo?: string; identificacion?: string } | undefined
-                      const nombreOriginal = fila.datosOriginales['Nombre completo'] ?? fila.datosOriginales['nombre_completo'] ?? '—'
-                      return (
-                        <tr key={fila.numeroFila} className="border-t border-slate-100 align-top dark:border-slate-700">
-                          <td className="px-3 py-2 text-slate-500">{fila.numeroFila}</td>
-                          <td className="px-3 py-2">{paciente?.nombre_completo ?? nombreOriginal}{paciente?.identificacion ? ` · ${paciente.identificacion}` : ''}</td>
-                          <td className="px-3 py-2">
-                            <span className={fila.estado === 'importado' ? 'text-emerald-700' : fila.estado === 'valido' ? 'text-sky-700' : 'text-red-700'}>
-                              {fila.estado === 'importado' ? 'Importada' : fila.estado === 'valido' ? 'Válida' : 'Con errores'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-300">{fila.errores.join(' ') || 'Lista para importar.'}</td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {filas.length > 100 && <p className="text-xs text-slate-500">Se muestran las primeras 100 filas de la vista previa.</p>}
-            </div>
-          )}
-        </section>
-      )}
-
-      {mensaje && <p className="text-sm text-emerald-700 dark:text-emerald-400">{mensaje}</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+        {mensaje && <MensajeExito>{mensaje}</MensajeExito>}
+        {error && <MensajeError>{error}</MensajeError>}
+      </div>
     </div>
   )
 }
