@@ -2,7 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { claseBotonPrimario, claseBotonTexto, claseInput } from '../components/Campo'
+import { EncabezadoPagina } from '../components/EncabezadoPagina'
 import { EstadoModuloChip } from '../components/EstadoModuloChip'
+import { Cargando, EstadoVacio, MensajeError } from '../components/Estados'
+import { Tarjeta } from '../components/Tarjeta'
+import { IconoBuscar, IconoFiltro, IconoPacientes } from '../components/iconos'
 import { useOpciones } from '../hooks/useOpciones'
 import { api, consulta } from '../lib/api'
 import { formatearEdad } from '../lib/fechas'
@@ -47,6 +52,14 @@ function usePacientes(filtros: Filtros) {
   })
 }
 
+/** Iniciales para el avatar circular (mismo criterio que AppShell/AlertasPage). */
+function iniciales(nombreCompleto: string) {
+  const partes = nombreCompleto.trim().split(/\s+/)
+  return ((partes[0]?.[0] ?? '') + (partes[1]?.[0] ?? '')).toUpperCase()
+}
+
+const claseSelect = `${claseInput} bg-white`
+
 export function PacientesListaPage() {
   const navigate = useNavigate()
   const { perfil } = useAuth()
@@ -71,151 +84,129 @@ export function PacientesListaPage() {
 
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Pacientes</h1>
-        {puedeCrear && (
-          <button
-            type="button"
-            onClick={() => navigate('/pacientes/nuevo')}
-            className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700"
-          >
-            Nuevo paciente
-          </button>
-        )}
-      </div>
+      <EncabezadoPagina
+        icono={<IconoPacientes className="h-5 w-5" />}
+        titulo="Pacientes"
+        subtitulo={pacientes ? `${pacientes.length} ${pacientes.length === 1 ? 'paciente registrado' : 'pacientes registrados'}` : undefined}
+        acciones={
+          puedeCrear && (
+            <button type="button" onClick={() => navigate('/pacientes/nuevo')} className={claseBotonPrimario}>
+              <span className="text-base leading-none">+</span> Nuevo paciente
+            </button>
+          )
+        }
+      />
 
-      <div className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-4 dark:border-slate-700 dark:bg-slate-800">
-        <input
-          type="text"
-          placeholder="Buscar por nombre o identificación…"
-          value={filtros.busqueda}
-          onChange={(e) => actualizarFiltro('busqueda', e.target.value)}
-          className="col-span-full rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-        />
+      <Tarjeta className="mb-4" titulo="Buscar y filtrar" icono={<IconoFiltro />}>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="relative col-span-full">
+            <span className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
+              <IconoBuscar />
+            </span>
+            <input
+              type="text"
+              placeholder="Buscar por nombre o identificación…"
+              value={filtros.busqueda}
+              onChange={(e) => actualizarFiltro('busqueda', e.target.value)}
+              className={`${claseInput} pl-9`}
+            />
+          </div>
 
-        <select
-          value={filtros.epsValor}
-          onChange={(e) => actualizarFiltro('epsValor', e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-        >
-          <option value="">EPS: todas</option>
-          {listaEps?.map((o) => (
-            <option key={o.id} value={o.valor}>{o.valor}</option>
-          ))}
-        </select>
+          <select value={filtros.epsValor} onChange={(e) => actualizarFiltro('epsValor', e.target.value)} className={claseSelect}>
+            <option value="">EPS: todas</option>
+            {listaEps?.map((o) => (
+              <option key={o.id} value={o.valor}>{o.valor}</option>
+            ))}
+          </select>
 
-        <select
-          value={filtros.diagnosticoValor}
-          onChange={(e) => actualizarFiltro('diagnosticoValor', e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-        >
-          <option value="">Diagnóstico: todos</option>
-          {listaDiagnosticos?.map((o) => (
-            <option key={o.id} value={o.valor}>{o.valor}</option>
-          ))}
-        </select>
+          <select value={filtros.diagnosticoValor} onChange={(e) => actualizarFiltro('diagnosticoValor', e.target.value)} className={claseSelect}>
+            <option value="">Diagnóstico: todos</option>
+            {listaDiagnosticos?.map((o) => (
+              <option key={o.id} value={o.valor}>{o.valor}</option>
+            ))}
+          </select>
 
-        <select
-          value={filtros.rachsValor}
-          onChange={(e) => actualizarFiltro('rachsValor', e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-        >
-          <option value="">RACHS-1: todos</option>
-          {listaRachs?.map((o) => (
-            <option key={o.id} value={o.valor}>{o.valor}</option>
-          ))}
-        </select>
+          <select value={filtros.rachsValor} onChange={(e) => actualizarFiltro('rachsValor', e.target.value)} className={claseSelect}>
+            <option value="">RACHS-1: todos</option>
+            {listaRachs?.map((o) => (
+              <option key={o.id} value={o.valor}>{o.valor}</option>
+            ))}
+          </select>
 
-        <select
-          value={filtros.condicionSalidaValor}
-          onChange={(e) => actualizarFiltro('condicionSalidaValor', e.target.value)}
-          className="rounded-md border border-slate-300 px-3 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-        >
-          <option value="">Condición de salida: todas</option>
-          {listaCondicionSalida?.map((o) => (
-            <option key={o.id} value={o.valor}>{o.valor}</option>
-          ))}
-        </select>
+          <select value={filtros.condicionSalidaValor} onChange={(e) => actualizarFiltro('condicionSalidaValor', e.target.value)} className={claseSelect}>
+            <option value="">Condición de salida: todas</option>
+            {listaCondicionSalida?.map((o) => (
+              <option key={o.id} value={o.valor}>{o.valor}</option>
+            ))}
+          </select>
 
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500 dark:text-slate-400">Cirugía desde</label>
-          <input
-            type="date"
-            value={filtros.fechaCirugiaDesde}
-            onChange={(e) => actualizarFiltro('fechaCirugiaDesde', e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          />
+          <div className="flex items-center gap-2">
+            <label className="flex-none text-xs text-slate-500">Cirugía desde</label>
+            <input type="date" value={filtros.fechaCirugiaDesde} onChange={(e) => actualizarFiltro('fechaCirugiaDesde', e.target.value)} className={claseInput} />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="flex-none text-xs text-slate-500">hasta</label>
+            <input type="date" value={filtros.fechaCirugiaHasta} onChange={(e) => actualizarFiltro('fechaCirugiaHasta', e.target.value)} className={claseInput} />
+          </div>
+
+          {hayFiltrosActivos && (
+            <button type="button" onClick={() => setFiltros(FILTROS_INICIALES)} className={`${claseBotonTexto} justify-self-start`}>
+              Limpiar filtros
+            </button>
+          )}
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-slate-500 dark:text-slate-400">hasta</label>
-          <input
-            type="date"
-            value={filtros.fechaCirugiaHasta}
-            onChange={(e) => actualizarFiltro('fechaCirugiaHasta', e.target.value)}
-            className="w-full rounded-md border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
-          />
-        </div>
+      </Tarjeta>
 
-        {hayFiltrosActivos && (
-          <button
-            type="button"
-            onClick={() => setFiltros(FILTROS_INICIALES)}
-            className="text-left text-sm text-sky-600 hover:underline"
-          >
-            Limpiar filtros
-          </button>
-        )}
-      </div>
-
-      {error && <p className="text-sm text-red-600">No se pudo cargar el listado de pacientes.</p>}
-      {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
+      {error && <MensajeError>No se pudo cargar el listado de pacientes.</MensajeError>}
+      {isLoading && <Cargando />}
 
       {pacientes && (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              <tr>
-                <th className="px-4 py-2">N°</th>
-                <th className="px-4 py-2">Nombre</th>
-                <th className="px-4 py-2">Identificación</th>
-                <th className="px-4 py-2">Edad</th>
-                <th className="px-4 py-2">Diagnóstico</th>
-                <th className="px-4 py-2">M1</th>
-                <th className="px-4 py-2">M2</th>
-                <th className="px-4 py-2">M3</th>
-                <th className="px-4 py-2">M4</th>
-                <th className="px-4 py-2">M5</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pacientes.map((p) => (
-                <tr
-                  key={p.paciente_id}
-                  onClick={() => navigate(`/pacientes/${p.paciente_id}`)}
-                  className="cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/50"
-                >
-                  <td className="px-4 py-2 text-slate-500">{p.numero_paciente}</td>
-                  <td className="px-4 py-2 font-medium text-slate-900 dark:text-slate-100">{p.nombre_completo}</td>
-                  <td className="px-4 py-2">{p.identificacion}</td>
-                  <td className="px-4 py-2">{formatearEdad(p.edad_dias)}</td>
-                  <td className="px-4 py-2">{p.diagnostico_valor ?? '—'}</td>
-                  <td className="px-4 py-2"><EstadoModuloChip estado={p.estado_m1} /></td>
-                  <td className="px-4 py-2"><EstadoModuloChip estado={p.estado_m2} /></td>
-                  <td className="px-4 py-2"><EstadoModuloChip estado={p.estado_m3} /></td>
-                  <td className="px-4 py-2"><EstadoModuloChip estado={p.estado_m4} /></td>
-                  <td className="px-4 py-2"><EstadoModuloChip estado={p.estado_m5} /></td>
-                </tr>
-              ))}
-              {pacientes.length === 0 && (
+        <Tarjeta>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <td colSpan={10} className="px-4 py-6 text-center text-slate-400">
-                    No hay pacientes que coincidan con los filtros.
-                  </td>
+                  <th className="px-4 py-3 font-semibold">N°</th>
+                  <th className="px-4 py-3 font-semibold">Nombre</th>
+                  <th className="px-4 py-3 font-semibold">Identificación</th>
+                  <th className="px-4 py-3 font-semibold">Edad</th>
+                  <th className="px-4 py-3 font-semibold">Diagnóstico</th>
+                  <th className="px-4 py-3 text-center font-semibold">M1</th>
+                  <th className="px-4 py-3 text-center font-semibold">M2</th>
+                  <th className="px-4 py-3 text-center font-semibold">M3</th>
+                  <th className="px-4 py-3 text-center font-semibold">M4</th>
+                  <th className="px-4 py-3 text-center font-semibold">M5</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {pacientes.map((p) => (
+                  <tr key={p.paciente_id} onClick={() => navigate(`/pacientes/${p.paciente_id}`)} className="cursor-pointer hover:bg-slate-50">
+                    <td className="px-4 py-3 text-slate-400">{p.numero_paciente}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500">
+                          {iniciales(p.nombre_completo)}
+                        </span>
+                        <span className="font-medium text-slate-900">{p.nombre_completo}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{p.identificacion}</td>
+                    <td className="px-4 py-3 text-slate-600">{formatearEdad(p.edad_dias)}</td>
+                    <td className="px-4 py-3 text-slate-600">{p.diagnostico_valor ?? '—'}</td>
+                    <td className="px-4 py-3 text-center"><EstadoModuloChip estado={p.estado_m1} /></td>
+                    <td className="px-4 py-3 text-center"><EstadoModuloChip estado={p.estado_m2} /></td>
+                    <td className="px-4 py-3 text-center"><EstadoModuloChip estado={p.estado_m3} /></td>
+                    <td className="px-4 py-3 text-center"><EstadoModuloChip estado={p.estado_m4} /></td>
+                    <td className="px-4 py-3 text-center"><EstadoModuloChip estado={p.estado_m5} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {pacientes.length === 0 && (
+              <EstadoVacio icono={<IconoPacientes className="h-8 w-8" />} mensaje="No hay pacientes que coincidan con los filtros." />
+            )}
+          </div>
+        </Tarjeta>
       )}
     </div>
   )

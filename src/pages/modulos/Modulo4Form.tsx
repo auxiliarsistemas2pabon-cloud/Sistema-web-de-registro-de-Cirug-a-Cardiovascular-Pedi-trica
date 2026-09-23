@@ -6,6 +6,7 @@ import { Campo, claseInput } from '../../components/Campo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo4 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
+import { Cargando, MensajeError } from '../../components/Estados'
 
 interface PostoperatorioDetalle {
   id: string
@@ -63,7 +64,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const { register, handleSubmit, reset } = useForm<Valores>({
+  const { register, handleSubmit, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(null, false),
   })
 
@@ -73,7 +74,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
     }
   }, [data, reset])
 
-  if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
+  if (isLoading) return <Cargando />
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
@@ -133,7 +134,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Unidad postoperatoria *">
-          <SelectOpciones categoria="UNIDAD_POP" registro={register('unidad_pop_id')} />
+          <SelectOpciones categoria="UNIDAD_POP" control={control} name="unidad_pop_id" />
         </Campo>
 
         <Campo etiqueta="Horas de ventilación mecánica *">
@@ -141,7 +142,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
         </Campo>
 
         <Campo etiqueta="Complicación postoperatoria *" className="sm:col-span-2">
-          <SelectOpciones categoria="COMPLICACION_POP" registro={register('complicacion_pop_id')} />
+          <SelectOpciones categoria="COMPLICACION_POP" control={control} name="complicacion_pop_id" />
         </Campo>
 
         <Campo etiqueta="Fecha de traslado a intermedio">
@@ -153,11 +154,11 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
         </Campo>
 
         <Campo etiqueta="Condición en que sale el paciente *">
-          <SelectOpciones categoria="CONDICION_SALIDA" registro={register('condicion_salida_id')} />
+          <SelectOpciones categoria="CONDICION_SALIDA" control={control} name="condicion_salida_id" />
         </Campo>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <MensajeError>{error}</MensajeError>}
 
       <button
         type="submit"

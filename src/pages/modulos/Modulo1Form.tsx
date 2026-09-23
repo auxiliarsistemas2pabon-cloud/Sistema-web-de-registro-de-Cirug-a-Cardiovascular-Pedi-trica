@@ -79,6 +79,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
     watch,
     setValue,
     reset,
+    control,
     formState: { errors },
   } = useForm<Valores>({
     resolver: zodResolver(esquema),
@@ -97,8 +98,11 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   const procedenciaEsNarino = !!narinioId && procedenciaId === narinioId
 
   useEffect(() => {
-    if (!procedenciaEsNarino) setValue('municipio_narino_id', '')
-  }, [procedenciaEsNarino, setValue])
+    // Mientras PROCEDENCIA no ha cargado, narinioId es undefined y procedenciaEsNarino da un
+    // falso "no es Nariño": sin el guard de abajo, esto borraría el municipio ya guardado del
+    // paciente antes de que reset() llegue a fijarlo (o justo después).
+    if (opcionesProcedencia && !procedenciaEsNarino) setValue('municipio_narino_id', '')
+  }, [procedenciaEsNarino, opcionesProcedencia, setValue])
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
@@ -167,7 +171,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
         </Campo>
 
         <Campo etiqueta="Sexo">
-          <SelectOpciones categoria="SEXO" registro={register('sexo_id')} />
+          <SelectOpciones categoria="SEXO" control={control} name="sexo_id" />
         </Campo>
 
         <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
@@ -175,7 +179,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
         </Campo>
 
         <Campo etiqueta="EPS">
-          <SelectOpciones categoria="EPS" registro={register('eps_id')} />
+          <SelectOpciones categoria="EPS" control={control} name="eps_id" />
         </Campo>
 
         <Campo etiqueta="Peso (kg)" error={errors.peso_kg?.message}>
@@ -187,13 +191,13 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
         </Campo>
 
         <Campo etiqueta="Procedencia">
-          <SelectOpciones categoria="PROCEDENCIA" registro={register('procedencia_id')} />
+          <SelectOpciones categoria="PROCEDENCIA" control={control} name="procedencia_id" />
         </Campo>
 
         <Campo etiqueta="Municipio de Nariño" error={errors.municipio_narino_id?.message}>
           <SelectOpciones
             categoria="MUNICIPIOS"
-            registro={register('municipio_narino_id')}
+            control={control} name="municipio_narino_id"
             disabled={!procedenciaEsNarino}
             placeholder={procedenciaEsNarino ? 'Seleccione…' : 'N/A'}
           />

@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { claseInput } from '../../components/Campo'
+import { claseBotonPrimario, claseBotonSecundario, claseInput } from '../../components/Campo'
+import { Cargando, MensajeError } from '../../components/Estados'
 import { api, mensajeDe } from '../../lib/api'
 import type { CategoriaLista, OpcionLista } from '../../types/db'
 
@@ -58,80 +59,82 @@ export function ListasTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Lista</label>
-        <select
-          value={categoriaActiva}
-          onChange={(e) => setCategoriaId(e.target.value)}
-          className={`${claseInput} max-w-xs`}
-        >
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="text-sm font-medium text-slate-700">Lista</label>
+        <select value={categoriaActiva} onChange={(e) => setCategoriaId(e.target.value)} className={`${claseInput} max-w-xs`}>
           {categorias?.map((c) => (
             <option key={c.id} value={c.id}>{c.nombre}</option>
           ))}
         </select>
       </div>
 
-      <form onSubmit={agregarOpcion} className="flex flex-wrap items-end gap-3">
+      <form onSubmit={agregarOpcion} className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
         <div>
           <label className="mb-1 block text-xs text-slate-500">Nueva opción</label>
           <input value={nuevoValor} onChange={(e) => setNuevoValor(e.target.value)} className={claseInput} />
         </div>
         <div>
           <label className="mb-1 block text-xs text-slate-500">Orden</label>
-          <input type="number" value={nuevoOrden} onChange={(e) => setNuevoOrden(e.target.value)} className="w-20 rounded-md border border-slate-300 px-2 py-2 text-sm dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
+          <input type="number" value={nuevoOrden} onChange={(e) => setNuevoOrden(e.target.value)} className={`${claseInput} w-20`} />
         </div>
-        <button type="submit" className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-700">
+        <button type="submit" className={claseBotonPrimario}>
           Agregar
         </button>
       </form>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
+      {error && <MensajeError>{error}</MensajeError>}
+      {isLoading && <Cargando />}
 
       {opciones && (
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
-            <tr>
-              <th className="py-2">Valor</th>
-              <th className="py-2 w-20">Orden</th>
-              <th className="py-2">Código</th>
-              <th className="py-2">Estado</th>
-              <th className="py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {opciones.map((o) => (
-              <tr key={o.id} className="border-b border-slate-100 dark:border-slate-700">
-                <td className="py-1.5">
-                  <input
-                    defaultValue={o.valor}
-                    onBlur={(e) => e.target.value !== o.valor && guardarValor(o.id, e.target.value)}
-                    className="w-full rounded border border-transparent px-1 py-0.5 hover:border-slate-300 focus:border-sky-500 focus:outline-none dark:hover:border-slate-600"
-                  />
-                </td>
-                <td className="py-1.5">
-                  <input
-                    type="number"
-                    defaultValue={o.orden}
-                    onBlur={(e) => Number(e.target.value) !== o.orden && guardarOrden(o.id, Number(e.target.value))}
-                    className="w-16 rounded border border-transparent px-1 py-0.5 hover:border-slate-300 focus:border-sky-500 focus:outline-none dark:hover:border-slate-600"
-                  />
-                </td>
-                <td className="py-1.5 text-slate-400">{o.codigo ?? ''}</td>
-                <td className="py-1.5">
-                  <span className={o.activo ? 'text-emerald-600' : 'text-slate-400'}>
-                    {o.activo ? 'Activa' : 'Inactiva'}
-                  </span>
-                </td>
-                <td className="py-1.5 text-right">
-                  <button type="button" onClick={() => alternarActivo(o.id, o.activo)} className="text-sm text-sky-600 hover:underline">
-                    {o.activo ? 'Desactivar' : 'Activar'}
-                  </button>
-                </td>
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-3 py-2.5 font-semibold">Valor</th>
+                <th className="w-20 px-3 py-2.5 font-semibold">Orden</th>
+                <th className="px-3 py-2.5 font-semibold">Código</th>
+                <th className="px-3 py-2.5 font-semibold">Estado</th>
+                <th className="px-3 py-2.5"></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {opciones.map((o) => (
+                <tr key={o.id}>
+                  <td className="px-3 py-1.5">
+                    <input
+                      defaultValue={o.valor}
+                      onBlur={(e) => e.target.value !== o.valor && guardarValor(o.id, e.target.value)}
+                      className="w-full rounded border border-transparent px-1.5 py-1 hover:border-slate-300 focus:border-[var(--pabon-azul-oscuro)] focus:outline-none"
+                    />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <input
+                      type="number"
+                      defaultValue={o.orden}
+                      onBlur={(e) => Number(e.target.value) !== o.orden && guardarOrden(o.id, Number(e.target.value))}
+                      className="w-16 rounded border border-transparent px-1.5 py-1 hover:border-slate-300 focus:border-[var(--pabon-azul-oscuro)] focus:outline-none"
+                    />
+                  </td>
+                  <td className="px-3 py-1.5 font-mono text-xs text-slate-400">{o.codigo ?? ''}</td>
+                  <td className="px-3 py-1.5">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                        o.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
+                      }`}
+                    >
+                      {o.activo ? 'Activa' : 'Inactiva'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-1.5 text-right">
+                    <button type="button" onClick={() => alternarActivo(o.id, o.activo)} className={claseBotonSecundario}>
+                      {o.activo ? 'Desactivar' : 'Activar'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )

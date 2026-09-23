@@ -3,6 +3,7 @@ import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { formatearFecha } from '../lib/fechas'
 import { api } from '../lib/api'
+import { Cargando, MensajeError } from '../components/Estados'
 
 interface Alerta {
   paciente_id: string
@@ -126,8 +127,8 @@ function Seccion({ titulo, icono, alertas }: { titulo: string; icono: ReactNode;
 export function AlertasPage() {
   const { data: alertas, isLoading, error } = useAlertas()
 
-  if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
-  if (error) return <p className="text-sm text-red-600">No se pudieron cargar las alertas.</p>
+  if (isLoading) return <Cargando />
+  if (error) return <MensajeError>No se pudieron cargar las alertas.</MensajeError>
 
   const llamadas = alertas?.filter((a) => a.tipo_alerta === 'llamada_15_dias') ?? []
   const altas = alertas?.filter((a) => a.tipo_alerta === 'seguimiento_pendiente_alta') ?? []
