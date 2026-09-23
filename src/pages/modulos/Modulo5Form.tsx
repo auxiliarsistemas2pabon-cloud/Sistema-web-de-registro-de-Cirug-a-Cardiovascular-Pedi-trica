@@ -7,6 +7,7 @@ import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo5 } from '../../lib/completitud'
 import { hoyIso } from '../../lib/fechas'
 import { api, mensajeDe } from '../../lib/api'
+import { Cargando, MensajeError } from '../../components/Estados'
 
 interface SeguimientoDetalle {
   no_aplica: boolean
@@ -74,7 +75,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const { register, handleSubmit, watch, reset } = useForm<Valores>({
+  const { register, handleSubmit, watch, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(null, null),
   })
 
@@ -86,7 +87,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
   const fechaLlamada = watch('fecha_llamada_15_dias')
   const llamadaHecha = !!data?.seguimiento?.persona_recibe_llamada
 
-  if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
+  if (isLoading) return <Cargando />
 
   if (!data?.seguimiento) {
     return (
@@ -179,7 +180,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
         </Campo>
 
         <Campo etiqueta="Estado de la herida quirúrgica *">
-          <SelectOpciones categoria="ESTADO_HERIDA" registro={register('estado_herida_id')} />
+          <SelectOpciones categoria="ESTADO_HERIDA" control={control} name="estado_herida_id" />
         </Campo>
 
         <Campo etiqueta="Fecha de llamada de los 15 días *">
@@ -192,7 +193,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
       </div>
 
       {llamadaVencida && (
-        <p className="text-sm text-red-600">La llamada de los 15 días está vencida.</p>
+        <MensajeError>La llamada de los 15 días está vencida.</MensajeError>
       )}
       {llamadaPendiente && (
         <p className="text-sm text-amber-600">La llamada de los 15 días está pendiente.</p>
@@ -220,7 +221,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
         <Campo etiqueta="Causa de reingreso">
           <SelectOpciones
             categoria="CAUSA_REINGRESO"
-            registro={register('causa_reingreso_id')}
+            control={control} name="causa_reingreso_id"
             disabled={reingreso !== 'SI'}
           />
         </Campo>
@@ -230,7 +231,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
         <textarea rows={4} {...register('observaciones')} className={claseInput} />
       </Campo>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <MensajeError>{error}</MensajeError>}
 
       <button
         type="submit"

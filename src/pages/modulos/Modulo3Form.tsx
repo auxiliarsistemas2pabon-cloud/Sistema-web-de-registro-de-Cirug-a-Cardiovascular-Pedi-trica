@@ -7,6 +7,7 @@ import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo3 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteDetalle } from '../../types/db'
+import { Cargando, MensajeError } from '../../components/Estados'
 
 interface CirugiaDetalle {
   id: string
@@ -90,7 +91,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const { register, handleSubmit, watch, reset, setValue } = useForm<Valores>({
+  const { register, handleSubmit, watch, reset, setValue, control } = useForm<Valores>({
     defaultValues: valoresIniciales(data?.cirugia ?? null, data?.procedimientoIds ?? []),
   })
 
@@ -115,7 +116,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   const fechaP2 = watch('fecha_procedimiento_2')
   const fechaP3 = watch('fecha_procedimiento_3')
 
-  if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
+  if (isLoading) return <Cargando />
 
   const repetido =
     (!!p1 && !!p2 && p1 === p2) || (!!p1 && !!p3 && p1 === p3) || (!!p2 && !!p3 && p2 === p3)
@@ -224,12 +225,12 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         </Campo>
 
         <Campo etiqueta="Tipo de implante">
-          <SelectOpciones categoria="IMPLANTE" registro={register('implante_id')} />
+          <SelectOpciones categoria="IMPLANTE" control={control} name="implante_id" />
         </Campo>
       </div>
 
       <Campo etiqueta="Procedimiento quirúrgico 1 *">
-        <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_1_id')} />
+        <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_1_id" />
       </Campo>
 
       {/* Cada procedimiento adicional es una intervención aparte: se habilita al agregarla y exige su
@@ -247,7 +248,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Campo etiqueta="Procedimiento quirúrgico 2 *">
-              <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_2_id')} />
+              <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_2_id" />
             </Campo>
             <Campo etiqueta="Fecha del procedimiento 2 *">
               <input
@@ -259,7 +260,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
             </Campo>
           </div>
           {fecha2Invalida && (
-            <p className="text-sm text-red-600">No puede ser el mismo día ni anterior a la fecha del procedimiento 1.</p>
+            <MensajeError>No puede ser el mismo día ni anterior a la fecha del procedimiento 1.</MensajeError>
           )}
           <button type="button" onClick={quitarProcedimiento2} className="text-xs font-medium text-red-600 hover:underline">
             Quitar procedimiento 2
@@ -278,7 +279,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
             <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Campo etiqueta="Procedimiento quirúrgico 3 *">
-                  <SelectOpciones categoria="PROCEDIMIENTOS" registro={register('procedimiento_3_id')} />
+                  <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_3_id" />
                 </Campo>
                 <Campo etiqueta="Fecha del procedimiento 3 *">
                   <input
@@ -290,7 +291,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
                 </Campo>
               </div>
               {fecha3Invalida && (
-                <p className="text-sm text-red-600">No puede ser el mismo día ni anterior a la fecha del procedimiento 2.</p>
+                <MensajeError>No puede ser el mismo día ni anterior a la fecha del procedimiento 2.</MensajeError>
               )}
               <button type="button" onClick={quitarProcedimiento3} className="text-xs font-medium text-red-600 hover:underline">
                 Quitar procedimiento 3
@@ -299,7 +300,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
           )}
         </div>
       )}
-      {repetido && <p className="text-sm text-red-600">Los procedimientos no pueden repetirse.</p>}
+      {repetido && <MensajeError>Los procedimientos no pueden repetirse.</MensajeError>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Campo etiqueta="Uso de circulación extracorpórea (CEC)">
@@ -330,7 +331,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
       </div>
 
       <Campo etiqueta="Complicación intraquirúrgica">
-        <SelectOpciones categoria="COMPLICACION_INTRAQX" registro={register('complicacion_intraqx_id')} />
+        <SelectOpciones categoria="COMPLICACION_INTRAQX" control={control} name="complicacion_intraqx_id" />
       </Campo>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -350,7 +351,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         </Campo>
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <MensajeError>{error}</MensajeError>}
 
       <button
         type="submit"

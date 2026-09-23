@@ -1,10 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
+import { claseInput } from '../components/Campo'
+import { EncabezadoPagina } from '../components/EncabezadoPagina'
+import { Cargando, MensajeError } from '../components/Estados'
 import { GraficoBarras } from '../components/GraficoBarras'
 import { GraficoBarrasTiempo } from '../components/GraficoBarrasTiempo'
+import { Tarjeta } from '../components/Tarjeta'
+import { IconoGrafico } from '../components/iconos'
 import { TarjetaKpi } from '../components/TarjetaKpi'
-import { hoyIso } from '../lib/fechas'
 import { api } from '../lib/api'
+import { hoyIso } from '../lib/fechas'
 
 const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
@@ -61,62 +66,76 @@ function useIndicadores(desde: string, hasta: string) {
   })
 }
 
-function Tarjeta({ titulo, children }: { titulo: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-      <h2 className="mb-3 text-sm font-semibold text-slate-900 dark:text-slate-100">{titulo}</h2>
-      {children}
-    </div>
-  )
-}
-
 function num(v: number | null, decimales = 1): string {
   if (v === null || v === undefined) return '—'
   return v.toFixed(decimales)
 }
 
+type Preset = '30' | 'anio' | 'todo' | 'personalizado'
+
 export function IndicadoresPage() {
   const [desde, setDesde] = useState(haceMeses(12))
   const [hasta, setHasta] = useState(hoyIso())
+  const [preset, setPreset] = useState<Preset>('personalizado')
   const { data, isLoading, error } = useIndicadores(desde, hasta)
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Tablero de indicadores</h1>
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <button
-            type="button"
-            onClick={() => { setDesde(haceMeses(1)); setHasta(hoyIso()) }}
-            className="rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-          >
-            Últimos 30 días
-          </button>
-          <button
-            type="button"
-            onClick={() => { setDesde(inicioDeAnio()); setHasta(hoyIso()) }}
-            className="rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-          >
-            Este año
-          </button>
-          <button
-            type="button"
-            onClick={() => { setDesde('2000-01-01'); setHasta(hoyIso()) }}
-            className="rounded-md border border-slate-300 px-2 py-1 hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
-          >
-            Todo
-          </button>
-          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-          <span className="text-slate-400">–</span>
-          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="rounded-md border border-slate-300 px-2 py-1 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100" />
-        </div>
-      </div>
+  function aplicarPreset(valor: Preset) {
+    setPreset(valor)
+    setHasta(hoyIso())
+    if (valor === '30') setDesde(haceMeses(1))
+    else if (valor === 'anio') setDesde(inicioDeAnio())
+    else if (valor === 'todo') setDesde('2000-01-01')
+  }
 
-      {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
-      {error && <p className="text-sm text-red-600">No se pudieron cargar los indicadores.</p>}
+  const clasePreset = (activo: boolean) =>
+    `rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+      activo ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
+    }`
+
+  return (
+    <div>
+      <EncabezadoPagina
+        icono={<IconoGrafico className="h-5 w-5" />}
+        titulo="Tablero de indicadores"
+        subtitulo="Cirugías, mortalidad, complicaciones y tiempos, filtrables por fecha de cirugía."
+      />
+
+      <Tarjeta className="mb-6">
+        <div className="flex flex-wrap items-center gap-3 p-4">
+          <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1">
+            <button type="button" onClick={() => aplicarPreset('30')} className={clasePreset(preset === '30')}>
+              Últimos 30 días
+            </button>
+            <button type="button" onClick={() => aplicarPreset('anio')} className={clasePreset(preset === 'anio')}>
+              Este año
+            </button>
+            <button type="button" onClick={() => aplicarPreset('todo')} className={clasePreset(preset === 'todo')}>
+              Todo
+            </button>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <input
+              type="date"
+              value={desde}
+              onChange={(e) => { setDesde(e.target.value); setPreset('personalizado') }}
+              className={`${claseInput} w-auto`}
+            />
+            <span className="text-slate-400">–</span>
+            <input
+              type="date"
+              value={hasta}
+              onChange={(e) => { setHasta(e.target.value); setPreset('personalizado') }}
+              className={`${claseInput} w-auto`}
+            />
+          </div>
+        </div>
+      </Tarjeta>
+
+      {isLoading && <Cargando />}
+      {error && <MensajeError>No se pudieron cargar los indicadores.</MensajeError>}
 
       {data && (
-        <>
+        <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
             <TarjetaKpi etiqueta="Total de cirugías" valor={String(data.resumen.total_cirugias)} />
             <TarjetaKpi
@@ -131,38 +150,38 @@ export function IndicadoresPage() {
 
           <Tarjeta titulo="Tiempos y estancia (promedio / mediana)">
             <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-slate-500 dark:text-slate-400">
+              <thead className="text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="py-1">Indicador</th>
-                  <th className="py-1">Promedio</th>
-                  <th className="py-1">Mediana</th>
+                  <th className="py-1.5">Indicador</th>
+                  <th className="py-1.5">Promedio</th>
+                  <th className="py-1.5">Mediana</th>
                 </tr>
               </thead>
-              <tbody className="text-slate-700 dark:text-slate-300">
+              <tbody className="divide-y divide-slate-100 text-slate-700">
                 <tr>
-                  <td className="py-1">Días en UCI</td>
-                  <td className="py-1">{num(data.resumen.dias_uci_promedio)}</td>
-                  <td className="py-1">{num(data.resumen.dias_uci_mediana)}</td>
+                  <td className="py-2">Días en UCI</td>
+                  <td className="py-2 font-medium">{num(data.resumen.dias_uci_promedio)}</td>
+                  <td className="py-2 font-medium">{num(data.resumen.dias_uci_mediana)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1">Días de hospitalización</td>
-                  <td className="py-1">{num(data.resumen.dias_hospitalizacion_promedio)}</td>
-                  <td className="py-1">{num(data.resumen.dias_hospitalizacion_mediana)}</td>
+                  <td className="py-2">Días de hospitalización</td>
+                  <td className="py-2 font-medium">{num(data.resumen.dias_hospitalizacion_promedio)}</td>
+                  <td className="py-2 font-medium">{num(data.resumen.dias_hospitalizacion_mediana)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1">Horas de ventilación mecánica</td>
-                  <td className="py-1">{num(data.resumen.horas_ventilacion_promedio)}</td>
-                  <td className="py-1">{num(data.resumen.horas_ventilacion_mediana)}</td>
+                  <td className="py-2">Horas de ventilación mecánica</td>
+                  <td className="py-2 font-medium">{num(data.resumen.horas_ventilacion_promedio)}</td>
+                  <td className="py-2 font-medium">{num(data.resumen.horas_ventilacion_mediana)}</td>
                 </tr>
                 <tr>
-                  <td className="py-1">Tiempo de CEC (min)</td>
-                  <td className="py-1">{num(data.resumen.tiempo_cec_promedio)}</td>
-                  <td className="py-1">—</td>
+                  <td className="py-2">Tiempo de CEC (min)</td>
+                  <td className="py-2 font-medium">{num(data.resumen.tiempo_cec_promedio)}</td>
+                  <td className="py-2 text-slate-400">—</td>
                 </tr>
                 <tr>
-                  <td className="py-1">Tiempo de clamp de aorta (min)</td>
-                  <td className="py-1">{num(data.resumen.tiempo_clamp_promedio)}</td>
-                  <td className="py-1">—</td>
+                  <td className="py-2">Tiempo de clamp de aorta (min)</td>
+                  <td className="py-2 font-medium">{num(data.resumen.tiempo_clamp_promedio)}</td>
+                  <td className="py-2 text-slate-400">—</td>
                 </tr>
               </tbody>
             </table>
@@ -197,7 +216,7 @@ export function IndicadoresPage() {
               <GraficoBarras datos={data.porProcedencia} />
             </Tarjeta>
           </div>
-        </>
+        </div>
       )}
     </div>
   )

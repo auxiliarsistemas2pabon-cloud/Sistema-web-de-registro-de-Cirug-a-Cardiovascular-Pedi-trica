@@ -1,12 +1,15 @@
 import { useState } from 'react'
+import { EncabezadoPagina } from '../components/EncabezadoPagina'
+import { Tarjeta } from '../components/Tarjeta'
+import { IconoEngranaje, IconoEscudo, IconoLista, IconoUsuarios } from '../components/iconos'
 import { AuditoriaTab } from './administracion/AuditoriaTab'
 import { ListasTab } from './administracion/ListasTab'
 import { UsuariosTab } from './administracion/UsuariosTab'
 
 const PESTANAS = [
-  { clave: 'usuarios', etiqueta: 'Usuarios' },
-  { clave: 'listas', etiqueta: 'Listas' },
-  { clave: 'auditoria', etiqueta: 'Auditoría' },
+  { clave: 'usuarios', etiqueta: 'Usuarios', icono: <IconoUsuarios /> },
+  { clave: 'listas', etiqueta: 'Listas', icono: <IconoLista /> },
+  { clave: 'auditoria', etiqueta: 'Auditoría', icono: <IconoEscudo /> },
 ] as const
 
 type Pestana = (typeof PESTANAS)[number]['clave']
@@ -16,28 +19,35 @@ export function AdministracionPage() {
 
   return (
     <div>
-      <h1 className="mb-4 text-lg font-semibold text-slate-900 dark:text-slate-100">Administración</h1>
+      <EncabezadoPagina
+        icono={<IconoEngranaje className="h-5 w-5" />}
+        titulo="Administración"
+        subtitulo="Usuarios y roles, listas desplegables y el historial de auditoría."
+      />
 
-      <div className="mb-4 flex gap-2 border-b border-slate-200 dark:border-slate-700">
+      <div className="mb-4 flex gap-1 rounded-lg bg-slate-100 p-1 sm:inline-flex">
         {PESTANAS.map((p) => (
           <button
             key={p.clave}
             type="button"
             onClick={() => setPestana(p.clave)}
-            className={`border-b-2 px-3 py-2 text-sm font-medium ${
-              pestana === p.clave
-                ? 'border-sky-600 text-sky-700 dark:text-sky-400'
-                : 'border-transparent text-slate-500 hover:text-slate-700 dark:text-slate-400'
+            className={`flex flex-1 items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors sm:flex-none ${
+              pestana === p.clave ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
+            {p.icono}
             {p.etiqueta}
           </button>
         ))}
       </div>
 
-      {pestana === 'usuarios' && <UsuariosTab />}
-      {pestana === 'listas' && <ListasTab />}
-      {pestana === 'auditoria' && <AuditoriaTab />}
+      <Tarjeta>
+        <div className="p-5">
+          {pestana === 'usuarios' && <UsuariosTab />}
+          {pestana === 'listas' && <ListasTab />}
+          {pestana === 'auditoria' && <AuditoriaTab />}
+        </div>
+      </Tarjeta>
     </div>
   )
 }

@@ -9,6 +9,7 @@ import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo2 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
 import type { DiagnosticoDetalle } from '../../types/db'
+import { Cargando, MensajeError } from '../../components/Estados'
 
 interface Valores {
   diagnostico_id: string
@@ -45,7 +46,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
 
-  const { register, handleSubmit, watch, setValue, reset } = useForm<Valores>({
+  const { handleSubmit, watch, setValue, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(data?.diagnostico ?? null, data?.riesgoIds ?? []),
   })
 
@@ -58,10 +59,12 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   const esValvulopatias = opcionesDiagnostico?.find((o) => o.id === diagnosticoId)?.codigo === 'VALVULOPATIAS'
 
   useEffect(() => {
-    if (!esValvulopatias) setValue('valvulopatia_id', '')
-  }, [esValvulopatias, setValue])
+    // Mientras DIAGNOSTICO no ha cargado, esValvulopatias da un falso negativo: sin este
+    // guard, se borraría la valvulopatía ya guardada antes de que reset() la fije.
+    if (opcionesDiagnostico && !esValvulopatias) setValue('valvulopatia_id', '')
+  }, [esValvulopatias, opcionesDiagnostico, setValue])
 
-  if (isLoading) return <p className="text-sm text-slate-500">Cargando…</p>
+  if (isLoading) return <Cargando />
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
@@ -100,20 +103,20 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Diagnóstico *">
-          <SelectOpciones categoria="DIAGNOSTICO" registro={register('diagnostico_id')} />
+          <SelectOpciones categoria="DIAGNOSTICO" control={control} name="diagnostico_id" />
         </Campo>
 
         <Campo etiqueta="Tipo de valvulopatía">
           <SelectOpciones
             categoria="VALVULOPATIA"
-            registro={register('valvulopatia_id')}
+            control={control} name="valvulopatia_id"
             disabled={!esValvulopatias}
             placeholder={esValvulopatias ? 'Seleccione…' : 'N/A'}
           />
         </Campo>
 
         <Campo etiqueta="Escala RACHS-1 *">
-          <SelectOpciones categoria="RACHS" registro={register('rachs_id')} />
+          <SelectOpciones categoria="RACHS" control={control} name="rachs_id" />
         </Campo>
       </div>
 
@@ -124,7 +127,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
         <SeleccionRiesgos value={riesgoIds} onChange={(v) => setValue('riesgo_ids', v)} />
       </div>
 
-      {errorGuardado && <p className="text-sm text-red-600">{errorGuardado}</p>}
+      {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
       <button
         type="submit"

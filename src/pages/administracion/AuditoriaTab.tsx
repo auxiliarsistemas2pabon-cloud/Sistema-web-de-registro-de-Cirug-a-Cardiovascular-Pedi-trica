@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Fragment, useState } from 'react'
 import { claseInput } from '../../components/Campo'
+import { Cargando, MensajeError } from '../../components/Estados'
 import { api, consulta } from '../../lib/api'
 import type { RegistroAuditoria } from '../../types/db'
 
@@ -41,7 +42,7 @@ function Diferencia({ registro }: { registro: RegistroAuditoria }) {
       <tbody>
         {cambiadas.map((k) => (
           <tr key={k} className="align-top">
-            <td className="py-0.5 pr-4 font-medium text-slate-600 dark:text-slate-300">{k}</td>
+            <td className="py-0.5 pr-4 font-medium text-slate-600">{k}</td>
             <td className="py-0.5 pr-4 text-red-500">{JSON.stringify(anteriores[k]) ?? '—'}</td>
             <td className="py-0.5 text-emerald-600">{JSON.stringify(nuevos[k]) ?? '—'}</td>
           </tr>
@@ -60,7 +61,7 @@ export function AuditoriaTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
         <div>
           <label className="mb-1 block text-xs text-slate-500">Tabla</label>
           <select value={tabla} onChange={(e) => setTabla(e.target.value)} className={claseInput}>
@@ -80,54 +81,68 @@ export function AuditoriaTab() {
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-slate-500">Cargando…</p>}
-      {error && <p className="text-sm text-red-600">No se pudo cargar la auditoría.</p>}
+      {isLoading && <Cargando />}
+      {error && <MensajeError>No se pudo cargar la auditoría.</MensajeError>}
 
       {registros && (
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 text-xs uppercase text-slate-500 dark:border-slate-700 dark:text-slate-400">
-            <tr>
-              <th className="py-2">Fecha</th>
-              <th className="py-2">Tabla</th>
-              <th className="py-2">Operación</th>
-              <th className="py-2">Usuario</th>
-              <th className="py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {registros.map((r) => (
-              <Fragment key={r.id}>
-                <tr className="border-b border-slate-100 dark:border-slate-700">
-                  <td className="py-2 whitespace-nowrap">{new Date(r.fecha).toLocaleString('es-CO')}</td>
-                  <td className="py-2">{r.tabla}</td>
-                  <td className="py-2">{r.operacion}</td>
-                  <td className="py-2">{r.usuario_nombre ?? '—'}</td>
-                  <td className="py-2 text-right">
-                    <button
-                      type="button"
-                      onClick={() => setExpandido(expandido === r.id ? null : r.id)}
-                      className="text-sm text-sky-600 hover:underline"
-                    >
-                      {expandido === r.id ? 'Ocultar' : 'Ver detalle'}
-                    </button>
-                  </td>
-                </tr>
-                {expandido === r.id && (
-                  <tr className="border-b border-slate-100 bg-slate-50 dark:border-slate-700 dark:bg-slate-900/40">
-                    <td colSpan={5} className="px-2 py-2">
-                      <Diferencia registro={r} />
+        <div className="overflow-hidden rounded-lg border border-slate-200">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                <th className="px-3 py-2.5 font-semibold">Fecha</th>
+                <th className="px-3 py-2.5 font-semibold">Tabla</th>
+                <th className="px-3 py-2.5 font-semibold">Operación</th>
+                <th className="px-3 py-2.5 font-semibold">Usuario</th>
+                <th className="px-3 py-2.5"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {registros.map((r) => (
+                <Fragment key={r.id}>
+                  <tr>
+                    <td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{new Date(r.fecha).toLocaleString('es-CO')}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{r.tabla}</td>
+                    <td className="px-3 py-2.5">
+                      <span
+                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          r.operacion === 'INSERT'
+                            ? 'bg-emerald-100 text-emerald-700'
+                            : r.operacion === 'DELETE'
+                              ? 'bg-red-100 text-red-700'
+                              : 'bg-sky-100 text-sky-700'
+                        }`}
+                      >
+                        {r.operacion}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-700">{r.usuario_nombre ?? '—'}</td>
+                    <td className="px-3 py-2.5 text-right">
+                      <button
+                        type="button"
+                        onClick={() => setExpandido(expandido === r.id ? null : r.id)}
+                        className="text-sm font-medium text-sky-700 hover:underline"
+                      >
+                        {expandido === r.id ? 'Ocultar' : 'Ver detalle'}
+                      </button>
                     </td>
                   </tr>
-                )}
-              </Fragment>
-            ))}
-            {registros.length === 0 && (
-              <tr>
-                <td colSpan={5} className="py-6 text-center text-slate-400">Sin registros.</td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+                  {expandido === r.id && (
+                    <tr className="bg-slate-50/70">
+                      <td colSpan={5} className="px-4 py-3">
+                        <Diferencia registro={r} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+              {registros.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-slate-400">Sin registros.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   )
