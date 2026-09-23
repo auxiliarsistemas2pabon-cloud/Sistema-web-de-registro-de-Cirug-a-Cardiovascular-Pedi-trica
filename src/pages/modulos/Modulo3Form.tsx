@@ -2,12 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput } from '../../components/Campo'
+import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo3 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteDetalle } from '../../types/db'
-import { Cargando, MensajeError } from '../../components/Estados'
+import { Cargando, MensajeError, AvisoSoloLectura } from '../../components/Estados'
 
 interface CirugiaDetalle {
   id: string
@@ -217,7 +217,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
-      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      {!puedeEditar && <AvisoSoloLectura />}
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Fecha de cirugía *">
@@ -240,12 +240,12 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
           type="button"
           disabled={!p1}
           onClick={() => setMostrarP2(true)}
-          className="rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 dark:border-sky-500 dark:text-sky-400 dark:hover:bg-sky-950 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+          className="rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
         >
           + Agregar otro procedimiento quirúrgico
         </button>
       ) : (
-        <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+        <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <Campo etiqueta="Procedimiento quirúrgico 2 *">
               <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_2_id" />
@@ -271,12 +271,12 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
               type="button"
               disabled={!p2}
               onClick={() => setMostrarP3(true)}
-              className="block rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400 dark:border-sky-500 dark:text-sky-400 dark:hover:bg-sky-950 dark:disabled:border-slate-700 dark:disabled:text-slate-600"
+              className="block rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
             >
               + Agregar otro procedimiento quirúrgico
             </button>
           ) : (
-            <div className="space-y-3 rounded-md border border-slate-200 p-3 dark:border-slate-700">
+            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <Campo etiqueta="Procedimiento quirúrgico 3 *">
                   <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_3_id" />
@@ -356,7 +356,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
       <button
         type="submit"
         disabled={guardando}
-        className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+        className={claseBotonPrimario}
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 3'}
       </button>

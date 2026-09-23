@@ -2,14 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo } from '../../components/Campo'
+import { Campo, claseBotonPrimario } from '../../components/Campo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { SeleccionRiesgos } from '../../components/SeleccionRiesgos'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo2 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
 import type { DiagnosticoDetalle } from '../../types/db'
-import { Cargando, MensajeError } from '../../components/Estados'
+import { Cargando, MensajeError, AvisoSoloLectura } from '../../components/Estados'
 
 interface Valores {
   diagnostico_id: string
@@ -99,7 +99,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
-      {!puedeEditar && <p className="rounded-md bg-slate-100 p-3 text-sm text-slate-600 dark:bg-slate-800 dark:text-slate-300">Modo consulta: este registro es de solo lectura.</p>}
+      {!puedeEditar && <AvisoSoloLectura />}
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Diagnóstico *">
@@ -121,7 +121,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
       </div>
 
       <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+        <label className="mb-1 block text-sm font-medium text-slate-700">
           Factores de riesgo *
         </label>
         <SeleccionRiesgos value={riesgoIds} onChange={(v) => setValue('riesgo_ids', v)} />
@@ -132,7 +132,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
       <button
         type="submit"
         disabled={guardando}
-        className="rounded-md bg-sky-600 px-4 py-2 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-60"
+        className={claseBotonPrimario}
       >
         {guardando ? 'Guardando…' : 'Guardar Módulo 2'}
       </button>
