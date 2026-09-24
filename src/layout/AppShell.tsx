@@ -35,7 +35,7 @@ export function AppShell() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white shadow-sm shadow-slate-900/5">
+      <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm shadow-slate-900/5">
         <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3">
           <NavLink to="/pacientes" className="flex min-w-0 items-center gap-3">
             <img
@@ -85,7 +85,7 @@ export function AppShell() {
           ))}
           {(perfil?.rol === 'administrador' || perfil?.rol === 'registrador') && (
             <NavLink to="/datos" className={({ isActive }) => tabClase(isActive)}>
-              Importar / exportar
+              Exportar datos
             </NavLink>
           )}
           {perfil?.rol === 'administrador' && (

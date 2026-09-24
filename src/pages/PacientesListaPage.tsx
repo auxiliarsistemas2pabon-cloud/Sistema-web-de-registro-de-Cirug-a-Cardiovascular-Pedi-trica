@@ -162,19 +162,23 @@ export function PacientesListaPage() {
 
       {pacientes && (
         <Tarjeta>
-          <div className="overflow-x-auto">
+          {/* max-h + overflow-auto (no solo overflow-x): el scroll vertical necesita vivir en este
+              mismo contenedor para que "sticky" tenga un ancla real. Si solo hubiera overflow-x-auto,
+              CSS trata igual ambos ejes de scroll en este div y el encabezado "sticky" nunca se pega
+              a nada (queda flotando con la página, como si no tuviera sticky). */}
+          <div className="max-h-[70vh] overflow-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+              <thead className="text-xs uppercase tracking-wide text-slate-500">
                 <tr>
-                  <th className="sticky left-0 z-10 border-r border-slate-200 bg-slate-50 px-4 py-3 font-semibold">Paciente</th>
-                  <th className="px-4 py-3 font-semibold">Identificación</th>
-                  <th className="px-4 py-3 font-semibold">Edad</th>
-                  <th className="px-4 py-3 font-semibold">Diagnóstico</th>
-                  <th className="px-4 py-3 text-center font-semibold">M1</th>
-                  <th className="px-4 py-3 text-center font-semibold">M2</th>
-                  <th className="px-4 py-3 text-center font-semibold">M3</th>
-                  <th className="px-4 py-3 text-center font-semibold">M4</th>
-                  <th className="px-4 py-3 text-center font-semibold">M5</th>
+                  <th className="sticky left-0 top-0 z-30 border-r border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold">Paciente</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold">Identificación</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold">Edad</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 font-semibold">Diagnóstico</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold">M1</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold">M2</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold">M3</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold">M4</th>
+                  <th className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50 px-4 py-3 text-center font-semibold">M5</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

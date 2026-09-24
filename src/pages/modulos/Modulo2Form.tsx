@@ -103,7 +103,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Campo etiqueta="Diagnóstico *">
-          <SelectOpciones categoria="DIAGNOSTICO" control={control} name="diagnostico_id" />
+          <SelectOpciones categoria="DIAGNOSTICO" control={control} name="diagnostico_id" buscable permiteCrear />
         </Campo>
 
         <Campo etiqueta="Tipo de valvulopatía">
