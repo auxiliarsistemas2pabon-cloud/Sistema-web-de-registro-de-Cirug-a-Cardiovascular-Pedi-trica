@@ -113,9 +113,15 @@ function ComboboxOpciones({ categoria, permiteCrear, opciones, isLoading, disabl
 
   const opcionesFiltradas = useMemo(() => {
     if (!opciones) return []
-    if (filtro === null || filtro === '') return opciones
-    const buscado = normalizar(filtro)
-    return opciones.filter((o) => normalizar(o.valor).includes(buscado))
+    if (filtro === null || filtro.trim() === '') return opciones
+    // Cada palabra escrita debe aparecer en algún lugar del texto de la opción (en cualquier
+    // orden): así "interventricular comunicación" también encuentra "Comunicación
+    // interventricular (CIV)", que una sola coincidencia de subcadena se perdía.
+    const palabras = normalizar(filtro).split(/\s+/).filter(Boolean)
+    return opciones.filter((o) => {
+      const valorNormalizado = normalizar(o.valor)
+      return palabras.every((palabra) => valorNormalizado.includes(palabra))
+    })
   }, [opciones, filtro])
 
   const textoNuevo = (filtro ?? '').trim()
