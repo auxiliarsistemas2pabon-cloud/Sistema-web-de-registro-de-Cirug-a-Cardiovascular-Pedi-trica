@@ -160,27 +160,27 @@ export function IndicadoresPage() {
               <tbody className="divide-y divide-slate-100 text-slate-700">
                 <tr>
                   <td className="py-2">Días en UCI</td>
-                  <td className="py-2 font-medium">{num(data.resumen.dias_uci_promedio)}</td>
-                  <td className="py-2 font-medium">{num(data.resumen.dias_uci_mediana)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_uci_promedio)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_uci_mediana)}</td>
                 </tr>
                 <tr>
                   <td className="py-2">Días de hospitalización</td>
-                  <td className="py-2 font-medium">{num(data.resumen.dias_hospitalizacion_promedio)}</td>
-                  <td className="py-2 font-medium">{num(data.resumen.dias_hospitalizacion_mediana)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_hospitalizacion_promedio)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_hospitalizacion_mediana)}</td>
                 </tr>
                 <tr>
                   <td className="py-2">Horas de ventilación mecánica</td>
-                  <td className="py-2 font-medium">{num(data.resumen.horas_ventilacion_promedio)}</td>
-                  <td className="py-2 font-medium">{num(data.resumen.horas_ventilacion_mediana)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.horas_ventilacion_promedio)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.horas_ventilacion_mediana)}</td>
                 </tr>
                 <tr>
                   <td className="py-2">Tiempo de CEC (min)</td>
-                  <td className="py-2 font-medium">{num(data.resumen.tiempo_cec_promedio)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.tiempo_cec_promedio)}</td>
                   <td className="py-2 text-slate-400">—</td>
                 </tr>
                 <tr>
                   <td className="py-2">Tiempo de clamp de aorta (min)</td>
-                  <td className="py-2 font-medium">{num(data.resumen.tiempo_clamp_promedio)}</td>
+                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.tiempo_clamp_promedio)}</td>
                   <td className="py-2 text-slate-400">—</td>
                 </tr>
               </tbody>

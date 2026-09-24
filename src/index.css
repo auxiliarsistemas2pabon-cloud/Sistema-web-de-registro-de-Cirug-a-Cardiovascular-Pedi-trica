@@ -48,7 +48,7 @@
   --chart-azul: #0e5093;
   --chart-rojo: #e34948;
   --chart-verde: #1baf7a;
-  --chart-texto-secundario: #52514e;
+  --chart-texto-secundario: #000000;
   --chart-grid: #e1e0d9;
   --status-good: #0ca30c;
   --status-critical: #d03b3b;
@@ -63,6 +63,33 @@
   --chart-grid: #2c2c2a;
   --status-good: #0ca30c;
   --status-critical: #e66767;
+}
+
+/* Pedido explícito: absolutamente todo el texto en negro puro — títulos, párrafos, subtítulos,
+   notas, tablas, y también las etiquetas de estado (Completo/Pendiente/crítico), que antes
+   quedaban en verde/ámbar/rojo. Se sobreescriben las clases text-* en vez de tocar cada archivo
+   uno por uno. No toca los fondos/bordes (bg-*/border-*: los chips de estado siguen con su fondo
+   de color, solo cambia la letra) ni el texto blanco sobre botones y círculos de fondo oscuro
+   (confirmado aparte): ahí sí tiene que seguir blanco o no se leería nada. */
+.text-slate-300,
+.text-slate-400,
+.text-slate-500,
+.text-slate-600,
+.text-slate-700,
+.text-slate-800,
+.text-slate-900,
+.text-emerald-500,
+.text-emerald-600,
+.text-emerald-700,
+.text-amber-500,
+.text-amber-600,
+.text-amber-700,
+.text-red-500,
+.text-red-600,
+.text-red-700,
+.text-sky-600,
+.text-sky-700 {
+  color: #000;
 }
 
 html,

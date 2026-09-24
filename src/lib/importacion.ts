@@ -27,45 +27,68 @@ export interface FilaImportacion {
 type OpcionesPorCategoria = Map<string, OpcionImportacion[]>
 
 const ALIAS: Record<string, string[]> = {
-  nombre_completo: ['nombre completo', 'nombre', 'nombres y apellidos', 'paciente'],
+  nombre_completo: ['nombre completo', 'nombre', 'nombres y apellidos', 'paciente', 'nombre del paciente'],
   identificacion: ['identificacion', 'identificación', 'documento', 'numero de documento', 'número de documento', 'cedula', 'cédula'],
   sexo: ['sexo', 'genero', 'género'],
   fecha_nacimiento: ['fecha de nacimiento', 'fecha nacimiento', 'nacimiento', 'f nacimiento'],
   peso_kg: ['peso kg', 'peso', 'peso (kg)'],
   talla_cm: ['talla cm', 'talla', 'talla (cm)'],
   procedencia: ['procedencia', 'departamento de procedencia', 'origen'],
-  municipio_narino: ['municipio de nariño', 'municipio narino', 'municipio'],
+  municipio_narino: ['municipio de nariño', 'municipio narino', 'municipio', 'procedencia municipio de nariño'],
   telefonos: ['telefonos', 'teléfonos', 'telefono', 'teléfono', 'celular', 'contacto'],
   sin_telefono: ['sin telefono', 'sin teléfono', 'no tiene telefono', 'no tiene teléfono'],
   eps: ['eps', 'aseguradora'],
   diagnostico: ['diagnostico', 'diagnóstico'],
   valvulopatia: ['tipo de valvulopatia', 'tipo de valvulopatía', 'valvulopatia', 'valvulopatía'],
   riesgos: ['factores de riesgo', 'riesgos', 'factor de riesgo'],
-  rachs: ['rachs 1', 'rachs-1', 'rachs', 'escala rachs'],
+  rachs: ['rachs 1', 'rachs-1', 'rachs', 'escala rachs', 'escala rasch', 'escala rasch-1', 'rasch', 'rasch-1'],
   fecha_cirugia: ['fecha de cirugia', 'fecha de cirugía', 'cirugia', 'cirugía'],
-  procedimientos: ['procedimientos quirurgicos', 'procedimientos quirúrgicos', 'procedimiento quirurgico', 'procedimiento quirúrgico', 'procedimientos'],
+  procedimientos: [
+    'procedimientos quirurgicos', 'procedimientos quirúrgicos', 'procedimiento quirurgico', 'procedimiento quirúrgico',
+    'procedimientos', 'procedimiento quirurgico realizado', 'procedimientos quirurgicos realizados',
+  ],
+  fecha_procedimiento_2: ['fecha procedimiento 2', 'fecha del procedimiento 2', 'fecha procedimiento quirurgico 2'],
+  fecha_procedimiento_3: ['fecha procedimiento 3', 'fecha del procedimiento 3', 'fecha procedimiento quirurgico 3'],
   implante: ['tipo de implante', 'implante'],
-  uso_cec: ['uso de cec', 'cec', 'circulacion extracorporea', 'circulación extracorpórea'],
-  tiempo_cec_min: ['tiempo cec min', 'tiempo de cec', 'tiempo cec', 'cec min'],
-  tiempo_clamp_min: ['tiempo clamp min', 'tiempo de clamp', 'clamp de aorta', 'clamp min'],
+  uso_cec: ['uso de cec', 'cec', 'circulacion extracorporea', 'circulación extracorpórea', 'uso de circulacion extracorporea', 'uso de circulacion extracororea'],
+  tiempo_cec_min: ['tiempo cec min', 'tiempo de cec', 'tiempo cec', 'cec min', 'tiempo de circulacion extracorporea minutos'],
+  tiempo_clamp_min: ['tiempo clamp min', 'tiempo de clamp', 'clamp de aorta', 'clamp min', 'tiempo de clamp de aorta minutos'],
   complicacion_intraqx: ['complicacion intraquirurgica', 'complicación intraquirúrgica', 'complicacion intraqx'],
   cierre_esternal_diferido: ['cierre esternal diferido'],
   extubacion_quirofano: ['extubacion en quirofano', 'extubación en quirófano', 'extubacion quirofano'],
-  unidad_pop: ['unidad postoperatoria', 'unidad pop', 'uci'],
+  unidad_pop: ['unidad postoperatoria', 'unidad pop', 'uci', 'unidad paciente postoperatorio'],
   horas_ventilacion_mecanica: ['horas de ventilacion mecanica', 'horas de ventilación mecánica', 'ventilacion mecanica', 'ventilación mecánica'],
-  complicacion_pop: ['complicacion postoperatoria', 'complicación postoperatoria', 'complicacion pop'],
+  complicacion_pop: ['complicacion postoperatoria', 'complicación postoperatoria', 'complicacion pop', 'complicacion en postoperatorio'],
   fecha_traslado_intermedio: ['fecha de traslado a intermedio', 'fecha traslado intermedio', 'traslado a intermedio'],
   fecha_salida: ['fecha de salida', 'salida', 'fecha egreso', 'fecha de egreso'],
-  condicion_salida: ['condicion de salida', 'condición de salida', 'condicion salida'],
-  fecha_control_cirugia: ['fecha de control por cirugia cardiovascular', 'fecha de control por cirugía cardiovascular', 'fecha control cirugia', 'fecha control cirugía'],
+  condicion_salida: ['condicion de salida', 'condición de salida', 'condicion salida', 'condicion en que sale el paciente'],
+  fecha_control_cirugia: [
+    'fecha de control por cirugia cardiovascular', 'fecha de control por cirugía cardiovascular',
+    'fecha control cirugia', 'fecha control cirugía', 'fecha control por cirugia cardiovascular',
+  ],
   rehabilitacion_cardiaca: ['terapia de rehabilitacion cardiaca', 'terapia de rehabilitación cardíaca', 'rehabilitacion cardiaca', 'rehabilitación cardíaca'],
-  estado_herida: ['estado de la herida quirurgica', 'estado de la herida quirúrgica', 'estado herida'],
-  fecha_llamada_15_dias: ['fecha de llamada de los 15 dias', 'fecha de llamada de los 15 días', 'fecha llamada 15 dias', 'llamada 15 dias'],
+  estado_herida: ['estado de la herida quirurgica', 'estado de la herida quirúrgica', 'estado herida', 'estado de herida quirugica', 'estado de herida quirurgica'],
+  fecha_llamada_15_dias: [
+    'fecha de llamada de los 15 dias', 'fecha de llamada de los 15 días', 'fecha llamada 15 dias', 'llamada 15 dias',
+    'llamado 15 dias', 'llamado de los 15 dias',
+  ],
   persona_recibe_llamada: ['persona que recibe la llamada', 'persona recibe llamada', 'recibe llamada'],
   reingreso_30_dias: ['reingreso a la institucion en los primeros 30 dias', 'reingreso a la institución en los primeros 30 días', 'reingreso 30 dias', 'reingreso'],
   fecha_reingreso: ['fecha de reingreso', 'fecha reingreso'],
   causa_reingreso: ['causa de reingreso', 'causa reingreso'],
   observaciones: ['observaciones', 'observacion', 'observación'],
+}
+
+// Variantes de texto (errores de tipeo o redacción distinta en el archivo de origen) que se
+// consideran la misma opción de una lista. Confirmado con la institución caso por caso; no se
+// asume equivalencia automáticamente para no mezclar categorías clínicas distintas.
+const SINONIMOS_VALOR: Record<string, Record<string, string>> = {
+  DIAGNOSTICO: {
+    // "Anomalías del arco aórtico (hipoplasia, Estenosis, interrupción)" y "...arco, descendente..."
+    // (sin la "o") son la misma categoría que "...arco o descendente..." de la lista del sistema.
+    'anomaliasdelarcoaorticohipoplasiaestenosisinterrupcion': 'Anomalías de la aorta ascendente, arco o descendente (hipoplasia, estenosis, interrupción)',
+    'anomaliasdelaaortaascendentearcodescendentehipoplasiaestenosisinterrupcion': 'Anomalías de la aorta ascendente, arco o descendente (hipoplasia, estenosis, interrupción)',
+  },
 }
 
 function clave(valor: string): string {
@@ -83,6 +106,26 @@ function texto(valor: string | undefined): string {
 function valorDe(datos: Record<string, string>, campo: string): string {
   const claves = new Set((ALIAS[campo] ?? [campo]).map(clave))
   return Object.entries(datos).find(([encabezado]) => claves.has(clave(encabezado)))?.[1] ?? ''
+}
+
+/** Nombre tal como venía en el archivo original, para mostrar en la vista previa cuando la fila tiene errores y no llegó a normalizarse. */
+export function nombreOriginalDe(datos: Record<string, string>): string {
+  return texto(valorDe(datos, 'nombre_completo'))
+}
+
+/**
+ * Como `valorDe`, pero para campos de lista que en el Excel de origen vienen repartidos en varias
+ * columnas numeradas (p.ej. "Factor de riesgo 1"/"Factor de riesgo 2" o "Procedimiento quirúrgico
+ * realizado 1/2/3" en vez de una sola columna con valores separados por "|"). Junta todas las
+ * columnas cuyo encabezado, sin el número final, coincide con el alias del campo.
+ */
+function valorListaDe(datos: Record<string, string>, campo: string): string {
+  const claves = new Set((ALIAS[campo] ?? [campo]).map(clave))
+  return Object.entries(datos)
+    .filter(([encabezado]) => claves.has(clave(encabezado.replace(/\s*\d+\s*$/, ''))))
+    .map(([, valor]) => texto(valor))
+    .filter((valor) => valor && !esNa(valor))
+    .join('|')
 }
 
 function esVacio(valor: string): boolean {
@@ -172,7 +215,10 @@ function opcionId(
 ): string | null {
   if (esVacio(valor)) return null
   const buscada = clave(esNa(valor) ? 'N/A' : valor)
-  const encontrada = (opciones.get(categoria) ?? []).find((opcion) => clave(opcion.valor) === buscada)
+  const lista = opciones.get(categoria) ?? []
+  let encontrada = lista.find((opcion) => clave(opcion.valor) === buscada)
+  const sinonimo = SINONIMOS_VALOR[categoria]?.[buscada]
+  if (!encontrada && sinonimo) encontrada = lista.find((opcion) => clave(opcion.valor) === clave(sinonimo))
   if (!encontrada) {
     errores.push(`${etiqueta}: “${texto(valor)}” no existe en la lista ${categoria}.`)
     return null
@@ -243,8 +289,10 @@ export function normalizarFilaImportacion(
     : null
   if (esNarino && !municipioId) errores.push('Municipio de Nariño es obligatorio cuando la procedencia es Nariño.')
 
-  const telefonos = texto(valorDe(datosOriginales, 'telefonos')).split(/[|;]/).map(texto).filter(Boolean)
-  const sinTelefono = siNo(valorDe(datosOriginales, 'sin_telefono'), 'Sin teléfono', errores) === 'SI'
+  const telefonoTexto = texto(valorDe(datosOriginales, 'telefonos'))
+  const telefonoIndicaSinDato = ['no tiene', 'no tiene telefono', 'sin telefono', 'ninguno'].map(clave).includes(clave(telefonoTexto))
+  const telefonos = telefonoIndicaSinDato ? [] : telefonoTexto.split(/[|;]|\s+-\s+/).map(texto).filter(Boolean)
+  const sinTelefono = telefonoIndicaSinDato || siNo(valorDe(datosOriginales, 'sin_telefono'), 'Sin teléfono', errores) === 'SI'
   if (!sinTelefono && telefonos.length === 0) errores.push('Registre al menos un teléfono o marque Sin teléfono.')
 
   const paciente = {
@@ -274,7 +322,7 @@ export function normalizarFilaImportacion(
   const diagnosticoId = opcionId(opciones, 'DIAGNOSTICO', valorDe(datosOriginales, 'diagnostico'), 'Diagnóstico', errores)
   const valvulopatiaId = opcionId(opciones, 'VALVULOPATIA', valorDe(datosOriginales, 'valvulopatia'), 'Tipo de valvulopatía', errores)
   const rachsId = opcionId(opciones, 'RACHS', valorDe(datosOriginales, 'rachs'), 'RACHS-1', errores)
-  const riesgoIds = listaIds(opciones, 'RIESGOS', valorDe(datosOriginales, 'riesgos'), 'Factores de riesgo', errores)
+  const riesgoIds = listaIds(opciones, 'RIESGOS', valorListaDe(datosOriginales, 'riesgos'), 'Factores de riesgo', errores)
   const diagnostico = moduloTieneDatos([diagnosticoId, valvulopatiaId, rachsId, riesgoIds])
     ? {
         diagnostico_id: diagnosticoId,
@@ -304,8 +352,10 @@ export function normalizarFilaImportacion(
   if (usoCec !== 'SI' && (tiempoCec !== null || tiempoClamp !== null)) errores.push('Los tiempos CEC y clamp solo aplican si CEC = Sí.')
   if (usoCec === 'SI' && tiempoCec === null) errores.push('Tiempo de CEC es obligatorio cuando CEC = Sí.')
   if (tiempoCec !== null && tiempoClamp !== null && tiempoClamp > tiempoCec) errores.push('Tiempo de clamp no puede ser mayor que el tiempo de CEC.')
-  const procedimientoIds = listaIds(opciones, 'PROCEDIMIENTOS', valorDe(datosOriginales, 'procedimientos'), 'Procedimientos', errores)
+  const procedimientoIds = listaIds(opciones, 'PROCEDIMIENTOS', valorListaDe(datosOriginales, 'procedimientos'), 'Procedimientos', errores)
   if (procedimientoIds.length > 3) errores.push('Solo se permiten hasta tres procedimientos quirúrgicos.')
+  const fechaProcedimiento2 = fechaIso(valorDe(datosOriginales, 'fecha_procedimiento_2'), 'Fecha del procedimiento 2', errores)
+  const fechaProcedimiento3 = fechaIso(valorDe(datosOriginales, 'fecha_procedimiento_3'), 'Fecha del procedimiento 3', errores)
   const cirugia = moduloTieneDatos([
     fechaCirugia, procedimientoIds, usoCec, tiempoCec, tiempoClamp, valorDe(datosOriginales, 'implante'),
     valorDe(datosOriginales, 'complicacion_intraqx'), valorDe(datosOriginales, 'cierre_esternal_diferido'),
@@ -314,6 +364,8 @@ export function normalizarFilaImportacion(
     ? {
         fecha_cirugia: fechaCirugia,
         procedimiento_ids: procedimientoIds,
+        fecha_procedimiento_2: procedimientoIds.length >= 2 ? fechaProcedimiento2 : null,
+        fecha_procedimiento_3: procedimientoIds.length >= 3 ? fechaProcedimiento3 : null,
         implante_id: opcionId(opciones, 'IMPLANTE', valorDe(datosOriginales, 'implante'), 'Tipo de implante', errores),
         uso_cec: usoCec === 'NA' ? null : usoCec,
         tiempo_cec_min: usoCec === 'SI' ? tiempoCec : null,
@@ -327,6 +379,16 @@ export function normalizarFilaImportacion(
   if (cirugia) {
     if (!fechaCirugia) errores.push('Fecha de cirugía es obligatoria cuando hay datos intraoperatorios.')
     if (procedimientoIds.length === 0) errores.push('Procedimiento quirúrgico 1 es obligatorio cuando hay datos intraoperatorios.')
+    // Cada procedimiento adicional debe tener su propia fecha, posterior a la del anterior: no
+    // todos se pueden hacer el mismo día (regla de negocio, ver server/servicios.mjs).
+    if (procedimientoIds.length >= 2) {
+      if (!fechaProcedimiento2) errores.push('Fecha del procedimiento quirúrgico 2 es obligatoria cuando hay un segundo procedimiento.')
+      else if (fechaCirugia && fechaProcedimiento2 <= fechaCirugia) errores.push('La fecha del procedimiento 2 debe ser posterior a la del procedimiento 1.')
+    }
+    if (procedimientoIds.length >= 3) {
+      if (!fechaProcedimiento3) errores.push('Fecha del procedimiento quirúrgico 3 es obligatoria cuando hay un tercer procedimiento.')
+      else if (fechaProcedimiento2 && fechaProcedimiento3 <= fechaProcedimiento2) errores.push('La fecha del procedimiento 3 debe ser posterior a la del procedimiento 2.')
+    }
     cirugia.estado_modulo = calcularEstadoModulo3({
       fechaCirugia: fechaCirugia ?? '',
       procedimiento1Id: procedimientoIds[0] ?? '',

@@ -22,9 +22,7 @@ export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal' }: Props) {
           </span>
         )}
       </div>
-      <p className="mt-2 text-2xl font-semibold" style={{ color: tono === 'critico' ? 'var(--status-critical)' : undefined }}>
-        <span className={tono === 'normal' ? 'text-slate-900' : ''}>{valor}</span>
-      </p>
+      <p className="mt-2 text-2xl font-semibold text-slate-900">{valor}</p>
     </div>
   )
 }

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { Router } from 'express'
-import { requiereRol, validarClave } from './auth.mjs'
+import { puedeEscribir, requiereRol, validarClave } from './auth.mjs'
 import { aBooleanos, isoUtc, nuevoId, pool, todas, una } from './db.mjs'
 import { ErrorApi, asincrono, noEncontrado, reglaNegocio, validacion } from './errores.mjs'
 import { Validador, esFechaIso } from './validar.mjs'
@@ -24,6 +24,47 @@ rutasListas.get('/opciones', asincrono(async (req, res) => {
     const { categoria_codigo: categoriaCodigo, ...resto } = aBooleanos(f, ['activo'])
     return typeof categoria === 'string' && categoria ? resto : { ...resto, categoria_codigo: categoriaCodigo }
   }))
+}))
+
+/**
+ * Crea (o reutiliza, si ya existe) una opción de una lista desde una pantalla que NO es de
+ * Administración — hoy el combo de Diagnóstico, cuando se escribe un texto que no está en la
+ * lista. A diferencia de `POST /admin/listas/opciones` (solo administrador, pensado para
+ * gestionar listas a propósito), esta ruta la puede usar cualquiera que edite la ficha del
+ * paciente (Administrador o Registrador): un registro clínico no debe quedar bloqueado
+ * esperando que un administrador agregue el término primero. La opción creada queda disponible
+ * de inmediato para todos los pacientes, no solo como texto suelto de este.
+ */
+rutasListas.post('/opciones', puedeEscribir, asincrono(async (req, res) => {
+  const v = new Validador(req.body)
+  const categoriaCodigo = v.texto('categoria', { obligatorio: true })
+  const valor = v.texto('valor', { obligatorio: true, max: 500 })
+  v.finalizar()
+
+  const categoria = await una(pool, 'SELECT id FROM categorias_lista WHERE codigo = ?', [categoriaCodigo])
+  if (!categoria) throw noEncontrado('No se encontró la lista.')
+
+  // La colación de la tabla ya es insensible a mayúsculas y tildes: "comunicacion" encuentra
+  // "Comunicación". No se filtra por activo: si coincide con una opción desactivada, se reactiva
+  // en vez de crear un duplicado o dejar seleccionada una opción que ya no aparecería en la lista.
+  const existente = await una(pool, 'SELECT id, valor, activo FROM opciones_lista WHERE categoria_id = ? AND valor = ?', [categoria.id, valor])
+  if (existente) {
+    if (!existente.activo) await pool.query('UPDATE opciones_lista SET activo = 1 WHERE id = ?', [existente.id])
+    return res.json({ id: existente.id, valor: existente.valor, creada: false })
+  }
+
+  const { maximo } = await una(pool, 'SELECT COALESCE(MAX(orden), 0) AS maximo FROM opciones_lista WHERE categoria_id = ?', [categoria.id])
+  const id = nuevoId()
+  try {
+    await pool.query('INSERT INTO opciones_lista (id, categoria_id, valor, orden) VALUES (?, ?, ?, ?)', [id, categoria.id, valor, maximo + 10])
+  } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') {
+      const otra = await una(pool, 'SELECT id, valor FROM opciones_lista WHERE categoria_id = ? AND valor = ?', [categoria.id, valor])
+      if (otra) return res.json({ id: otra.id, valor: otra.valor, creada: false })
+    }
+    throw error
+  }
+  res.status(201).json({ id, valor, creada: true })
 }))
 
 // ---------------------------------------------------------------------------------------------
