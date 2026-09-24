@@ -67,10 +67,13 @@
 
 /* Pedido explícito: absolutamente todo el texto en negro puro — títulos, párrafos, subtítulos,
    notas, tablas, y también las etiquetas de estado (Completo/Pendiente/crítico), que antes
-   quedaban en verde/ámbar/rojo. Se sobreescriben las clases text-* en vez de tocar cada archivo
-   uno por uno. No toca los fondos/bordes (bg-*/border-*: los chips de estado siguen con su fondo
-   de color, solo cambia la letra) ni el texto blanco sobre botones y círculos de fondo oscuro
-   (confirmado aparte): ahí sí tiene que seguir blanco o no se leería nada. */
+   quedaban en verde/ámbar/rojo. Se sobreescriben las clases text- en vez de tocar cada archivo
+   uno por uno. No toca los fondos ni los bordes (clases bg- y border-: los chips de estado siguen
+   con su fondo de color, solo cambia la letra) ni el texto blanco sobre botones y círculos de
+   fondo oscuro (confirmado aparte): ahí sí tiene que seguir blanco o no se leería nada.
+   Cuidado al editar este comentario: un asterisco seguido inmediatamente de una barra diagonal
+   cierra el comentario antes de tiempo y rompe el CSS (por eso arriba se escribió "bg-" y
+   "border-" por separado, no juntos con un símbolo entre medio). */
 .text-slate-300,
 .text-slate-400,
 .text-slate-500,
