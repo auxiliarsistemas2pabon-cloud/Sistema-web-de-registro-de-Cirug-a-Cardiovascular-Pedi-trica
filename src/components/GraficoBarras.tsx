@@ -62,7 +62,7 @@ export function GraficoBarras({ datos, color = 'azul', sufijoValor = '', alturaP
                 <LabelList
                   dataKey="valor"
                   position="right"
-                  formatter={(v: number) => `${v}${sufijoValor}`}
+                  formatter={(v) => (typeof v === 'number' ? `${v}${sufijoValor}` : '')}
                   style={{ fill: 'var(--chart-texto-secundario)', fontSize: 11 }}
                 />
               )}
