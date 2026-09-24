@@ -52,9 +52,15 @@ rutasPacientes.get('/', asincrono(async (req, res) => {
   condiciones.push(req.usuario.rol === 'administrador' && q.eliminados === '1' ? 'p.eliminado = 1' : 'p.eliminado = 0')
 
   if (typeof q.busqueda === 'string' && q.busqueda.trim()) {
-    const termino = `%${escaparLike(q.busqueda.trim())}%`
-    condiciones.push('(p.nombre_completo LIKE ? OR p.identificacion LIKE ?)')
-    parametros.push(termino, termino)
+    // Cada palabra escrita debe coincidir con el nombre o la identificación (en cualquier
+    // orden): así buscar "Pérez Juan" también encuentra a "Juan Pérez", igual que el buscador
+    // de Diagnóstico. Antes exigía las palabras juntas y en ese orden exacto.
+    const palabras = q.busqueda.trim().split(/\s+/).filter(Boolean)
+    for (const palabra of palabras) {
+      const termino = `%${escaparLike(palabra)}%`
+      condiciones.push('(p.nombre_completo LIKE ? OR p.identificacion LIKE ?)')
+      parametros.push(termino, termino)
+    }
   }
   const porTexto = { eps: 'eps.valor', diagnostico: 'dg.valor', rachs: 'rc.valor', condicionSalida: 'cs.valor' }
   for (const [param, columna] of Object.entries(porTexto)) {
