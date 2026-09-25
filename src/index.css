@@ -159,6 +159,20 @@ textarea {
     color 0.15s ease;
 }
 
+/* Los <select> nativos se usan a propósito en toda la app en vez de un Select de Radix (ver el
+   comentario en SelectOpciones.tsx sobre el bug de reseteo entre campos que eso causaba), pero
+   traían la flecha por defecto del navegador, que no combina con el resto de iconos de línea de
+   la interfaz. Se reemplaza por una flecha propia y se apaga la apariencia nativa; el resto del
+   control (borde, foco, radio) sigue viniendo de `claseInput` sin tener que tocar cada archivo. */
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 15px;
+  padding-right: 2.25rem !important;
+}
+
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
