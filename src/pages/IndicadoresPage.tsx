@@ -6,7 +6,7 @@ import { Cargando, MensajeError } from '../components/Estados'
 import { GraficoBarras } from '../components/GraficoBarras'
 import { GraficoBarrasTiempo } from '../components/GraficoBarrasTiempo'
 import { Tarjeta } from '../components/Tarjeta'
-import { IconoGrafico } from '../components/iconos'
+import { IconoAlerta, IconoCorazon, IconoEscudo, IconoGrafico, IconoRegresar } from '../components/iconos'
 import { TarjetaKpi } from '../components/TarjetaKpi'
 import { api } from '../lib/api'
 import { hoyIso } from '../lib/fechas'
@@ -137,15 +137,32 @@ export function IndicadoresPage() {
       {data && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <TarjetaKpi etiqueta="Total de cirugías" valor={String(data.resumen.total_cirugias)} />
+            <TarjetaKpi
+              etiqueta="Total de cirugías"
+              valor={String(data.resumen.total_cirugias)}
+              icono={<IconoCorazon className="h-4 w-4" />}
+            />
             <TarjetaKpi
               etiqueta="Mortalidad hospitalaria"
               valor={`${num(data.resumen.mortalidad_hospitalaria_pct)}%`}
               tono="critico"
+              icono={<IconoAlerta className="h-4 w-4" />}
             />
-            <TarjetaKpi etiqueta="Complicación intraquirúrgica" valor={`${num(data.resumen.tasa_complicacion_intraqx_pct)}%`} />
-            <TarjetaKpi etiqueta="Complicación postoperatoria" valor={`${num(data.resumen.tasa_complicacion_pop_pct)}%`} />
-            <TarjetaKpi etiqueta="Reingreso a 30 días" valor={`${num(data.resumen.tasa_reingreso_30d_pct)}%`} />
+            <TarjetaKpi
+              etiqueta="Complicación intraquirúrgica"
+              valor={`${num(data.resumen.tasa_complicacion_intraqx_pct)}%`}
+              icono={<IconoEscudo className="h-4 w-4" />}
+            />
+            <TarjetaKpi
+              etiqueta="Complicación postoperatoria"
+              valor={`${num(data.resumen.tasa_complicacion_pop_pct)}%`}
+              icono={<IconoEscudo className="h-4 w-4" />}
+            />
+            <TarjetaKpi
+              etiqueta="Reingreso a 30 días"
+              valor={`${num(data.resumen.tasa_reingreso_30d_pct)}%`}
+              icono={<IconoRegresar className="h-4 w-4" />}
+            />
           </div>
 
           <Tarjeta titulo="Tiempos y estancia (promedio / mediana)">

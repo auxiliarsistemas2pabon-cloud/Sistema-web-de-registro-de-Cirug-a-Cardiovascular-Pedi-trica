@@ -130,3 +130,32 @@ export const IconoCorazon = (p: Props) =>
     />,
     p,
   )
+
+export const IconoAlerta = (p: Props) =>
+  base(
+    <>
+      <path d="M12 3.5 21 19.5H3L12 3.5Z" strokeLinejoin="round" />
+      <path d="M12 10v4" strokeLinecap="round" />
+      <circle cx="12" cy="16.7" r="0.15" fill="currentColor" stroke="currentColor" strokeWidth={1.4} />
+    </>,
+    p,
+  )
+
+export const IconoCampana = (p: Props) =>
+  base(
+    <>
+      <path d="M6 17v-5a6 6 0 1 1 12 0v5" strokeLinecap="round" />
+      <path d="M4.5 17h15" strokeLinecap="round" />
+      <path d="M10 20a2 2 0 0 0 4 0" strokeLinecap="round" />
+    </>,
+    p,
+  )
+
+export const IconoRegresar = (p: Props) =>
+  base(
+    <>
+      <path d="M4.5 12a7.5 7.5 0 1 0 2.6-5.7" strokeLinecap="round" />
+      <path d="M3.5 4.5v4.5H8" strokeLinecap="round" strokeLinejoin="round" />
+    </>,
+    p,
+  )

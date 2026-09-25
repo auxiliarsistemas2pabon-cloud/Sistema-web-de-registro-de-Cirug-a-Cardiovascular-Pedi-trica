@@ -115,7 +115,7 @@ export function LoginPage() {
           <button
             type="submit"
             disabled={enviando}
-            className="mt-4 w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
+            className="mt-4 w-full rounded-lg bg-[var(--pabon-azul-oscuro)] px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[var(--pabon-azul-oscuro-2)] disabled:opacity-60"
           >
             {enviando ? 'Ingresando…' : 'Entrar'}
           </button>

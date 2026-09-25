@@ -5,6 +5,8 @@ import { formatearFecha } from '../lib/fechas'
 import { api } from '../lib/api'
 import { Cargando, MensajeError } from '../components/Estados'
 import { Badge } from '../components/ui/badge'
+import { EncabezadoPagina } from '../components/EncabezadoPagina'
+import { IconoCampana } from '../components/iconos'
 
 interface Alerta {
   paciente_id: string
@@ -137,14 +139,15 @@ export function AlertasPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-slate-900">Alertas de seguimiento</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          {total === 0
+      <EncabezadoPagina
+        icono={<IconoCampana className="h-5 w-5" />}
+        titulo="Alertas de seguimiento"
+        subtitulo={
+          total === 0
             ? 'No hay alertas pendientes.'
-            : `${total} ${total === 1 ? 'alerta activa' : 'alertas activas'}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}.`}
-        </p>
-      </div>
+            : `${total} ${total === 1 ? 'alerta activa' : 'alertas activas'}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}.`
+        }
+      />
       <Seccion titulo="Llamada de los 15 días pendiente o vencida" icono={<IconoTelefono />} alertas={llamadas} />
       <Seccion titulo="Alta hace menos de 30 días sin seguimiento completo" icono={<IconoCalendario />} alertas={altas} />
     </div>
