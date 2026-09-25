@@ -101,7 +101,10 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   useEffect(() => {
     // Mientras PROCEDENCIA no ha cargado, narinioId es undefined y procedenciaEsNarino da un
     // falso "no es Nariño": sin el guard de abajo, esto borraría el municipio ya guardado del
-    // paciente antes de que reset() llegue a fijarlo (o justo después).
+    // paciente antes de que reset() llegue a fijarlo (o justo después). A diferencia del mismo
+    // patrón en Modulo2Form, aquí no hace falta además esperar los datos del paciente: `paciente`
+    // llega como prop ya resuelta (PacienteFichaPage no renderiza este formulario hasta tenerla),
+    // no por una consulta propia que pueda resolver después de las opciones — no hay carrera.
     if (opcionesProcedencia && !procedenciaEsNarino) setValue('municipio_narino_id', '')
   }, [procedenciaEsNarino, opcionesProcedencia, setValue])
 

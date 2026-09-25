@@ -3,6 +3,17 @@ import { useState, type FormEvent } from 'react'
 import { claseBotonPrimario, claseBotonSecundario, claseInput } from '../../components/Campo'
 import { Cargando, MensajeError } from '../../components/Estados'
 import { IconoUsuarioMas } from '../../components/iconos'
+import { Badge } from '../../components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '../../components/ui/alert-dialog'
 import { api, mensajeDe } from '../../lib/api'
 import type { Perfil, Rol } from '../../types/db'
 
@@ -29,6 +40,7 @@ export function UsuariosTab() {
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorLista, setErrorLista] = useState<string | null>(null)
+  const [porDesactivar, setPorDesactivar] = useState<Perfil | null>(null)
 
   async function crearUsuario(e: FormEvent) {
     e.preventDefault()
@@ -60,7 +72,17 @@ export function UsuariosTab() {
   }
 
   const cambiarRol = (id: string, nuevoRol: Rol) => actualizar(id, { rol: nuevoRol })
-  const alternarActivo = (id: string, activo: boolean) => actualizar(id, { activo: !activo })
+
+  function pedirCambioActivo(perfil: Perfil) {
+    if (perfil.activo) setPorDesactivar(perfil) // desactivar es lo único que se confirma: reactivar es de bajo riesgo.
+    else void actualizar(perfil.id, { activo: true })
+  }
+
+  async function confirmarDesactivar() {
+    if (!porDesactivar) return
+    await actualizar(porDesactivar.id, { activo: false })
+    setPorDesactivar(null)
+  }
 
   return (
     <div className="space-y-4">
@@ -133,16 +155,12 @@ export function UsuariosTab() {
                     </select>
                   </td>
                   <td className="px-3 py-2.5">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        p.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
+                    <Badge variant="outline" className={p.activo ? 'bg-emerald-100 text-emerald-700 border-emerald-200/60' : 'bg-slate-100 text-slate-500 border-slate-200'}>
                       {p.activo ? 'Activo' : 'Inactivo'}
-                    </span>
+                    </Badge>
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    <button type="button" onClick={() => alternarActivo(p.id, p.activo)} className={claseBotonSecundario}>
+                    <button type="button" onClick={() => pedirCambioActivo(p)} className={claseBotonSecundario}>
                       {p.activo ? 'Desactivar' : 'Activar'}
                     </button>
                   </td>
@@ -152,6 +170,21 @@ export function UsuariosTab() {
           </table>
         </div>
       )}
+
+      <AlertDialog open={!!porDesactivar} onOpenChange={(abierto) => { if (!abierto) setPorDesactivar(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Desactivar a {porDesactivar?.nombre_completo}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              No podrá iniciar sesión hasta que un administrador lo vuelva a activar. Sus registros anteriores no se ven afectados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction variant="destructive" onClick={() => void confirmarDesactivar()}>Desactivar</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

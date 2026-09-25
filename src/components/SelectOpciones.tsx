@@ -64,6 +64,13 @@ export function SelectOpciones<T extends FieldValues>({
     )
   }
 
+  // Se probó el Select de shadcn/Radix aquí (más moderno visualmente), pero se revirtió a propósito:
+  // con dos o más de estos campos en el mismo formulario, cambiar el valor de UNO (p.ej. limpiar
+  // Tipo de valvulopatía cuando el diagnóstico no aplica) hace que Radix dispare un onValueChange('')
+  // espurio en OTRO Select del mismo formulario (confirmado con traza: viene del input oculto de
+  // Radix para integración con forms nativos, en el montaje de un efecto pasivo) — el campo se ve
+  // vacío en pantalla aunque el valor guardado sea correcto. Es exactamente el bug que useController
+  // ya evita para register(); usar aquí un <select> nativo (con el mismo estilo) no lo tiene.
   return (
     <select
       name={field.name}
