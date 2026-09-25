@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
 import { claseBotonPrimario, claseBotonSecundario, claseInput } from '../../components/Campo'
 import { Cargando, MensajeError } from '../../components/Estados'
+import { Badge } from '../../components/ui/badge'
 import { api, mensajeDe } from '../../lib/api'
 import type { CategoriaLista, OpcionLista } from '../../types/db'
 
@@ -117,13 +118,9 @@ export function ListasTab() {
                   </td>
                   <td className="px-3 py-1.5 font-mono text-xs text-slate-400">{o.codigo ?? ''}</td>
                   <td className="px-3 py-1.5">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                        o.activo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'
-                      }`}
-                    >
+                    <Badge variant="outline" className={o.activo ? 'bg-emerald-100 text-emerald-700 border-emerald-200/60' : 'bg-slate-100 text-slate-500 border-slate-200'}>
                       {o.activo ? 'Activa' : 'Inactiva'}
-                    </span>
+                    </Badge>
                   </td>
                   <td className="px-3 py-1.5 text-right">
                     <button type="button" onClick={() => alternarActivo(o.id, o.activo)} className={claseBotonSecundario}>

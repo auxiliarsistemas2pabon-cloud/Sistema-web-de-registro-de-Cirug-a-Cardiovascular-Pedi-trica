@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Fragment, useState } from 'react'
 import { claseInput } from '../../components/Campo'
 import { Cargando, MensajeError } from '../../components/Estados'
+import { Badge } from '../../components/ui/badge'
 import { api, consulta } from '../../lib/api'
 import type { RegistroAuditoria } from '../../types/db'
 
@@ -103,17 +104,18 @@ export function AuditoriaTab() {
                     <td className="whitespace-nowrap px-3 py-2.5 text-slate-500">{new Date(r.fecha).toLocaleString('es-CO')}</td>
                     <td className="px-3 py-2.5 font-mono text-xs text-slate-600">{r.tabla}</td>
                     <td className="px-3 py-2.5">
-                      <span
-                        className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                      <Badge
+                        variant="outline"
+                        className={
                           r.operacion === 'INSERT'
-                            ? 'bg-emerald-100 text-emerald-700'
+                            ? 'bg-emerald-100 text-emerald-700 border-emerald-200/60'
                             : r.operacion === 'DELETE'
-                              ? 'bg-red-100 text-red-700'
-                              : 'bg-sky-100 text-sky-700'
-                        }`}
+                              ? 'bg-red-100 text-red-700 border-red-200/60'
+                              : 'bg-sky-100 text-sky-700 border-sky-200/60'
+                        }
                       >
                         {r.operacion}
-                      </span>
+                      </Badge>
                     </td>
                     <td className="px-3 py-2.5 text-slate-700">{r.usuario_nombre ?? '—'}</td>
                     <td className="px-3 py-2.5 text-right">

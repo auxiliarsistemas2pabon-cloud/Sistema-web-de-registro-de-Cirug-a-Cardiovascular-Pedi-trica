@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { formatearFecha } from '../lib/fechas'
 import { api } from '../lib/api'
 import { Cargando, MensajeError } from '../components/Estados'
+import { Badge } from '../components/ui/badge'
 
 interface Alerta {
   paciente_id: string
@@ -104,13 +105,12 @@ function Seccion({ titulo, icono, alertas }: { titulo: string; icono: ReactNode;
                     <span className="block truncate text-sm font-medium text-slate-900">{a.nombre_completo}</span>
                     <span className="block text-xs text-slate-400">{a.identificacion}</span>
                   </span>
-                  <span
-                    className={`flex-none whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-medium ${
-                      vencida ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
-                    }`}
+                  <Badge
+                    variant="outline"
+                    className={`flex-none whitespace-nowrap ${vencida ? 'bg-red-100 text-red-700 border-red-200/60' : 'bg-amber-100 text-amber-700 border-amber-200/60'}`}
                   >
                     {textoEstado(a.dias_desde_referencia)}
-                  </span>
+                  </Badge>
                   <span className="hidden flex-none text-xs text-slate-400 sm:block">
                     {formatearFecha(a.fecha_referencia)}
                   </span>

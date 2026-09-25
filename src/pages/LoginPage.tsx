@@ -121,7 +121,7 @@ export function LoginPage() {
           </button>
 
           <p className="mt-5 text-center text-xs text-slate-400">
-            Si no tienes una cuenta, solicita a un Administrador que te cree un usuario.
+            Si no tienes una cuenta, solicita a el Administrador que te cree un usuario.
           </p>
         </form>
       </div>

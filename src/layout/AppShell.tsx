@@ -1,6 +1,14 @@
 import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useInactivityLogout } from '../auth/useInactivityLogout'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '../components/ui/dropdown-menu'
 
 const enlaces = [
   { to: '/pacientes', etiqueta: 'Pacientes' },
@@ -51,30 +59,34 @@ export function AppShell() {
             </div>
           </NavLink>
 
-          <div className="flex flex-none items-center gap-3">
-            <div className="hidden text-right leading-tight sm:block">
-              <p className="text-sm font-medium text-slate-800">{perfil?.nombre_completo}</p>
-              <p className="text-xs text-slate-400">{perfil ? rolEtiqueta[perfil.rol] : ''}</p>
-            </div>
-            <div
-              className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-[var(--pabon-azul-oscuro)] text-xs font-semibold text-white"
-              title={perfil?.nombre_completo}
-            >
-              {iniciales(perfil?.nombre_completo)}
-            </div>
-            <button
-              type="button"
-              onClick={() => cerrarSesion()}
-              title="Cerrar sesión"
-              aria-label="Cerrar sesión"
-              className="flex-none rounded-full p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
-                <path d="M15 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8" strokeLinecap="round" strokeLinejoin="round" />
-                <path d="M10 12h11m0 0-3.5-3.5M21 12l-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger className="flex flex-none items-center gap-3 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-[var(--pabon-azul-claro)]/40">
+              <div className="hidden text-right leading-tight sm:block">
+                <p className="text-sm font-medium text-slate-800">{perfil?.nombre_completo}</p>
+                <p className="text-xs text-slate-400">{perfil ? rolEtiqueta[perfil.rol] : ''}</p>
+              </div>
+              <div
+                className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-[var(--pabon-azul-oscuro)] text-xs font-semibold text-white"
+                title={perfil?.nombre_completo}
+              >
+                {iniciales(perfil?.nombre_completo)}
+              </div>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel className="sm:hidden">
+                <p className="font-medium text-slate-800">{perfil?.nombre_completo}</p>
+                <p className="text-xs font-normal text-slate-400">{perfil ? rolEtiqueta[perfil.rol] : ''}</p>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="sm:hidden" />
+              <DropdownMenuItem variant="destructive" onClick={() => cerrarSesion()}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4">
+                  <path d="M15 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M10 12h11m0 0-3.5-3.5M21 12l-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Cerrar sesión
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
 
         <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4">

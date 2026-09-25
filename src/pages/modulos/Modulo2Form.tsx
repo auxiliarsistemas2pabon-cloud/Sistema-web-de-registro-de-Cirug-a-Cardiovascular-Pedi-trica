@@ -59,10 +59,15 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   const esValvulopatias = opcionesDiagnostico?.find((o) => o.id === diagnosticoId)?.codigo === 'VALVULOPATIAS'
 
   useEffect(() => {
-    // Mientras DIAGNOSTICO no ha cargado, esValvulopatias da un falso negativo: sin este
-    // guard, se borraría la valvulopatía ya guardada antes de que reset() la fije.
-    if (opcionesDiagnostico && !esValvulopatias) setValue('valvulopatia_id', '')
-  }, [esValvulopatias, opcionesDiagnostico, setValue])
+    // Exigir diagnosticoId (no solo que las opciones/`data` ya hayan llegado) es lo que importa:
+    // cuando `data` llega, este efecto y el de reset() arriba corren en el mismo ciclo de efectos,
+    // y `diagnosticoId` (leído por `watch` durante el render, antes de que reset() corriera) sigue
+    // en su valor por defecto (''). Eso da un falso esValvulopatias=false y borra valvulopatia_id
+    // justo después de que reset() la puso en su valor correcto. Exigir diagnosticoId aquí hace que
+    // este efecto se salte esa vuelta y solo actúe una vez que el formulario ya tiene el diagnóstico
+    // real (reset ya corrido), sea en la carga inicial o cuando el usuario cambia el diagnóstico.
+    if (diagnosticoId && opcionesDiagnostico && !esValvulopatias) setValue('valvulopatia_id', '')
+  }, [diagnosticoId, esValvulopatias, opcionesDiagnostico, setValue])
 
   if (isLoading) return <Cargando />
 
