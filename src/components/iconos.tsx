@@ -159,3 +159,39 @@ export const IconoRegresar = (p: Props) =>
     </>,
     p,
   )
+
+export const IconoOjo = (p: Props) =>
+  base(
+    <>
+      <path d="M2.5 12S5.8 6 12 6s9.5 6 9.5 6-3.3 6-9.5 6-9.5-6-9.5-6Z" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="2.6" />
+    </>,
+    p,
+  )
+
+export const IconoCheck = (p: Props) =>
+  base(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="m8.5 12.5 2.3 2.3L15.5 9.5" strokeLinecap="round" strokeLinejoin="round" />
+    </>,
+    p,
+  )
+
+export const IconoReloj = (p: Props) =>
+  base(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5V12l3 2" strokeLinecap="round" strokeLinejoin="round" />
+    </>,
+    p,
+  )
+
+export const IconoOjoCerrado = (p: Props) =>
+  base(
+    <>
+      <path d="M3.5 4.5l17 17" strokeLinecap="round" />
+      <path d="M10.6 6.2A10.4 10.4 0 0 1 12 6c6.2 0 9.5 6 9.5 6a13.6 13.6 0 0 1-3 3.6M6.9 8.4C4.4 10 2.5 12 2.5 12s.9 1.7 2.7 3.4C6.9 17 9.1 18 12 18c1 0 1.9-.14 2.7-.4M9.9 10.1a2.6 2.6 0 0 0 3.6 3.7" strokeLinecap="round" strokeLinejoin="round" />
+    </>,
+    p,
+  )

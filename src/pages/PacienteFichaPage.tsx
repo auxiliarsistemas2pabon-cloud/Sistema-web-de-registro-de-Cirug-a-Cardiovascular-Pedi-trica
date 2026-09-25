@@ -100,10 +100,10 @@ export function PacienteFichaPage() {
   } as const
 
   return (
-    <div>
+    <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
       <Tarjeta className="mb-6">
-        <div className="flex items-center gap-4 p-5">
-          <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-[var(--pabon-azul-oscuro)]/10 text-lg font-semibold text-[var(--pabon-azul-oscuro)]">
+        <div className="flex items-center gap-4 bg-gradient-to-r from-[var(--pabon-azul-oscuro)]/[0.06] to-transparent p-5">
+          <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-[var(--pabon-azul-oscuro)]/10 text-lg font-semibold text-[var(--pabon-azul-oscuro)] ring-4 ring-white">
             {esNuevo ? <IconoPacientes className="h-6 w-6" /> : iniciales(paciente?.nombre_completo ?? '?')}
           </span>
           <div className="min-w-0">
@@ -146,7 +146,7 @@ export function PacienteFichaPage() {
       </Tarjeta>
 
       <Tarjeta>
-        <div className="p-5">
+        <div key={pestanaActiva} className="animate-in fade-in-0 slide-in-from-bottom-1 p-5 duration-300">
           {pestanaActiva === 1 && (
             <Modulo1Form
               paciente={paciente ?? null}

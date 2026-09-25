@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
-import { AvisoSoloLectura } from '../../components/Estados'
+import { AvisoSoloLectura, MensajeError } from '../../components/Estados'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1 } from '../../lib/completitud'
@@ -165,55 +165,69 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
     <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
       {!puedeEditar && <AvisoSoloLectura />}
       <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Nombre completo *" error={errors.nombre_completo?.message} className="sm:col-span-2">
-          <input {...register('nombre_completo')} className={claseInput} />
-        </Campo>
+      <div className="space-y-5">
+        <div>
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Datos personales</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Nombre completo *" error={errors.nombre_completo?.message} className="sm:col-span-2">
+              <input {...register('nombre_completo')} className={claseInput} />
+            </Campo>
 
-        <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
-          <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
-        </Campo>
+            <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
+              <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
+            </Campo>
 
-        <Campo etiqueta="Sexo">
-          <SelectOpciones categoria="SEXO" control={control} name="sexo_id" />
-        </Campo>
+            <Campo etiqueta="Sexo">
+              <SelectOpciones categoria="SEXO" control={control} name="sexo_id" />
+            </Campo>
 
-        <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
-          <input type="date" max={hoyIso()} {...register('fecha_nacimiento')} className={claseInput} />
-        </Campo>
+            <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
+              <input type="date" max={hoyIso()} {...register('fecha_nacimiento')} className={claseInput} />
+            </Campo>
+          </div>
+        </div>
 
-        <Campo etiqueta="EPS">
-          <SelectOpciones categoria="EPS" control={control} name="eps_id" />
-        </Campo>
+        <div className="border-t border-slate-100 pt-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Salud y afiliación</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Campo etiqueta="EPS">
+              <SelectOpciones categoria="EPS" control={control} name="eps_id" />
+            </Campo>
 
-        <Campo etiqueta="Peso (kg)" error={errors.peso_kg?.message}>
-          <input type="number" min="0.5" max="150" step="0.1" {...register('peso_kg')} className={claseInput} />
-        </Campo>
+            <Campo etiqueta="Peso (kg)" error={errors.peso_kg?.message}>
+              <input type="number" min="0.5" max="150" step="0.1" {...register('peso_kg')} className={claseInput} />
+            </Campo>
 
-        <Campo etiqueta="Talla (cm)" error={errors.talla_cm?.message}>
-          <input type="number" min="30" max="220" step="1" {...register('talla_cm')} className={claseInput} />
-        </Campo>
+            <Campo etiqueta="Talla (cm)" error={errors.talla_cm?.message}>
+              <input type="number" min="30" max="220" step="1" {...register('talla_cm')} className={claseInput} />
+            </Campo>
+          </div>
+        </div>
 
-        <Campo etiqueta="Procedencia">
-          <SelectOpciones categoria="PROCEDENCIA" control={control} name="procedencia_id" />
-        </Campo>
+        <div className="border-t border-slate-100 pt-5">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Procedencia</p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Procedencia">
+              <SelectOpciones categoria="PROCEDENCIA" control={control} name="procedencia_id" />
+            </Campo>
 
-        <Campo etiqueta="Municipio de Nariño" error={errors.municipio_narino_id?.message}>
-          <SelectOpciones
-            categoria="MUNICIPIOS"
-            control={control} name="municipio_narino_id"
-            disabled={!procedenciaEsNarino}
-            placeholder={procedenciaEsNarino ? 'Seleccione…' : 'N/A'}
-          />
-        </Campo>
+            <Campo etiqueta="Municipio de Nariño" error={errors.municipio_narino_id?.message}>
+              <SelectOpciones
+                categoria="MUNICIPIOS"
+                control={control} name="municipio_narino_id"
+                disabled={!procedenciaEsNarino}
+                placeholder={procedenciaEsNarino ? 'Seleccione…' : 'N/A'}
+              />
+            </Campo>
+          </div>
+        </div>
       </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Teléfono(s)
-        </label>
+      <div className="border-t border-slate-100 pt-5">
+      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Contacto</p>
+
         <label className="mb-2 flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" {...register('sin_telefono')} />
+          <input type="checkbox" {...register('sin_telefono')} className="h-4 w-4 accent-[var(--pabon-azul-oscuro)]" />
           No tiene teléfono
         </label>
         {!sinTelefono && (
@@ -229,9 +243,12 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
                   <button
                     type="button"
                     onClick={() => setValue('telefonos', telefonos.filter((_, j) => j !== i))}
-                    className="rounded-md px-2 text-sm text-slate-500 hover:bg-slate-100"
+                    aria-label="Quitar número"
+                    className="flex flex-none items-center justify-center rounded-md px-2 text-slate-400 transition-colors hover:bg-red-50 hover:text-red-600"
                   >
-                    Quitar
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                      <path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />
+                    </svg>
                   </button>
                 )}
               </div>
@@ -239,15 +256,18 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
             <button
               type="button"
               onClick={() => setValue('telefonos', [...telefonos, ''])}
-              className="text-sm text-sky-600 hover:underline"
+              className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--pabon-azul-oscuro)] hover:underline"
             >
-              + Agregar otro número
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+              </svg>
+              Agregar otro número
             </button>
           </div>
         )}
       </div>
 
-      {errorGuardado && <p className="text-sm text-red-600">{errorGuardado}</p>}
+      {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
       <button
         type="submit"

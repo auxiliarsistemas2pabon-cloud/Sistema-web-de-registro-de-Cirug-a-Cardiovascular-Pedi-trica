@@ -13,6 +13,17 @@ const ETIQUETAS: Record<EstadoModulo, string> = {
   no_aplica: 'No aplica',
 }
 
+const PUNTOS: Record<EstadoModulo, string> = {
+  completo: 'bg-emerald-500',
+  pendiente: 'bg-amber-500',
+  no_aplica: 'bg-slate-400',
+}
+
 export function EstadoModuloChip({ estado }: { estado: EstadoModulo }) {
-  return <Badge variant="outline" className={ESTILOS[estado]}>{ETIQUETAS[estado]}</Badge>
+  return (
+    <Badge variant="outline" className={ESTILOS[estado]}>
+      <span className={`h-1.5 w-1.5 flex-none rounded-full ${PUNTOS[estado]}`} aria-hidden />
+      {ETIQUETAS[estado]}
+    </Badge>
+  )
 }

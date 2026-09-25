@@ -261,3 +261,27 @@ select {
     @apply font-sans;
   }
 }
+
+/* Usados solo en LoginPage: la ilustración "respira" con un vaivén sutil, y el trazo de
+   electrocardiograma decorativo se desplaza en bucle (guiños al lema "Trabajamos con el
+   corazón" sin ser un gráfico de datos real). */
+@keyframes flotar {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+.ecg-trazo {
+  stroke-dasharray: 16 84;
+  animation: ecg-recorrido 3s linear infinite;
+}
+
+@keyframes ecg-recorrido {
+  to {
+    stroke-dashoffset: -100;
+  }
+}
