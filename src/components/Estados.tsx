@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react'
+import { IconoAlerta, IconoCheck } from './iconos'
 
 /** Estado de carga consistente (reemplaza el texto suelto "Cargando…" repetido en cada página). */
 export function Cargando({ etiqueta = 'Cargando…' }: { etiqueta?: string }) {
@@ -13,24 +14,33 @@ export function Cargando({ etiqueta = 'Cargando…' }: { etiqueta?: string }) {
   )
 }
 
-/** Mensaje de error consistente (fondo tenue + borde, en vez de una línea roja suelta). */
+/** Mensaje de error consistente (fondo tenue + borde + ícono, en vez de una línea roja suelta). */
 export function MensajeError({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{children}</div>
+    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <IconoAlerta className="mt-0.5 h-4 w-4 flex-none" />
+      <span>{children}</span>
+    </div>
   )
 }
 
 /** Mensaje de éxito consistente (mismo tratamiento que MensajeError, en verde). */
 export function MensajeExito({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{children}</div>
+    <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+      <IconoCheck className="mt-0.5 h-4 w-4 flex-none" />
+      <span>{children}</span>
+    </div>
   )
 }
 
 /** Mensaje de advertencia (no bloqueante), mismo tratamiento en tono ámbar. */
 export function MensajeAdvertencia({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">{children}</div>
+    <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+      <IconoAlerta className="mt-0.5 h-4 w-4 flex-none" />
+      <span>{children}</span>
+    </div>
   )
 }
 

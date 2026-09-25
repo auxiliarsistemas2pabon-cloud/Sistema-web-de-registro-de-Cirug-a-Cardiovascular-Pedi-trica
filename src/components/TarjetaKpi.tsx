@@ -9,7 +9,11 @@ interface Props {
 
 export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal' }: Props) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className="group relative overflow-hidden rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <span
+        aria-hidden
+        className={`absolute inset-x-0 top-0 h-0.5 ${tono === 'critico' ? 'bg-red-500' : 'bg-[var(--pabon-azul-oscuro)]'} opacity-0 transition-opacity group-hover:opacity-100`}
+      />
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-medium text-slate-500">{etiqueta}</p>
         {icono && (
