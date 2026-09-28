@@ -10,13 +10,13 @@ interface Props {
 /** Encabezado consistente para cada pantalla: insignia de icono + título + subtítulo opcional. */
 export function EncabezadoPagina({ icono, titulo, subtitulo, acciones }: Props) {
   return (
-    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 flex-none items-center justify-center rounded-xl bg-[var(--pabon-azul-oscuro)]/10 text-[var(--pabon-azul-oscuro)]">
+    <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
+      <div className="flex min-w-0 items-center gap-4">
+        <span className="flex h-12 w-12 flex-none items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--pabon-azul-oscuro)] to-[var(--pabon-azul-oscuro-2)] text-white shadow-md shadow-[var(--pabon-azul-oscuro)]/20">
           {icono}
         </span>
-        <div>
-          <h1 className="text-lg font-semibold text-slate-900">{titulo}</h1>
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">{titulo}</h1>
           {subtitulo && <p className="mt-0.5 text-sm text-slate-500">{subtitulo}</p>}
         </div>
       </div>

@@ -195,3 +195,34 @@ export const IconoOjoCerrado = (p: Props) =>
     </>,
     p,
   )
+
+export const IconoMas = (p: Props) => base(<path d="M12 5v14M5 12h14" strokeLinecap="round" />, p)
+
+export const IconoCerrar = (p: Props) => base(<path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />, p)
+
+export const IconoChevronAbajo = (p: Props) =>
+  base(<path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />, p)
+
+export const IconoChevronIzquierda = (p: Props) =>
+  base(<path d="m15 6-6 6 6 6" strokeLinecap="round" strokeLinejoin="round" />, p)
+
+export const IconoChevronDerecha = (p: Props) =>
+  base(<path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />, p)
+
+export const IconoCalendario = (p: Props) =>
+  base(
+    <>
+      <rect x="4" y="5.5" width="16" height="15" rx="2" />
+      <path d="M8 3.5v4M16 3.5v4M4 10h16" strokeLinecap="round" />
+    </>,
+    p,
+  )
+
+export const IconoSalir = (p: Props) =>
+  base(
+    <>
+      <path d="M15 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 12h11m0 0-3.5-3.5M21 12l-3.5 3.5" strokeLinecap="round" strokeLinejoin="round" />
+    </>,
+    p,
+  )
