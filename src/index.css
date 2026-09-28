@@ -46,6 +46,16 @@
   --pabon-azul-claro: #37a2c2;
   --pabon-gris: #bdbdc0;
 
+  /* Fondo general de la app (detrás de las tarjetas): un gris azulado muy tenue, un punto más
+     oscuro que slate-50 para que las tarjetas blancas se separen del fondo sin depender solo
+     del borde. */
+  --lienzo: #f3f6fa;
+  /* Sombra base de tarjetas: más suave que shadow-sm de Tailwind. */
+  --sombra-tarjeta: 0 1px 2px rgb(16 24 40 / 0.04), 0 1px 3px rgb(16 24 40 / 0.03);
+  /* Alto real del encabezado fijo (lo mide AppShell); lo usan los encabezados de tabla
+     "sticky" para pegarse justo debajo de él. */
+  --alto-encabezado: 0px;
+
   /* Paleta de indicadores (skill de dataviz). El azul neutro usa el institucional; los colores
      semánticos (rojo/verde de estado clínico) se mantienen aparte por legibilidad. */
   --chart-azul: #0e5093;
@@ -139,9 +149,30 @@ body,
   height: 100%;
 }
 
+/* Sin font-family propio: antes este bloque fijaba system-ui y, como va fuera de @layer, le
+   ganaba a `font-sans` (Geist) del <html>, así que la fuente de la app nunca se usaba y cada
+   sistema operativo mostraba una distinta. Ahora el body hereda Geist (ver --font-sans). */
 body {
   margin: 0;
-  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--color-sky-200);
+  color: #000;
+}
+
+/* El ícono de calendario nativo de <input type="date"> se ve pesado junto a los íconos de
+   línea de la app: se suaviza y se indica que es clicable. */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 0.9;
 }
 
 /* Transiciones suaves en toda la app: sin esto, los estados de hover/foco de botones y campos
@@ -175,7 +206,7 @@ select {
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: 'Geist Variable', sans-serif;
+  --font-sans: 'Geist Variable', system-ui, 'Segoe UI', Roboto, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);

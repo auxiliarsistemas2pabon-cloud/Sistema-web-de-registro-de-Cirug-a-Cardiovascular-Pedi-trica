@@ -44,12 +44,28 @@ export function MensajeAdvertencia({ children }: { children: ReactNode }) {
   )
 }
 
-/** Estado vacío con icono, para listas/tablas sin resultados. */
-export function EstadoVacio({ icono, mensaje }: { icono?: ReactNode; mensaje: string }) {
+/** Estado vacío con icono, para listas/tablas sin resultados (con título y acción opcionales). */
+export function EstadoVacio({
+  icono,
+  titulo,
+  mensaje,
+  accion,
+}: {
+  icono?: ReactNode
+  titulo?: string
+  mensaje: string
+  accion?: ReactNode
+}) {
   return (
-    <div className="flex flex-col items-center gap-2 px-4 py-12 text-center text-slate-400">
-      {icono && <span className="text-slate-300">{icono}</span>}
-      <p className="text-sm">{mensaje}</p>
+    <div className="flex flex-col items-center px-4 py-14 text-center">
+      {icono && (
+        <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--pabon-azul-oscuro)]/[0.07] text-[var(--pabon-azul-oscuro)] ring-8 ring-[var(--pabon-azul-oscuro)]/[0.03]">
+          {icono}
+        </span>
+      )}
+      {titulo && <p className="text-base font-semibold text-slate-900">{titulo}</p>}
+      <p className={`max-w-sm text-sm text-slate-500 ${titulo ? 'mt-1' : ''}`}>{mensaje}</p>
+      {accion && <div className="mt-5">{accion}</div>}
     </div>
   )
 }

@@ -1,29 +1,11 @@
-import { useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { formatearFecha } from '../lib/fechas'
-import { api } from '../lib/api'
+import { useAlertas, type Alerta } from '../hooks/useAlertas'
 import { Cargando, MensajeError } from '../components/Estados'
 import { Badge } from '../components/ui/badge'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
 import { IconoCampana } from '../components/iconos'
-
-interface Alerta {
-  paciente_id: string
-  numero_paciente: number
-  nombre_completo: string
-  identificacion: string
-  tipo_alerta: 'llamada_15_dias' | 'seguimiento_pendiente_alta'
-  fecha_referencia: string
-  dias_desde_referencia: number
-}
-
-function useAlertas() {
-  return useQuery({
-    queryKey: ['alertas'],
-    queryFn: () => api.get<Alerta[]>('/alertas'),
-  })
-}
 
 /** Iniciales para el avatar circular (mismo criterio que el AppShell). */
 function iniciales(nombreCompleto: string) {
@@ -73,18 +55,18 @@ function IconoCheck() {
 
 function Seccion({ titulo, icono, alertas }: { titulo: string; icono: ReactNode; alertas: Alerta[] }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-      <div className="flex items-center gap-2.5 border-b border-slate-100 bg-slate-50/70 px-5 py-3.5">
-        <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-[var(--pabon-azul-oscuro)]/10 text-[var(--pabon-azul-oscuro)]">
+    <div className="overflow-clip rounded-xl border border-slate-200/80 bg-white shadow-[var(--sombra-tarjeta)]">
+      <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3.5">
+        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[var(--pabon-azul-oscuro)]/[0.08] text-[var(--pabon-azul-oscuro)]">
           {icono}
         </span>
-        <h2 className="text-sm font-semibold text-slate-800">{titulo}</h2>
-        <span className="ml-auto inline-flex h-5 min-w-5 flex-none items-center justify-center rounded-full bg-slate-200 px-1.5 text-xs font-semibold text-slate-600">
+        <h2 className="text-[15px] font-semibold text-slate-900">{titulo}</h2>
+        <span className="ml-auto inline-flex h-5 min-w-5 flex-none items-center justify-center rounded-full bg-slate-100 px-1.5 text-xs font-semibold tabular-nums text-slate-600">
           {alertas.length}
         </span>
       </div>
       {alertas.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-emerald-600">
+        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-[#059669]">
           <IconoCheck />
           <p className="text-sm text-slate-400">Sin pendientes.</p>
         </div>
