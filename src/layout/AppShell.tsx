@@ -3,6 +3,7 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useInactivityLogout } from '../auth/useInactivityLogout'
 import {
+  IconoAdultos,
   IconoBajar,
   IconoCampana,
   IconoChevronAbajo,
@@ -32,6 +33,7 @@ interface Enlace {
 
 const enlaces: Enlace[] = [
   { to: '/pacientes', etiqueta: 'Pacientes', icono: IconoPacientes },
+  { to: '/adultos', etiqueta: 'Adultos', icono: IconoAdultos },
   { to: '/alertas', etiqueta: 'Alertas de seguimiento', icono: IconoCampana },
   { to: '/indicadores', etiqueta: 'Indicadores', icono: IconoGrafico },
   { to: '/datos', etiqueta: 'Exportar datos', icono: IconoBajar, roles: ['administrador', 'registrador'] },

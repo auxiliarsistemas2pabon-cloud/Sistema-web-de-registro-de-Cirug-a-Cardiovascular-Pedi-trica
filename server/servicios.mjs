@@ -7,6 +7,8 @@ import { Validador, diasEntre } from './validar.mjs'
 const BOOLEANOS = {
   pacientes: ['sin_telefono', 'eliminado'],
   seguimientos: ['no_aplica'],
+  pacientes_adultos: ['eliminado'],
+  seguimientos_adultos: ['no_aplica'],
 }
 
 /** Convierte una fila de BD a su forma JSON de API/auditoría (booleanos reales, fechas ISO UTC). */
@@ -64,7 +66,7 @@ export async function actualizar(conexion, usuario, tabla, id, cambios, { conAud
   return true
 }
 
-async function eliminarFila(conexion, usuario, tabla, id) {
+export async function eliminarFila(conexion, usuario, tabla, id) {
   const antes = await una(conexion, `SELECT * FROM ${tabla} WHERE id = ?`, [id])
   await conexion.query(`DELETE FROM ${tabla} WHERE id = ?`, [id])
   await auditar(conexion, { tabla, registroId: id, operacion: 'DELETE', usuarioId: usuario.id, antes })

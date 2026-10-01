@@ -6,7 +6,9 @@ import { AdministracionPage } from './pages/AdministracionPage'
 import { AlertasPage } from './pages/AlertasPage'
 import { IndicadoresPage } from './pages/IndicadoresPage'
 import { LoginPage } from './pages/LoginPage'
+import { PacienteAdultoFichaPage } from './pages/PacienteAdultoFichaPage'
 import { PacienteFichaPage } from './pages/PacienteFichaPage'
+import { PacientesAdultosListaPage } from './pages/PacientesAdultosListaPage'
 import { PacientesListaPage } from './pages/PacientesListaPage'
 
 const ImportacionExportacionPage = lazy(async () => {
@@ -26,6 +28,9 @@ function App() {
             <Route path="/pacientes" element={<PacientesListaPage />} />
             <Route path="/pacientes/nuevo" element={<PacienteFichaPage />} />
             <Route path="/pacientes/:id" element={<PacienteFichaPage />} />
+            <Route path="/adultos" element={<PacientesAdultosListaPage />} />
+            <Route path="/adultos/nuevo" element={<PacienteAdultoFichaPage />} />
+            <Route path="/adultos/:id" element={<PacienteAdultoFichaPage />} />
             <Route path="/alertas" element={<AlertasPage />} />
             <Route path="/indicadores" element={<IndicadoresPage />} />
 

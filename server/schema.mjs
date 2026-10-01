@@ -193,6 +193,124 @@ const tablas = [
     FOREIGN KEY (lote_id) REFERENCES importaciones_lote(id),
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id)
   )`,
+
+  // -----------------------------------------------------------------------------------------
+  // Módulo de adultos: mismos 5 módulos y el mismo patrón 1:1 por paciente que el módulo
+  // pediátrico de arriba, en tablas propias (no una columna "tipo_paciente" sobre `pacientes`)
+  // porque los rangos válidos (peso, talla), las listas de diagnóstico/riesgo/procedimientos y
+  // algunas reglas (edad mínima, sin RACHS-1, EuroSCORE en vez de RACHS-1) son distintos.
+  // -----------------------------------------------------------------------------------------
+  `CREATE TABLE IF NOT EXISTS pacientes_adultos (
+    id CHAR(36) PRIMARY KEY,
+    numero_paciente BIGINT NOT NULL AUTO_INCREMENT UNIQUE,
+    nombre_completo VARCHAR(255) NOT NULL,
+    identificacion VARCHAR(50) NOT NULL UNIQUE,
+    sexo_id CHAR(36) NULL,
+    fecha_nacimiento DATE NOT NULL,
+    peso_kg DECIMAL(5,2) NULL,
+    talla_cm INT NULL,
+    procedencia_id CHAR(36) NULL,
+    municipio_narino_id CHAR(36) NULL,
+    telefono VARCHAR(50) NULL,
+    eps_id CHAR(36) NULL,
+    estado_modulo ${ESTADO},
+    origen ENUM('manual','importado') NOT NULL DEFAULT 'manual',
+    eliminado BOOLEAN NOT NULL DEFAULT false,
+    eliminado_en DATETIME NULL,
+    eliminado_por CHAR(36) NULL,${AUDITORIA_COLS},
+    CONSTRAINT ck_pacad_identificacion CHECK (identificacion REGEXP '^[0-9]+$'),
+    CONSTRAINT ck_pacad_peso CHECK (peso_kg IS NULL OR peso_kg BETWEEN 30 AND 300),
+    CONSTRAINT ck_pacad_talla CHECK (talla_cm IS NULL OR talla_cm BETWEEN 120 AND 230),
+    KEY ix_pacad_eliminado (eliminado),
+    KEY ix_pacad_nombre (nombre_completo),
+    ${opcion('sexo_id')}, ${opcion('procedencia_id')}, ${opcion('municipio_narino_id')}, ${opcion('eps_id')},
+    FOREIGN KEY (creado_por) REFERENCES usuarios(id),
+    FOREIGN KEY (eliminado_por) REFERENCES usuarios(id)
+  )`,
+  `CREATE TABLE IF NOT EXISTS diagnosticos_adultos (
+    id CHAR(36) PRIMARY KEY,
+    paciente_id CHAR(36) NOT NULL UNIQUE,
+    diagnostico_id CHAR(36) NULL,
+    valvulopatia_id CHAR(36) NULL,
+    euroscore DECIMAL(5,2) NULL,
+    estado_modulo ${ESTADO},${AUDITORIA_COLS},
+    CONSTRAINT ck_diagad_euroscore CHECK (euroscore IS NULL OR euroscore BETWEEN 0 AND 100),
+    FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id),
+    ${opcion('diagnostico_id')}, ${opcion('valvulopatia_id')}
+  )`,
+  `CREATE TABLE IF NOT EXISTS diagnosticos_adultos_riesgos (
+    id CHAR(36) PRIMARY KEY,
+    diagnostico_id CHAR(36) NOT NULL,
+    riesgo_id CHAR(36) NOT NULL,
+    UNIQUE KEY uq_diagad_riesgo (diagnostico_id, riesgo_id),
+    FOREIGN KEY (diagnostico_id) REFERENCES diagnosticos_adultos(id),
+    ${opcion('riesgo_id')}
+  )`,
+  `CREATE TABLE IF NOT EXISTS cirugias_adultos (
+    id CHAR(36) PRIMARY KEY,
+    paciente_id CHAR(36) NOT NULL UNIQUE,
+    fecha_cirugia DATE NULL,
+    implante_id CHAR(36) NULL,
+    uso_cec ENUM('SI','NO') NULL,
+    tiempo_cec_min INT NULL,
+    tiempo_clamp_min INT NULL,
+    complicacion_intraqx_id CHAR(36) NULL,
+    cierre_esternal_diferido ENUM('SI','NO') NULL,
+    extubacion_quirofano ENUM('SI','NO') NULL,
+    estado_modulo ${ESTADO},${AUDITORIA_COLS},
+    CONSTRAINT ck_cirad_tiempos CHECK (tiempo_cec_min IS NULL OR tiempo_cec_min >= 0),
+    CONSTRAINT ck_cirad_clamp CHECK (tiempo_clamp_min IS NULL OR (tiempo_cec_min IS NOT NULL AND tiempo_clamp_min >= 0 AND tiempo_clamp_min <= tiempo_cec_min)),
+    FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id),
+    ${opcion('implante_id')}, ${opcion('complicacion_intraqx_id')}
+  )`,
+  `CREATE TABLE IF NOT EXISTS cirugias_adultos_procedimientos (
+    id CHAR(36) PRIMARY KEY,
+    cirugia_id CHAR(36) NOT NULL,
+    procedimiento_id CHAR(36) NOT NULL,
+    orden TINYINT NOT NULL,
+    CONSTRAINT ck_cpad_orden CHECK (orden IN (1,2,3)),
+    UNIQUE KEY uq_cirugiaad_orden (cirugia_id, orden),
+    UNIQUE KEY uq_cirugiaad_procedimiento (cirugia_id, procedimiento_id),
+    FOREIGN KEY (cirugia_id) REFERENCES cirugias_adultos(id),
+    ${opcion('procedimiento_id')}
+  )`,
+  `CREATE TABLE IF NOT EXISTS postoperatorio_adultos (
+    id CHAR(36) PRIMARY KEY,
+    paciente_id CHAR(36) NOT NULL UNIQUE,
+    unidad_pop_id CHAR(36) NULL,
+    horas_ventilacion_mecanica INT NULL,
+    complicacion_pop_id CHAR(36) NULL,
+    fecha_traslado_intermedio DATE NULL,
+    dias_estancia_uci INT NULL,
+    fecha_salida DATE NULL,
+    dias_hospitalizacion_total INT NULL,
+    condicion_salida_id CHAR(36) NULL,
+    estado_modulo ${ESTADO},${AUDITORIA_COLS},
+    CONSTRAINT ck_popad_horas CHECK (horas_ventilacion_mecanica IS NULL OR horas_ventilacion_mecanica >= 0),
+    CONSTRAINT ck_popad_dias_uci CHECK (dias_estancia_uci IS NULL OR dias_estancia_uci >= 0),
+    CONSTRAINT ck_popad_dias_hosp CHECK (dias_hospitalizacion_total IS NULL OR dias_hospitalizacion_total >= 0),
+    CONSTRAINT ck_popad_fechas CHECK (fecha_traslado_intermedio IS NULL OR fecha_salida IS NULL OR fecha_salida >= fecha_traslado_intermedio),
+    FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id),
+    ${opcion('unidad_pop_id')}, ${opcion('complicacion_pop_id')}, ${opcion('condicion_salida_id')}
+  )`,
+  `CREATE TABLE IF NOT EXISTS seguimientos_adultos (
+    id CHAR(36) PRIMARY KEY,
+    paciente_id CHAR(36) NOT NULL UNIQUE,
+    no_aplica BOOLEAN NOT NULL DEFAULT false,
+    fecha_control_cirugia DATE NULL,
+    rehabilitacion_cardiaca ENUM('SI','NO','NA') NULL,
+    estado_herida_id CHAR(36) NULL,
+    llamado_15_dias ENUM('SI','NO') NULL,
+    persona_recibe_llamada VARCHAR(255) NULL,
+    reingreso_30_dias ENUM('SI','NO') NULL,
+    fecha_reingreso DATE NULL,
+    causa_reingreso_id CHAR(36) NULL,
+    observaciones TEXT NULL,
+    estado_modulo ${ESTADO},${AUDITORIA_COLS},
+    CONSTRAINT ck_segad_reingreso CHECK (reingreso_30_dias IS NULL OR reingreso_30_dias <> 'SI' OR (fecha_reingreso IS NOT NULL AND causa_reingreso_id IS NOT NULL)),
+    FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id),
+    ${opcion('estado_herida_id')}, ${opcion('causa_reingreso_id')}
+  )`,
 ]
 
 // Columnas y restricciones que se agregaron después de la creación inicial de las tablas: `CREATE TABLE
