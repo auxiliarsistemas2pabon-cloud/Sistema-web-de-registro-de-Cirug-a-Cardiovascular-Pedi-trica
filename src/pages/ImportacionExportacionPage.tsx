@@ -8,6 +8,7 @@ import { Tarjeta } from '../components/Tarjeta'
 import { IconoBajar, IconoDocumento } from '../components/iconos'
 import { ENCABEZADOS_EXPORTACION, ENCABEZADOS_EXPORTACION_ADULTOS } from '../lib/importacion'
 import { api } from '../lib/api'
+import { useGrupoActivo } from '../lib/grupoActivo'
 
 type FilaExportacion = Record<string, string | number | boolean | null>
 type Encabezados = readonly (readonly [string, string])[]
@@ -64,8 +65,12 @@ const obtenerFilasPediatricos = () => api.get<FilaExportacion[]>('/exportacion/p
 const obtenerFilasAdultos = () => api.get<FilaExportacion[]>('/exportacion/pacientes-adultos')
 
 export function ImportacionExportacionPage() {
-  const [incluirPediatricos, setIncluirPediatricos] = useState(true)
-  const [incluirAdultos, setIncluirAdultos] = useState(true)
+  // Al entrar a esta página se preselecciona el grupo que se estaba viendo (Pediátricos o
+  // Adultos, según la última pestaña del menú visitada) — igual se puede marcar el otro, o los
+  // dos, antes de exportar.
+  const { grupo } = useGrupoActivo()
+  const [incluirPediatricos, setIncluirPediatricos] = useState(() => grupo === 'pediatricos')
+  const [incluirAdultos, setIncluirAdultos] = useState(() => grupo === 'adultos')
   const [exportando, setExportando] = useState(false)
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)

@@ -10,6 +10,7 @@ import { IconoAdultos, IconoAlerta, IconoCorazon, IconoEscudo, IconoGrafico, Ico
 import { TarjetaKpi } from '../components/TarjetaKpi'
 import { api } from '../lib/api'
 import { hoyIso } from '../lib/fechas'
+import { useGrupoActivo, type GrupoActivo } from '../lib/grupoActivo'
 
 const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
 
@@ -22,8 +23,6 @@ function haceMeses(meses: number): string {
 function inicioDeAnio(): string {
   return `${new Date().getFullYear()}-01-01`
 }
-
-type Grupo = 'pediatricos' | 'adultos'
 
 interface Resumen {
   total_cirugias: number
@@ -47,7 +46,7 @@ interface Resumen {
 /** El módulo pediátrico clasifica el riesgo con RACHS-1 (categórico, I a VI); el de adultos con
  * EuroSCORE (un porcentaje continuo), así que cada grupo trae su propio desglose de riesgo con su
  * propia etiqueta — no son el mismo gráfico con datos distintos, son dos escalas distintas. */
-function useIndicadores(grupo: Grupo, desde: string, hasta: string) {
+function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string) {
   return useQuery({
     queryKey: ['indicadores', grupo, desde, hasta],
     queryFn: async () => {
@@ -90,7 +89,7 @@ function num(v: number | null | undefined, decimales = 1): string {
 type Preset = '30' | 'anio' | 'todo' | 'personalizado'
 
 export function IndicadoresPage() {
-  const [grupo, setGrupo] = useState<Grupo>('pediatricos')
+  const { grupo, setGrupo } = useGrupoActivo()
   const [desde, setDesde] = useState(haceMeses(12))
   const [hasta, setHasta] = useState(hoyIso())
   const [preset, setPreset] = useState<Preset>('personalizado')
