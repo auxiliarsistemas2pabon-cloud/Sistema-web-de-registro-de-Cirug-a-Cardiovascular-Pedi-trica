@@ -21,6 +21,7 @@ import {
   DropdownMenuTrigger,
 } from '../components/ui/dropdown-menu'
 import { useAlertas } from '../hooks/useAlertas'
+import { GrupoActivoProvider, useGrupoActivo } from '../lib/grupoActivo'
 import type { Rol } from '../types/db'
 
 interface Enlace {
@@ -53,9 +54,11 @@ function iniciales(nombreCompleto: string | undefined) {
   return ((partes[0]?.[0] ?? '') + (partes[1]?.[0] ?? '')).toUpperCase()
 }
 
-/** Contador de alertas activas junto a la pestaña: rojo si alguna ya está vencida. */
+/** Contador de alertas activas junto a la pestaña: rojo si alguna ya está vencida. Cuenta las del
+ * grupo activo (pediátricos/adultos), igual que lo que se ve al entrar a Alertas de seguimiento. */
 function ContadorAlertas() {
-  const { data: alertas } = useAlertas()
+  const { grupo } = useGrupoActivo()
+  const { data: alertas } = useAlertas(grupo)
   const total = alertas?.length ?? 0
   if (total === 0) return null
   const vencidas = alertas?.filter((a) => a.dias_desde_referencia > 0).length ?? 0
@@ -93,6 +96,7 @@ export function AppShell() {
   const rol = perfil ? rolEtiqueta[perfil.rol] : ''
 
   return (
+    <GrupoActivoProvider>
     <div className="min-h-screen bg-[var(--lienzo)]">
       <header ref={refEncabezado} className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
         {/* Franja institucional (gris / azul oscuro / azul claro del manual de marca). Va en el
@@ -193,5 +197,6 @@ export function AppShell() {
         <Outlet />
       </main>
     </div>
+    </GrupoActivoProvider>
   )
 }

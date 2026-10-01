@@ -5,7 +5,8 @@ import { useAlertas, type Alerta } from '../hooks/useAlertas'
 import { Cargando, MensajeError } from '../components/Estados'
 import { Badge } from '../components/ui/badge'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
-import { IconoCampana } from '../components/iconos'
+import { IconoAdultos, IconoCampana, IconoPacientes } from '../components/iconos'
+import { useGrupoActivo } from '../lib/grupoActivo'
 
 /** Iniciales para el avatar circular (mismo criterio que el AppShell). */
 function iniciales(nombreCompleto: string) {
@@ -53,7 +54,7 @@ function IconoCheck() {
   )
 }
 
-function Seccion({ titulo, icono, alertas }: { titulo: string; icono: ReactNode; alertas: Alerta[] }) {
+function Seccion({ titulo, icono, alertas, rutaBase }: { titulo: string; icono: ReactNode; alertas: Alerta[]; rutaBase: string }) {
   return (
     <div className="overflow-clip rounded-xl border border-slate-200/80 bg-white shadow-[var(--sombra-tarjeta)]">
       <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3.5">
@@ -77,7 +78,7 @@ function Seccion({ titulo, icono, alertas }: { titulo: string; icono: ReactNode;
             return (
               <li key={`${a.paciente_id}-${a.tipo_alerta}`}>
                 <Link
-                  to={`/pacientes/${a.paciente_id}`}
+                  to={`${rutaBase}/${a.paciente_id}`}
                   className={`flex items-center gap-3 border-l-4 px-4 py-3 transition-colors hover:bg-slate-50 sm:gap-4 sm:px-5 ${
                     vencida ? 'border-red-400' : 'border-amber-400'
                   }`}
@@ -108,11 +109,15 @@ function Seccion({ titulo, icono, alertas }: { titulo: string; icono: ReactNode;
   )
 }
 
-export function AlertasPage() {
-  const { data: alertas, isLoading, error } = useAlertas()
+const claseGrupo = (activo: boolean) =>
+  `flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+    activo ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
+  }`
 
-  if (isLoading) return <Cargando />
-  if (error) return <MensajeError>No se pudieron cargar las alertas.</MensajeError>
+export function AlertasPage() {
+  const { grupo, setGrupo } = useGrupoActivo()
+  const { data: alertas, isLoading, error } = useAlertas(grupo)
+  const rutaBase = grupo === 'adultos' ? '/adultos' : '/pacientes'
 
   const llamadas = alertas?.filter((a) => a.tipo_alerta === 'llamada_15_dias') ?? []
   const altas = alertas?.filter((a) => a.tipo_alerta === 'seguimiento_pendiente_alta') ?? []
@@ -125,13 +130,34 @@ export function AlertasPage() {
         icono={<IconoCampana className="h-5 w-5" />}
         titulo="Alertas de seguimiento"
         subtitulo={
-          total === 0
-            ? 'No hay alertas pendientes.'
-            : `${total} ${total === 1 ? 'alerta activa' : 'alertas activas'}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}.`
+          isLoading
+            ? undefined
+            : total === 0
+              ? 'No hay alertas pendientes.'
+              : `${total} ${total === 1 ? 'alerta activa' : 'alertas activas'}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}.`
         }
       />
-      <Seccion titulo="Llamada de los 15 días pendiente o vencida" icono={<IconoTelefono />} alertas={llamadas} />
-      <Seccion titulo="Alta hace menos de 30 días sin seguimiento completo" icono={<IconoCalendario />} alertas={altas} />
+
+      <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1 w-fit">
+        <button type="button" onClick={() => setGrupo('pediatricos')} className={claseGrupo(grupo === 'pediatricos')}>
+          <IconoPacientes className="h-4 w-4" />
+          Pediátricos
+        </button>
+        <button type="button" onClick={() => setGrupo('adultos')} className={claseGrupo(grupo === 'adultos')}>
+          <IconoAdultos className="h-4 w-4" />
+          Adultos
+        </button>
+      </div>
+
+      {isLoading && <Cargando />}
+      {error && <MensajeError>No se pudieron cargar las alertas.</MensajeError>}
+
+      {!isLoading && !error && (
+        <>
+          <Seccion titulo="Llamada de los 15 días pendiente o vencida" icono={<IconoTelefono />} alertas={llamadas} rutaBase={rutaBase} />
+          <Seccion titulo="Alta hace menos de 30 días sin seguimiento completo" icono={<IconoCalendario />} alertas={altas} rutaBase={rutaBase} />
+        </>
+      )}
     </div>
   )
 }

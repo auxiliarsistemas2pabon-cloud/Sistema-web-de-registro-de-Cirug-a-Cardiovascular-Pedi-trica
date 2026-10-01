@@ -32,6 +32,32 @@ rutasAlertas.get('/', asincrono(async (_req, res) => {
   res.json(filas)
 }))
 
+// El módulo de adultos no guarda una fecha de llamada (solo Sí/No en llamado_15_dias, ver
+// server/schema.mjs), así que la "fecha de referencia" del recordatorio se calcula como
+// fecha_salida + 15 días en vez de leerse de una columna — mismo criterio que el pediátrico
+// (recordar la llamada de los 15 días hasta que quede confirmada), con el dato que sí existe.
+rutasAlertas.get('/adultos', asincrono(async (_req, res) => {
+  const hoy = hoyBogota()
+  const filas = await todas(pool, `
+    SELECT p.id AS paciente_id, p.numero_paciente, p.nombre_completo, p.identificacion,
+           'llamada_15_dias' AS tipo_alerta, DATE_ADD(po.fecha_salida, INTERVAL 15 DAY) AS fecha_referencia,
+           DATEDIFF(?, DATE_ADD(po.fecha_salida, INTERVAL 15 DAY)) AS dias_desde_referencia
+    FROM pacientes_adultos p
+    JOIN postoperatorio_adultos po ON po.paciente_id = p.id
+    JOIN seguimientos_adultos s ON s.paciente_id = p.id
+    WHERE p.eliminado = 0 AND s.no_aplica = 0 AND (s.llamado_15_dias IS NULL OR s.llamado_15_dias <> 'SI') AND po.fecha_salida IS NOT NULL
+    UNION ALL
+    SELECT p.id, p.numero_paciente, p.nombre_completo, p.identificacion,
+           'seguimiento_pendiente_alta', po.fecha_salida, DATEDIFF(?, po.fecha_salida)
+    FROM pacientes_adultos p
+    JOIN postoperatorio_adultos po ON po.paciente_id = p.id
+    JOIN seguimientos_adultos s ON s.paciente_id = p.id
+    WHERE p.eliminado = 0 AND s.no_aplica = 0 AND s.estado_modulo <> 'completo'
+      AND po.fecha_salida IS NOT NULL AND po.fecha_salida >= DATE_SUB(?, INTERVAL 30 DAY)
+    ORDER BY dias_desde_referencia DESC`, [hoy, hoy, hoy])
+  res.json(filas)
+}))
+
 // ---------------------------------------------------------------------------------------------
 // Indicadores (las medianas se calculan aquí: MySQL no tiene percentile_cont)
 // ---------------------------------------------------------------------------------------------
