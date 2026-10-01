@@ -237,7 +237,7 @@ export function PacientesListaPage() {
     <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
       <EncabezadoPagina
         icono={<IconoPacientes className="h-6 w-6" />}
-        titulo="Pacientes"
+        titulo="Pacientes pediátricos"
         subtitulo="Registro y seguimiento de las fichas de cirugía cardiovascular pediátrica."
         acciones={
           puedeCrear && (

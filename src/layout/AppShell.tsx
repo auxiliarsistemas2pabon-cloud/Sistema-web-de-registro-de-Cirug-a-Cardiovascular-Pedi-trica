@@ -32,7 +32,7 @@ interface Enlace {
 }
 
 const enlaces: Enlace[] = [
-  { to: '/pacientes', etiqueta: 'Pacientes', icono: IconoPacientes },
+  { to: '/pacientes', etiqueta: 'Pediátricos', icono: IconoPacientes },
   { to: '/adultos', etiqueta: 'Adultos', icono: IconoAdultos },
   { to: '/alertas', etiqueta: 'Alertas de seguimiento', icono: IconoCampana },
   { to: '/indicadores', etiqueta: 'Indicadores', icono: IconoGrafico },
