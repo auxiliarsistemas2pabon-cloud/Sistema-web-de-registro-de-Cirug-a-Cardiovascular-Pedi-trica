@@ -6,7 +6,7 @@ import { Cargando, MensajeError } from '../components/Estados'
 import { GraficoBarras } from '../components/GraficoBarras'
 import { GraficoBarrasTiempo } from '../components/GraficoBarrasTiempo'
 import { Tarjeta } from '../components/Tarjeta'
-import { IconoAdultos, IconoAlerta, IconoCorazon, IconoEscudo, IconoGrafico, IconoPacientes, IconoRegresar } from '../components/iconos'
+import { IconoAlerta, IconoCorazon, IconoEscudo, IconoGrafico, IconoRegresar } from '../components/iconos'
 import { TarjetaKpi } from '../components/TarjetaKpi'
 import { api } from '../lib/api'
 import { hoyIso } from '../lib/fechas'
@@ -89,7 +89,7 @@ function num(v: number | null | undefined, decimales = 1): string {
 type Preset = '30' | 'anio' | 'todo' | 'personalizado'
 
 export function IndicadoresPage() {
-  const { grupo, setGrupo } = useGrupoActivo()
+  const { grupo } = useGrupoActivo()
   const [desde, setDesde] = useState(haceMeses(12))
   const [hasta, setHasta] = useState(hoyIso())
   const [preset, setPreset] = useState<Preset>('personalizado')
@@ -108,34 +108,19 @@ export function IndicadoresPage() {
       activo ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
     }`
 
-  const claseGrupo = (activo: boolean) =>
-    `flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-      activo ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
-    }`
-
   const tituloRiesgo = grupo === 'adultos' ? 'categoría de riesgo EuroSCORE' : 'RACHS-1'
+  const etiquetaGrupo = grupo === 'adultos' ? 'pacientes adultos' : 'pacientes pediátricos'
 
   return (
     <div>
       <EncabezadoPagina
         icono={<IconoGrafico className="h-5 w-5" />}
         titulo="Tablero de indicadores"
-        subtitulo="Cirugías, mortalidad, complicaciones y tiempos, filtrables por grupo y por fecha de cirugía."
+        subtitulo={`Cirugías, mortalidad, complicaciones y tiempos de ${etiquetaGrupo}, filtrables por fecha de cirugía.`}
       />
 
       <Tarjeta className="mb-6">
         <div className="flex flex-wrap items-center gap-3 p-4">
-          <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1">
-            <button type="button" onClick={() => setGrupo('pediatricos')} className={claseGrupo(grupo === 'pediatricos')}>
-              <IconoPacientes className="h-4 w-4" />
-              Pediátricos
-            </button>
-            <button type="button" onClick={() => setGrupo('adultos')} className={claseGrupo(grupo === 'adultos')}>
-              <IconoAdultos className="h-4 w-4" />
-              Adultos
-            </button>
-          </div>
-          <span className="h-6 w-px flex-none bg-slate-200" aria-hidden />
           <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1">
             <button type="button" onClick={() => aplicarPreset('30')} className={clasePreset(preset === '30')}>
               Últimos 30 días
