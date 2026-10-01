@@ -5,7 +5,7 @@ import { useAlertas, type Alerta } from '../hooks/useAlertas'
 import { Cargando, MensajeError } from '../components/Estados'
 import { Badge } from '../components/ui/badge'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
-import { IconoAdultos, IconoCampana, IconoPacientes } from '../components/iconos'
+import { IconoCampana } from '../components/iconos'
 import { useGrupoActivo } from '../lib/grupoActivo'
 
 /** Iniciales para el avatar circular (mismo criterio que el AppShell). */
@@ -109,15 +109,11 @@ function Seccion({ titulo, icono, alertas, rutaBase }: { titulo: string; icono: 
   )
 }
 
-const claseGrupo = (activo: boolean) =>
-  `flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-    activo ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
-  }`
-
 export function AlertasPage() {
-  const { grupo, setGrupo } = useGrupoActivo()
+  const { grupo } = useGrupoActivo()
   const { data: alertas, isLoading, error } = useAlertas(grupo)
   const rutaBase = grupo === 'adultos' ? '/adultos' : '/pacientes'
+  const etiquetaGrupo = grupo === 'adultos' ? 'pacientes adultos' : 'pacientes pediátricos'
 
   const llamadas = alertas?.filter((a) => a.tipo_alerta === 'llamada_15_dias') ?? []
   const altas = alertas?.filter((a) => a.tipo_alerta === 'seguimiento_pendiente_alta') ?? []
@@ -133,21 +129,10 @@ export function AlertasPage() {
           isLoading
             ? undefined
             : total === 0
-              ? 'No hay alertas pendientes.'
-              : `${total} ${total === 1 ? 'alerta activa' : 'alertas activas'}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}.`
+              ? `No hay alertas pendientes de ${etiquetaGrupo}.`
+              : `${total} ${total === 1 ? 'alerta activa' : 'alertas activas'} de ${etiquetaGrupo}${vencidas > 0 ? `, ${vencidas} ${vencidas === 1 ? 'vencida' : 'vencidas'}` : ''}.`
         }
       />
-
-      <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1 w-fit">
-        <button type="button" onClick={() => setGrupo('pediatricos')} className={claseGrupo(grupo === 'pediatricos')}>
-          <IconoPacientes className="h-4 w-4" />
-          Pediátricos
-        </button>
-        <button type="button" onClick={() => setGrupo('adultos')} className={claseGrupo(grupo === 'adultos')}>
-          <IconoAdultos className="h-4 w-4" />
-          Adultos
-        </button>
-      </div>
 
       {isLoading && <Cargando />}
       {error && <MensajeError>No se pudieron cargar las alertas.</MensajeError>}

@@ -1,6 +1,6 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { claseBotonPrimario, claseBotonSecundario } from '../components/Campo'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
 import { MensajeError, MensajeExito } from '../components/Estados'
@@ -65,12 +65,18 @@ const obtenerFilasPediatricos = () => api.get<FilaExportacion[]>('/exportacion/p
 const obtenerFilasAdultos = () => api.get<FilaExportacion[]>('/exportacion/pacientes-adultos')
 
 export function ImportacionExportacionPage() {
-  // Al entrar a esta página se preselecciona el grupo que se estaba viendo (Pediátricos o
-  // Adultos, según la última pestaña del menú visitada) — igual se puede marcar el otro, o los
-  // dos, antes de exportar.
+  // Las casillas se ponen solas según el grupo activo del menú (Pediátricos o Adultos) — no solo
+  // al entrar a la página, sino cada vez que ese grupo cambia — pero se pueden ajustar a mano (o
+  // marcar los dos) antes de exportar, sin que ese ajuste manual se pierda mientras el grupo activo
+  // no vuelva a cambiar.
   const { grupo } = useGrupoActivo()
-  const [incluirPediatricos, setIncluirPediatricos] = useState(() => grupo === 'pediatricos')
-  const [incluirAdultos, setIncluirAdultos] = useState(() => grupo === 'adultos')
+  const [incluirPediatricos, setIncluirPediatricos] = useState(grupo === 'pediatricos')
+  const [incluirAdultos, setIncluirAdultos] = useState(grupo === 'adultos')
+
+  useEffect(() => {
+    setIncluirPediatricos(grupo === 'pediatricos')
+    setIncluirAdultos(grupo === 'adultos')
+  }, [grupo])
   const [exportando, setExportando] = useState(false)
   const [mensaje, setMensaje] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
