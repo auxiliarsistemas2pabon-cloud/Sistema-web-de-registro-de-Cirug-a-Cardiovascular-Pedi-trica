@@ -87,3 +87,59 @@ export interface PacienteResumen {
   condicion_salida_valor: string | null
   eliminado: boolean
 }
+
+// ---------------------------------------------------------------------------------------------
+// Módulo de adultos (pacientes de 18 años o más): mismo patrón de 5 módulos, en tablas propias.
+// Sin RACHS-1 (es una escala pediátrica); en su lugar, EuroSCORE. Un solo teléfono en vez de una
+// lista. Ver [[project-repo-setup]] y server/servicios-adultos.mjs para el resto de diferencias.
+// ---------------------------------------------------------------------------------------------
+
+export interface PacienteAdultoDetalle {
+  id: string
+  numero_paciente: number
+  nombre_completo: string
+  identificacion: string
+  sexo_id: string | null
+  fecha_nacimiento: string
+  peso_kg: number | null
+  talla_cm: number | null
+  procedencia_id: string | null
+  municipio_narino_id: string | null
+  telefono: string | null
+  eps_id: string | null
+  estado_modulo: EstadoModulo
+  eliminado: boolean
+}
+
+export interface DiagnosticoAdultoDetalle {
+  id: string
+  paciente_id: string
+  diagnostico_id: string | null
+  valvulopatia_id: string | null
+  euroscore: number | null
+  estado_modulo: EstadoModulo
+}
+
+export interface PacienteAdultoResumen {
+  paciente_id: string
+  numero_paciente: number
+  nombre_completo: string
+  identificacion: string
+  fecha_nacimiento: string
+  edad_dias: number
+  fecha_cirugia: string | null
+  edad_cirugia_dias: number | null
+  dias_uci: number | null
+  dias_hospitalizacion_posqx: number | null
+  estado_m1: EstadoModulo
+  estado_m2: EstadoModulo
+  estado_m3: EstadoModulo
+  estado_m4: EstadoModulo
+  estado_m5: EstadoModulo
+  diagnostico_valor: string | null
+  euroscore: number | null
+  eps_valor: string | null
+  procedencia_valor: string | null
+  condicion_salida_valor: string | null
+  eliminado: boolean
+}

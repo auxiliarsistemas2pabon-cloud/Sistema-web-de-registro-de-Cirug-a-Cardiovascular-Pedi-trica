@@ -21,3 +21,12 @@ export function formatearEdad(dias: number | null | undefined): string {
 export function hoyIso(): string {
   return new Date().toLocaleDateString('en-CA')
 }
+
+/** Fecha (yyyy-mm-dd) de hace exactamente `anios` años: la fecha de nacimiento más reciente que
+ * ya cumple esa edad hoy. Para el módulo de adultos, como atributo max de "fecha de nacimiento"
+ * (solo deja elegir fechas que ya son mayores de edad) y para validarlo con Zod. */
+export function edadMinimaIso(anios: number): string {
+  const limite = new Date()
+  limite.setFullYear(limite.getFullYear() - anios)
+  return limite.toLocaleDateString('en-CA')
+}

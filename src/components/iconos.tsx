@@ -21,6 +21,15 @@ export const IconoPacientes = (p: Props) =>
     p,
   )
 
+export const IconoAdultos = (p: Props) =>
+  base(
+    <>
+      <circle cx="12" cy="7.5" r="3.5" />
+      <path d="M4.5 19.5c0-4.1 3.1-6.8 7.5-6.8s7.5 2.7 7.5 6.8" strokeLinecap="round" />
+    </>,
+    p,
+  )
+
 export const IconoBuscar = (p: Props) =>
   base(
     <>

@@ -3,11 +3,14 @@ import { useOpciones } from '../hooks/useOpciones'
 interface Props {
   value: string[]
   onChange: (value: string[]) => void
+  /** Categoría de opciones_lista a usar (por defecto RIESGOS, la del módulo pediátrico). El
+   * módulo de adultos pasa RIESGOS_ADULTO: misma regla de "Ninguno" excluyente, lista distinta. */
+  categoria?: string
 }
 
-/** Chips de RIESGOS: si se marca "Ninguno" se desmarcan los demás, y viceversa. */
-export function SeleccionRiesgos({ value, onChange }: Props) {
-  const { data: opciones } = useOpciones('RIESGOS')
+/** Chips de factores de riesgo: si se marca "Ninguno" se desmarcan los demás, y viceversa. */
+export function SeleccionRiesgos({ value, onChange, categoria = 'RIESGOS' }: Props) {
+  const { data: opciones } = useOpciones(categoria)
   const ninguno = opciones?.find((o) => o.codigo === 'NINGUNO')
 
   function alternar(id: string) {

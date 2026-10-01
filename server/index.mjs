@@ -10,6 +10,7 @@ import { rutasAdmin, rutasListas } from './rutas-admin.mjs'
 import { rutasAlertas, rutasExportacion, rutasIndicadores } from './rutas-consultas.mjs'
 import { rutasImportaciones } from './rutas-importaciones.mjs'
 import { rutasPacientes } from './rutas-pacientes.mjs'
+import { rutasPacientesAdultos } from './rutas-pacientes-adultos.mjs'
 import { inicializarBase } from './schema.mjs'
 
 const app = express()
@@ -29,6 +30,7 @@ app.get('/api/salud', (_req, res) => res.json({ ok: true }))
 app.use('/api/auth', rutasAuth)
 app.use('/api/listas', autenticar, rutasListas)
 app.use('/api/pacientes', autenticar, rutasPacientes)
+app.use('/api/pacientes-adultos', autenticar, rutasPacientesAdultos)
 app.use('/api/alertas', autenticar, rutasAlertas)
 app.use('/api/indicadores', autenticar, rutasIndicadores)
 app.use('/api/exportacion', autenticar, rutasExportacion)
