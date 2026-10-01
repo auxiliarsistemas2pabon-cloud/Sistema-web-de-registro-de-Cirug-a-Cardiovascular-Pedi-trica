@@ -516,3 +516,24 @@ export const ENCABEZADOS_EXPORTACION = [
   ['persona_recibe_llamada', 'Persona que recibe la llamada'], ['reingreso_30_dias', 'Reingreso a la institución en los primeros 30 días'],
   ['fecha_reingreso', 'Fecha de reingreso'], ['causa_reingreso', 'Causa de reingreso'], ['observaciones', 'Observaciones'],
 ] as const
+
+// Mismo formato plano que ENCABEZADOS_EXPORTACION, para el módulo de adultos: sin RACHS-1 (es
+// pediátrico) pero con EuroSCORE; un solo teléfono en vez de una lista; "Llamado 15 días" (Sí/No)
+// en vez de una fecha de llamada; y días de estancia en UCI/hospitalización propios (en el módulo
+// de adultos se escriben a mano, no se calculan). Ver server/rutas-pacientes-adultos.mjs.
+export const ENCABEZADOS_EXPORTACION_ADULTOS = [
+  ['numero_paciente', 'N° paciente'], ['nombre_completo', 'Nombre completo'], ['identificacion', 'Identificación'], ['sexo', 'Sexo'],
+  ['fecha_nacimiento', 'Fecha de nacimiento'], ['peso_kg', 'Peso (kg)'], ['talla_cm', 'Talla (cm)'], ['procedencia', 'Procedencia'],
+  ['municipio_narino', 'Municipio de Nariño'], ['telefono', 'Teléfono'], ['eps', 'EPS'],
+  ['diagnostico', 'Diagnóstico'], ['valvulopatia', 'Tipo de valvulopatía'], ['euroscore', 'Escala EuroSCORE (%)'], ['riesgos', 'Factores de riesgo'],
+  ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'], ['uso_cec', 'Uso de CEC'],
+  ['tiempo_cec_min', 'Tiempo CEC (min)'], ['tiempo_clamp_min', 'Tiempo clamp (min)'], ['complicacion_intraqx', 'Complicación intraquirúrgica'],
+  ['cierre_esternal_diferido', 'Cierre esternal diferido'], ['extubacion_quirofano', 'Extubación en quirófano'], ['unidad_pop', 'Unidad postoperatoria'],
+  ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica'], ['complicacion_pop', 'Complicación postoperatoria'],
+  ['fecha_traslado_intermedio', 'Fecha de traslado a intermedio'], ['dias_estancia_uci', 'Días de estancia en UCI'],
+  ['fecha_salida', 'Fecha de salida'], ['dias_hospitalizacion_total', 'Días totales de hospitalización'], ['condicion_salida', 'Condición de salida'],
+  ['fecha_control_cirugia', 'Fecha de control por cirugía cardiovascular'], ['rehabilitacion_cardiaca', 'Terapia de rehabilitación cardíaca'],
+  ['estado_herida', 'Estado de la herida quirúrgica'], ['llamado_15_dias', 'Llamado 15 días'],
+  ['persona_recibe_llamada', 'Persona que recibe la llamada'], ['reingreso_30_dias', 'Reingreso a la institución en los primeros 30 días'],
+  ['fecha_reingreso', 'Fecha de reingreso'], ['causa_reingreso', 'Causa de reingreso'], ['observaciones', 'Observaciones'],
+] as const

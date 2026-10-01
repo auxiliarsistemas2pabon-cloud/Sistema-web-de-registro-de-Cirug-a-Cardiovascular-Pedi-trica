@@ -6,7 +6,7 @@ import { Cargando, MensajeError } from '../components/Estados'
 import { GraficoBarras } from '../components/GraficoBarras'
 import { GraficoBarrasTiempo } from '../components/GraficoBarrasTiempo'
 import { Tarjeta } from '../components/Tarjeta'
-import { IconoAlerta, IconoCorazon, IconoEscudo, IconoGrafico, IconoRegresar } from '../components/iconos'
+import { IconoAdultos, IconoAlerta, IconoCorazon, IconoEscudo, IconoGrafico, IconoPacientes, IconoRegresar } from '../components/iconos'
 import { TarjetaKpi } from '../components/TarjetaKpi'
 import { api } from '../lib/api'
 import { hoyIso } from '../lib/fechas'
@@ -23,6 +23,8 @@ function inicioDeAnio(): string {
   return `${new Date().getFullYear()}-01-01`
 }
 
+type Grupo = 'pediatricos' | 'adultos'
+
 interface Resumen {
   total_cirugias: number
   mortalidad_hospitalaria_pct: number | null
@@ -37,28 +39,42 @@ interface Resumen {
   tasa_reingreso_30d_pct: number | null
   tiempo_cec_promedio: number | null
   tiempo_clamp_promedio: number | null
+  // Solo en el grupo adultos.
+  euroscore_promedio?: number | null
+  euroscore_mediana?: number | null
 }
 
-function useIndicadores(desde: string, hasta: string) {
+/** El módulo pediátrico clasifica el riesgo con RACHS-1 (categórico, I a VI); el de adultos con
+ * EuroSCORE (un porcentaje continuo), así que cada grupo trae su propio desglose de riesgo con su
+ * propia etiqueta — no son el mismo gráfico con datos distintos, son dos escalas distintas. */
+function useIndicadores(grupo: Grupo, desde: string, hasta: string) {
   return useQuery({
-    queryKey: ['indicadores', desde, hasta],
+    queryKey: ['indicadores', grupo, desde, hasta],
     queryFn: async () => {
+      const ruta = grupo === 'adultos' ? '/indicadores/adultos' : '/indicadores'
       const r = await api.get<{
         resumen: Resumen
         por_mes: { anio: number; mes: number; total_cirugias: number }[]
         por_diagnostico: { diagnostico: string; total_cirugias: number }[]
         por_procedimiento: { procedimiento: string; total_cirugias: number }[]
-        por_rachs: { rachs: string; total_cirugias: number; mortalidad_pct: number }[]
+        por_rachs?: { rachs: string; total_cirugias: number; mortalidad_pct: number }[]
+        por_euroscore?: { categoria: string; total_cirugias: number; mortalidad_pct: number }[]
         por_eps: { eps: string; total_cirugias: number }[]
         por_procedencia: { procedencia: string; total_cirugias: number }[]
-      }>(`/indicadores?desde=${desde}&hasta=${hasta}`)
+      }>(`${ruta}?desde=${desde}&hasta=${hasta}`)
       return {
         resumen: r.resumen,
         porMes: r.por_mes.map((d) => ({ etiqueta: `${MESES[d.mes]} ${d.anio}`, valor: d.total_cirugias })),
         porDiagnostico: r.por_diagnostico.map((d) => ({ etiqueta: d.diagnostico, valor: d.total_cirugias })),
         porProcedimiento: r.por_procedimiento.map((d) => ({ etiqueta: d.procedimiento, valor: d.total_cirugias })),
-        porRachsTotal: r.por_rachs.map((d) => ({ etiqueta: `RACHS ${d.rachs}`, valor: d.total_cirugias })),
-        porRachsMortalidad: r.por_rachs.map((d) => ({ etiqueta: `RACHS ${d.rachs}`, valor: d.mortalidad_pct ?? 0 })),
+        porRiesgoTotal: (r.por_rachs ?? r.por_euroscore ?? []).map((d) => ({
+          etiqueta: 'rachs' in d ? `RACHS ${d.rachs}` : d.categoria,
+          valor: d.total_cirugias,
+        })),
+        porRiesgoMortalidad: (r.por_rachs ?? r.por_euroscore ?? []).map((d) => ({
+          etiqueta: 'rachs' in d ? `RACHS ${d.rachs}` : d.categoria,
+          valor: d.mortalidad_pct ?? 0,
+        })),
         porEps: r.por_eps.map((d) => ({ etiqueta: d.eps, valor: d.total_cirugias })),
         porProcedencia: r.por_procedencia.map((d) => ({ etiqueta: d.procedencia, valor: d.total_cirugias })),
       }
@@ -66,7 +82,7 @@ function useIndicadores(desde: string, hasta: string) {
   })
 }
 
-function num(v: number | null, decimales = 1): string {
+function num(v: number | null | undefined, decimales = 1): string {
   if (v === null || v === undefined) return '—'
   return v.toFixed(decimales)
 }
@@ -74,10 +90,11 @@ function num(v: number | null, decimales = 1): string {
 type Preset = '30' | 'anio' | 'todo' | 'personalizado'
 
 export function IndicadoresPage() {
+  const [grupo, setGrupo] = useState<Grupo>('pediatricos')
   const [desde, setDesde] = useState(haceMeses(12))
   const [hasta, setHasta] = useState(hoyIso())
   const [preset, setPreset] = useState<Preset>('personalizado')
-  const { data, isLoading, error } = useIndicadores(desde, hasta)
+  const { data, isLoading, error } = useIndicadores(grupo, desde, hasta)
 
   function aplicarPreset(valor: Preset) {
     setPreset(valor)
@@ -92,16 +109,34 @@ export function IndicadoresPage() {
       activo ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
     }`
 
+  const claseGrupo = (activo: boolean) =>
+    `flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+      activo ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
+    }`
+
+  const tituloRiesgo = grupo === 'adultos' ? 'categoría de riesgo EuroSCORE' : 'RACHS-1'
+
   return (
     <div>
       <EncabezadoPagina
         icono={<IconoGrafico className="h-5 w-5" />}
         titulo="Tablero de indicadores"
-        subtitulo="Cirugías, mortalidad, complicaciones y tiempos, filtrables por fecha de cirugía."
+        subtitulo="Cirugías, mortalidad, complicaciones y tiempos, filtrables por grupo y por fecha de cirugía."
       />
 
       <Tarjeta className="mb-6">
         <div className="flex flex-wrap items-center gap-3 p-4">
+          <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1">
+            <button type="button" onClick={() => setGrupo('pediatricos')} className={claseGrupo(grupo === 'pediatricos')}>
+              <IconoPacientes className="h-4 w-4" />
+              Pediátricos
+            </button>
+            <button type="button" onClick={() => setGrupo('adultos')} className={claseGrupo(grupo === 'adultos')}>
+              <IconoAdultos className="h-4 w-4" />
+              Adultos
+            </button>
+          </div>
+          <span className="h-6 w-px flex-none bg-slate-200" aria-hidden />
           <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1">
             <button type="button" onClick={() => aplicarPreset('30')} className={clasePreset(preset === '30')}>
               Últimos 30 días
@@ -200,6 +235,13 @@ export function IndicadoresPage() {
                   <td className="py-2 font-medium tabular-nums">{num(data.resumen.tiempo_clamp_promedio)}</td>
                   <td className="py-2 text-slate-400">—</td>
                 </tr>
+                {grupo === 'adultos' && (
+                  <tr>
+                    <td className="py-2">EuroSCORE (%)</td>
+                    <td className="py-2 font-medium tabular-nums">{num(data.resumen.euroscore_promedio, 2)}</td>
+                    <td className="py-2 font-medium tabular-nums">{num(data.resumen.euroscore_mediana, 2)}</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </Tarjeta>
@@ -209,11 +251,11 @@ export function IndicadoresPage() {
           </Tarjeta>
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Tarjeta titulo="Cirugías por RACHS-1">
-              <GraficoBarras datos={data.porRachsTotal} />
+            <Tarjeta titulo={`Cirugías por ${tituloRiesgo}`}>
+              <GraficoBarras datos={data.porRiesgoTotal} />
             </Tarjeta>
-            <Tarjeta titulo="Mortalidad por RACHS-1 (%)">
-              <GraficoBarras datos={data.porRachsMortalidad} color="rojo" sufijoValor="%" />
+            <Tarjeta titulo={`Mortalidad por ${tituloRiesgo} (%)`}>
+              <GraficoBarras datos={data.porRiesgoMortalidad} color="rojo" sufijoValor="%" />
             </Tarjeta>
           </div>
 
