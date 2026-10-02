@@ -49,7 +49,7 @@ export function LoginPage() {
   return (
     // Un solo fondo institucional (azul) para toda la pantalla: la tarjeta de acceso flota
     // sobre él, no vive en un panel aparte. Fijo en los colores de marca, sin variante oscura.
-    <div className="relative flex min-h-screen flex-col items-center justify-center gap-12 overflow-hidden bg-gradient-to-br from-[var(--pabon-azul-oscuro-2)] via-[var(--pabon-azul-oscuro)] to-[var(--pabon-azul-oscuro-2)] px-6 py-10 sm:px-10 lg:flex-row lg:items-stretch lg:justify-between lg:gap-6 lg:px-16 lg:py-14">
+    <div className="relative flex min-h-screen flex-col items-center justify-center gap-8 overflow-hidden bg-gradient-to-br from-[var(--pabon-azul-oscuro-2)] via-[var(--pabon-azul-oscuro)] to-[var(--pabon-azul-oscuro-2)] px-5 py-8 sm:gap-12 sm:px-10 sm:py-10 lg:flex-row lg:items-stretch lg:justify-between lg:gap-6 lg:px-16 lg:py-14">
       <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
       <div aria-hidden className="pointer-events-none absolute -bottom-32 -left-20 h-80 w-80 rounded-full bg-black/20 blur-3xl" />
       <svg
@@ -69,8 +69,9 @@ export function LoginPage() {
         />
       </svg>
 
-      {/* Columna izquierda: marca y mensaje institucional */}
-      <div className="animate-in fade-in-0 slide-in-from-left-6 relative z-10 flex w-full min-w-0 max-w-xl flex-col items-center gap-10 text-center text-white duration-700 lg:max-w-3xl lg:flex-1 lg:items-start lg:justify-between lg:gap-0 lg:py-2 lg:text-left">
+      {/* Columna izquierda: marca y mensaje institucional. En el celular se compacta (sin la
+          ilustración) para que el formulario de acceso quede a la vista sin tener que desplazarse. */}
+      <div className="animate-in fade-in-0 slide-in-from-left-6 relative z-10 flex w-full min-w-0 max-w-xl flex-col items-center gap-6 text-center sm:gap-10 text-white duration-700 lg:max-w-3xl lg:flex-1 lg:items-start lg:justify-between lg:gap-0 lg:py-2 lg:text-left">
         <div className="inline-flex w-fit items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-lg sm:gap-4 sm:px-5 sm:py-4">
           <img src="/branding/clinica-pabon.jpg" alt="Clínica Pabón" className="h-9 w-auto sm:h-11" />
           <span className="h-8 w-px bg-slate-200 sm:h-9" />
@@ -85,26 +86,26 @@ export function LoginPage() {
           <img
             src="/branding/dr-wertino-pabon.png"
             alt="Ilustración del Dr. Wertino Pabón"
-            className="h-40 w-auto flex-none animate-[flotar_4s_ease-in-out_infinite] drop-shadow-xl sm:h-48 lg:h-56 xl:h-64"
+            className="hidden h-40 w-auto flex-none animate-[flotar_4s_ease-in-out_infinite] drop-shadow-xl sm:block sm:h-48 lg:h-56 xl:h-64"
           />
           {/* min-w-0: sin esto, un flex item con texto largo se niega a encogerse y en vez de
               ajustar el salto de línea se desborda por encima de la tarjeta (visible en ~1024px,
               justo donde el layout pasa de columna a fila). */}
           <div className="min-w-0 lg:flex-1">
-            <h1 className="text-4xl font-extrabold leading-[1.05] sm:text-5xl lg:text-4xl xl:text-5xl">
+            <h1 className="text-3xl font-extrabold leading-[1.05] sm:text-5xl lg:text-4xl xl:text-5xl">
               Trabajamos con el{' '}
               <span className="relative inline-block">
                 corazón
                 <span aria-hidden className="absolute inset-x-0 bottom-0.5 -z-10 h-3 rounded-full bg-[var(--pabon-azul-claro)]/50 sm:h-4" />
               </span>
             </h1>
-            <p className="mx-auto mt-4 max-w-sm text-sm text-white/90 sm:text-base lg:mx-0">
+            <p className="mx-auto mt-3 max-w-sm text-sm text-white/90 sm:mt-4 sm:text-base lg:mx-0">
               Sistema de Registro de Cirugía Cardiovascular Pediátrica.
             </p>
           </div>
         </div>
 
-        <p className="text-xs font-semibold tracking-widest text-white/70">PASTO, NARIÑO · COLOMBIA</p>
+        <p className="hidden text-xs font-semibold tracking-widest text-white/70 sm:block">PASTO, NARIÑO · COLOMBIA</p>
       </div>
 
       {/* Tarjeta de acceso: flota sobre el mismo fondo rojo, centrada verticalmente. */}
@@ -115,7 +116,7 @@ export function LoginPage() {
             <span className="flex-1 bg-[var(--pabon-azul-oscuro)]" />
             <span className="flex-1 bg-[var(--pabon-azul-claro)]" />
           </div>
-          <div className="p-8">
+          <div className="p-6 sm:p-8">
           <span className="mb-5 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--pabon-azul-oscuro)]/10 text-[var(--pabon-azul-oscuro)]">
             <IconoCorazon className="h-5 w-5" />
           </span>
@@ -193,11 +194,13 @@ export function LoginPage() {
           </button>
 
           <p className="mt-5 text-center text-xs text-slate-400">
-            Si no tienes una cuenta, solicita a el Administrador que te cree un usuario.
+            Si no tienes una cuenta, solicita al Administrador que te cree un usuario.
           </p>
           </div>
         </form>
       </div>
+
+      <p className="relative z-10 text-xs font-semibold tracking-widest text-white/70 sm:hidden">PASTO, NARIÑO · COLOMBIA</p>
     </div>
   )
 }

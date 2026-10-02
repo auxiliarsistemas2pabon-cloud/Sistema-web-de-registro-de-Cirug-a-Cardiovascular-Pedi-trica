@@ -2,11 +2,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
+import { Campo, claseInput } from '../../components/Campo'
+import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo5Adulto } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
-import { Cargando, MensajeError, AvisoSoloLectura } from '../../components/Estados'
+import { AvisoInformativo, AvisoSoloLectura, Cargando, MensajeError } from '../../components/Estados'
 
 interface SeguimientoAdultoDetalle {
   no_aplica: boolean
@@ -73,6 +74,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
   const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
 
   const { register, handleSubmit, watch, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(null),
@@ -89,29 +91,36 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
 
   if (!data?.seguimiento) {
     return (
-      <p className="text-sm text-slate-500">
-        Guarda primero el Módulo 4 (Postoperatorio, UCI y egreso) para habilitar el seguimiento.
-      </p>
+      <AvisoInformativo
+        icono={
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4">
+            <rect x="5" y="11" width="14" height="9" rx="2" />
+            <path d="M8 11V8a4 4 0 0 1 8 0v3" strokeLinecap="round" />
+          </svg>
+        }
+      >
+        Guarda primero el <strong className="font-semibold text-slate-900">Módulo 4 (Postoperatorio y egreso)</strong> para habilitar el seguimiento.
+      </AvisoInformativo>
     )
   }
 
   if (data.seguimiento.no_aplica) {
     return (
-      <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
-        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-slate-200 text-slate-400">
+      <AvisoInformativo
+        icono={
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4">
             <path d="M6 12h12" strokeLinecap="round" />
           </svg>
-        </span>
-        <span>
-          Este módulo no aplica: la condición de salida del paciente fue <strong className="font-semibold text-slate-800">Muerte</strong>.
-        </span>
-      </div>
+        }
+      >
+        Este módulo no aplica: la condición de salida del paciente fue <strong className="font-semibold text-slate-900">Muerte</strong>.
+      </AvisoInformativo>
     )
   }
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
+    setGuardadoEn(null)
     if (valores.reingreso_30_dias === 'SI' && (!valores.fecha_reingreso || !valores.causa_reingreso_id)) {
       setError('Si hubo reingreso, la fecha y la causa son obligatorias.')
       return
@@ -155,6 +164,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
       queryClient.invalidateQueries({ queryKey: ['seguimiento-adulto', pacienteId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', pacienteId] })
+      setGuardadoEn(new Date())
     } catch (causa) {
       setError(mensajeDe(causa, 'No se pudo guardar el Módulo 5.'))
     } finally {
@@ -163,76 +173,90 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Fecha de control por cirugía cardiovascular *">
-          <input type="date" {...register('fecha_control_cirugia')} className={claseInput} />
-        </Campo>
+      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+        <div className="space-y-5">
+          <SeccionFormulario titulo="Control posterior">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+              <Campo etiqueta="Fecha de control por cirugía cardiovascular *">
+                <input type="date" {...register('fecha_control_cirugia')} className={claseInput} />
+              </Campo>
 
-        <Campo etiqueta="Terapia de rehabilitación cardíaca *">
-          <select {...register('rehabilitacion_cardiaca')} className={claseInput}>
-            <option value="">Seleccione…</option>
-            <option value="SI">Sí</option>
-            <option value="NO">No</option>
-            <option value="NA">N/A</option>
-          </select>
-        </Campo>
+              <Campo etiqueta="Terapia de rehabilitación cardíaca *">
+                <select {...register('rehabilitacion_cardiaca')} className={claseInput}>
+                  <option value="">Seleccione…</option>
+                  <option value="SI">Sí</option>
+                  <option value="NO">No</option>
+                  <option value="NA">N/A</option>
+                </select>
+              </Campo>
 
-        <Campo etiqueta="Estado de la herida quirúrgica *">
-          <SelectOpciones categoria="ESTADO_HERIDA" control={control} name="estado_herida_id" />
-        </Campo>
+              <Campo etiqueta="Estado de la herida quirúrgica *" className="sm:col-span-2 lg:col-span-1">
+                <SelectOpciones categoria="ESTADO_HERIDA" control={control} name="estado_herida_id" />
+              </Campo>
+            </div>
+          </SeccionFormulario>
 
-        <Campo etiqueta="Llamado 15 días *">
-          <select {...register('llamado_15_dias')} className={claseInput}>
-            <option value="">Seleccione…</option>
-            <option value="SI">Sí</option>
-            <option value="NO">No</option>
-          </select>
-        </Campo>
+          <SeccionFormulario titulo="Llamada de los 15 días">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Campo etiqueta="Llamado 15 días *">
+                <select {...register('llamado_15_dias')} className={claseInput}>
+                  <option value="">Seleccione…</option>
+                  <option value="SI">Sí</option>
+                  <option value="NO">No</option>
+                </select>
+              </Campo>
 
-        <Campo etiqueta="Persona que recibe la llamada *" className="sm:col-span-2">
-          <input disabled={llamado !== 'SI'} {...register('persona_recibe_llamada')} className={claseInput} />
-        </Campo>
-      </div>
+              <Campo etiqueta="Persona que recibe la llamada *" className="sm:col-span-2">
+                <input disabled={llamado !== 'SI'} {...register('persona_recibe_llamada')} className={claseInput} />
+              </Campo>
+            </div>
+          </SeccionFormulario>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Campo etiqueta="Reingreso a la institución en los primeros 30 días *">
-          <select {...register('reingreso_30_dias')} className={claseInput}>
-            <option value="">Seleccione…</option>
-            <option value="SI">Sí</option>
-            <option value="NO">No</option>
-          </select>
-        </Campo>
-        <Campo etiqueta="Fecha de reingreso">
-          <input
-            type="date"
-            disabled={reingreso !== 'SI'}
-            min={data.fechaSalida ?? undefined}
-            max={data.fechaSalida ? sumarDias(data.fechaSalida, 30) : undefined}
-            {...register('fecha_reingreso')}
-            className={claseInput}
-          />
-        </Campo>
-        <Campo etiqueta="Causa de reingreso">
-          <SelectOpciones
-            categoria="CAUSA_REINGRESO"
-            control={control} name="causa_reingreso_id"
-            disabled={reingreso !== 'SI'}
-          />
-        </Campo>
-      </div>
+          <SeccionFormulario titulo="Reingreso a la institución en los primeros 30 días">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+              <Campo etiqueta="¿Hubo reingreso? *">
+                <select {...register('reingreso_30_dias')} className={claseInput}>
+                  <option value="">Seleccione…</option>
+                  <option value="SI">Sí</option>
+                  <option value="NO">No</option>
+                </select>
+              </Campo>
+              <Campo etiqueta="Fecha de reingreso">
+                <input
+                  type="date"
+                  disabled={reingreso !== 'SI'}
+                  min={data.fechaSalida ?? undefined}
+                  max={data.fechaSalida ? sumarDias(data.fechaSalida, 30) : undefined}
+                  {...register('fecha_reingreso')}
+                  className={claseInput}
+                />
+              </Campo>
+              <Campo etiqueta="Causa de reingreso" className="sm:col-span-2 lg:col-span-1">
+                <SelectOpciones
+                  categoria="CAUSA_REINGRESO"
+                  control={control} name="causa_reingreso_id"
+                  disabled={reingreso !== 'SI'}
+                />
+              </Campo>
+            </div>
+          </SeccionFormulario>
 
-      <Campo etiqueta="Observaciones">
-        <textarea rows={4} {...register('observaciones')} className={claseInput} />
-      </Campo>
+          <SeccionFormulario titulo="Observaciones">
+            <textarea
+              rows={4}
+              aria-label="Observaciones"
+              placeholder="Notas adicionales del seguimiento (opcional)"
+              {...register('observaciones')}
+              className={claseInput}
+            />
+          </SeccionFormulario>
+        </div>
 
-      {error && <MensajeError>{error}</MensajeError>}
+        {error && <MensajeError>{error}</MensajeError>}
 
-      <button type="submit" disabled={guardando} className={claseBotonPrimario}>
-        {guardando ? 'Guardando…' : 'Guardar Módulo 5'}
-      </button>
+        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 5" guardando={guardando} guardadoEn={guardadoEn} />}
       </fieldset>
     </form>
   )

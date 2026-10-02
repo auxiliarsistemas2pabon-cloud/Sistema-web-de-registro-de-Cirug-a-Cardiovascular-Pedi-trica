@@ -50,6 +50,7 @@ const ALIAS: Record<string, string[]> = {
   fecha_procedimiento_2: ['fecha procedimiento 2', 'fecha del procedimiento 2', 'fecha procedimiento quirurgico 2'],
   fecha_procedimiento_3: ['fecha procedimiento 3', 'fecha del procedimiento 3', 'fecha procedimiento quirurgico 3'],
   implante: ['tipo de implante', 'implante'],
+  numero_implante: ['numero de implante', 'número de implante', 'numero implante', 'número implante'],
   uso_cec: ['uso de cec', 'cec', 'circulacion extracorporea', 'circulación extracorpórea', 'uso de circulacion extracorporea', 'uso de circulacion extracororea'],
   tiempo_cec_min: ['tiempo cec min', 'tiempo de cec', 'tiempo cec', 'cec min', 'tiempo de circulacion extracorporea minutos'],
   tiempo_clamp_min: ['tiempo clamp min', 'tiempo de clamp', 'clamp de aorta', 'clamp min', 'tiempo de clamp de aorta minutos'],
@@ -346,6 +347,10 @@ export function normalizarFilaImportacion(
 
   const fechaCirugia = fechaIso(valorDe(datosOriginales, 'fecha_cirugia'), 'Fecha de cirugía', errores)
   if (fechaCirugia && nacimiento && fechaCirugia < nacimiento) errores.push('Fecha de cirugía no puede ser anterior al nacimiento.')
+  const implanteId = opcionId(opciones, 'IMPLANTE', valorDe(datosOriginales, 'implante'), 'Tipo de implante', errores)
+  // El N/A de IMPLANTE nunca tuvo un `codigo` estable (ver catalogos.mjs), así que se detecta por texto.
+  const implanteEsNA = opcionPorId(opciones, 'IMPLANTE', implanteId)?.valor === 'N/A'
+  const numeroImplante = implanteEsNA ? null : texto(valorDe(datosOriginales, 'numero_implante')) || null
   const usoCec = siNo(valorDe(datosOriginales, 'uso_cec'), 'Uso de CEC', errores)
   const tiempoCec = numero(valorDe(datosOriginales, 'tiempo_cec_min'), 'Tiempo de CEC', errores, true)
   const tiempoClamp = numero(valorDe(datosOriginales, 'tiempo_clamp_min'), 'Tiempo de clamp', errores, true)
@@ -366,7 +371,8 @@ export function normalizarFilaImportacion(
         procedimiento_ids: procedimientoIds,
         fecha_procedimiento_2: procedimientoIds.length >= 2 ? fechaProcedimiento2 : null,
         fecha_procedimiento_3: procedimientoIds.length >= 3 ? fechaProcedimiento3 : null,
-        implante_id: opcionId(opciones, 'IMPLANTE', valorDe(datosOriginales, 'implante'), 'Tipo de implante', errores),
+        implante_id: implanteId,
+        numero_implante: numeroImplante,
         uso_cec: usoCec === 'NA' ? null : usoCec,
         tiempo_cec_min: usoCec === 'SI' ? tiempoCec : null,
         tiempo_clamp_min: usoCec === 'SI' ? tiempoClamp : null,
@@ -506,7 +512,8 @@ export const ENCABEZADOS_EXPORTACION = [
   ['fecha_nacimiento', 'Fecha de nacimiento'], ['peso_kg', 'Peso (kg)'], ['talla_cm', 'Talla (cm)'], ['procedencia', 'Procedencia'],
   ['municipio_narino', 'Municipio de Nariño'], ['telefonos', 'Teléfonos'], ['sin_telefono', 'Sin teléfono'], ['eps', 'EPS'],
   ['diagnostico', 'Diagnóstico'], ['valvulopatia', 'Tipo de valvulopatía'], ['riesgos', 'Factores de riesgo'], ['rachs', 'RACHS-1'],
-  ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'], ['uso_cec', 'Uso de CEC'],
+  ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'],
+  ['numero_implante', 'Número de implante'], ['uso_cec', 'Uso de CEC'],
   ['tiempo_cec_min', 'Tiempo CEC (min)'], ['tiempo_clamp_min', 'Tiempo clamp (min)'], ['complicacion_intraqx', 'Complicación intraquirúrgica'],
   ['cierre_esternal_diferido', 'Cierre esternal diferido'], ['extubacion_quirofano', 'Extubación en quirófano'], ['unidad_pop', 'Unidad postoperatoria'],
   ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica'], ['complicacion_pop', 'Complicación postoperatoria'],
@@ -526,7 +533,8 @@ export const ENCABEZADOS_EXPORTACION_ADULTOS = [
   ['fecha_nacimiento', 'Fecha de nacimiento'], ['peso_kg', 'Peso (kg)'], ['talla_cm', 'Talla (cm)'], ['procedencia', 'Procedencia'],
   ['municipio_narino', 'Municipio de Nariño'], ['telefono', 'Teléfono'], ['eps', 'EPS'],
   ['diagnostico', 'Diagnóstico'], ['valvulopatia', 'Tipo de valvulopatía'], ['euroscore', 'Escala EuroSCORE (%)'], ['riesgos', 'Factores de riesgo'],
-  ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'], ['uso_cec', 'Uso de CEC'],
+  ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'],
+  ['numero_implante', 'Número de implante'], ['uso_cec', 'Uso de CEC'],
   ['tiempo_cec_min', 'Tiempo CEC (min)'], ['tiempo_clamp_min', 'Tiempo clamp (min)'], ['complicacion_intraqx', 'Complicación intraquirúrgica'],
   ['cierre_esternal_diferido', 'Cierre esternal diferido'], ['extubacion_quirofano', 'Extubación en quirófano'], ['unidad_pop', 'Unidad postoperatoria'],
   ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica'], ['complicacion_pop', 'Complicación postoperatoria'],

@@ -70,6 +70,19 @@ export function EstadoVacio({
   )
 }
 
+/** Aviso neutro en lugar de un formulario (ni error ni éxito): "este módulo no aplica", "guarda
+ * primero el módulo anterior"… */
+export function AvisoInformativo({ icono, children }: { icono: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-600">
+      <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-white text-[var(--pabon-azul-oscuro)] ring-1 ring-slate-200">
+        {icono}
+      </span>
+      <span>{children}</span>
+    </div>
+  )
+}
+
 /** Aviso de solo lectura para los formularios de módulo cuando el rol es "consulta". */
 export function AvisoSoloLectura() {
   return (

@@ -82,6 +82,14 @@ export async function codigoDe(conexion, opcionId) {
   return fila?.codigo ?? null
 }
 
+/** Como codigoDe, pero por el texto visible: para categorías como IMPLANTE cuyo "N/A" nunca tuvo
+ * un `codigo` estable asignado (ver catalogos.mjs) y ya está sembrado así en bases existentes. */
+export async function valorDe(conexion, opcionId) {
+  if (!opcionId) return null
+  const fila = await una(conexion, 'SELECT valor FROM opciones_lista WHERE id = ?', [opcionId])
+  return fila?.valor ?? null
+}
+
 export async function idPorCodigo(conexion, categoria, codigo) {
   const fila = await una(
     conexion,
@@ -228,6 +236,7 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
     fecha_procedimiento_2: v.fecha('fecha_procedimiento_2'),
     fecha_procedimiento_3: v.fecha('fecha_procedimiento_3'),
     implante_id: v.id('implante_id'),
+    numero_implante: v.texto('numero_implante', { max: 100 }),
     uso_cec: v.opcion('uso_cec', ['SI', 'NO']),
     tiempo_cec_min: v.entero('tiempo_cec_min', { min: 0 }),
     tiempo_clamp_min: v.entero('tiempo_clamp_min', { min: 0 }),
@@ -245,6 +254,10 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
   if (datos.uso_cec !== 'SI') {
     datos.tiempo_cec_min = null
     datos.tiempo_clamp_min = null
+  }
+  // Regla silenciosa: el número de implante solo aplica si se eligió un tipo de implante real.
+  if (!datos.implante_id || (await valorDe(conexion, datos.implante_id)) === 'N/A') {
+    datos.numero_implante = null
   }
   if (datos.tiempo_clamp_min !== null && (datos.tiempo_cec_min === null || datos.tiempo_clamp_min > datos.tiempo_cec_min)) {
     throw reglaNegocio('El tiempo de clamp de aorta no puede ser mayor que el tiempo de CEC.')

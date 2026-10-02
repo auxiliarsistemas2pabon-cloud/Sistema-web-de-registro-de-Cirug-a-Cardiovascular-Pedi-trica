@@ -2,24 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Cargando, MensajeError } from '../components/Estados'
-import { Tarjeta } from '../components/Tarjeta'
+import { FichaPaciente, type NumeroModulo } from '../components/FichaPaciente'
 import { IconoAdultos } from '../components/iconos'
 import { api } from '../lib/api'
 import { formatearEdad } from '../lib/fechas'
-import type { EstadoModulo, PacienteAdultoDetalle, PacienteAdultoResumen } from '../types/db'
+import type { PacienteAdultoDetalle, PacienteAdultoResumen } from '../types/db'
 import { Modulo1FormAdulto } from './modulos-adultos/Modulo1FormAdulto'
 import { Modulo2FormAdulto } from './modulos-adultos/Modulo2FormAdulto'
 import { Modulo3FormAdulto } from './modulos-adultos/Modulo3FormAdulto'
 import { Modulo4FormAdulto } from './modulos-adultos/Modulo4FormAdulto'
 import { Modulo5FormAdulto } from './modulos-adultos/Modulo5FormAdulto'
-
-const PESTANAS = [
-  { clave: 1, etiqueta: 'Datos del paciente' },
-  { clave: 2, etiqueta: 'Diagnóstico y riesgo' },
-  { clave: 3, etiqueta: 'Procedimiento quirúrgico' },
-  { clave: 4, etiqueta: 'Postoperatorio y egreso' },
-  { clave: 5, etiqueta: 'Seguimiento post-egreso' },
-] as const
 
 function usePacienteAdulto(id: string | undefined) {
   return useQuery({
@@ -45,43 +37,11 @@ function iniciales(nombreCompleto: string) {
   return ((partes[0]?.[0] ?? '') + (partes[1]?.[0] ?? '')).toUpperCase()
 }
 
-function CirculoPaso({ numero, estado, activo }: { numero: number; estado: EstadoModulo | undefined; activo: boolean }) {
-  if (estado === 'completo') {
-    return (
-      <span
-        className={`flex h-8 w-8 flex-none items-center justify-center rounded-full text-white ${activo ? 'ring-2 ring-[var(--pabon-azul-claro)] ring-offset-2' : ''} bg-emerald-500`}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="h-4 w-4">
-          <path d="m6 12.5 4 4 8-8.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      </span>
-    )
-  }
-  if (estado === 'no_aplica') {
-    return (
-      <span className="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-slate-200 text-slate-400">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.2} className="h-4 w-4">
-          <path d="M6 12h12" strokeLinecap="round" />
-        </svg>
-      </span>
-    )
-  }
-  return (
-    <span
-      className={`flex h-8 w-8 flex-none items-center justify-center rounded-full text-sm font-semibold ${
-        activo ? 'bg-[var(--pabon-azul-oscuro)] text-white' : 'bg-amber-100 text-amber-700'
-      }`}
-    >
-      {numero}
-    </span>
-  )
-}
-
 export function PacienteAdultoFichaPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const esNuevo = !id || id === 'nuevo'
-  const [pestanaActiva, setPestanaActiva] = useState<number>(1)
+  const [pestanaActiva, setPestanaActiva] = useState<NumeroModulo>(1)
 
   const { data: paciente, isLoading, error } = usePacienteAdulto(id)
   const { data: resumen } = useResumenEdad(id)
@@ -95,70 +55,41 @@ export function PacienteAdultoFichaPage() {
     3: resumen?.estado_m3,
     4: resumen?.estado_m4,
     5: resumen?.estado_m5,
-  } as const
+  }
 
   return (
-    <div className="animate-in fade-in-0 slide-in-from-bottom-2 duration-500">
-      <Tarjeta className="mb-6">
-        <div className="flex items-center gap-4 bg-gradient-to-r from-[var(--pabon-azul-oscuro)]/[0.06] to-transparent p-5">
-          <span className="flex h-14 w-14 flex-none items-center justify-center rounded-full bg-[var(--pabon-azul-oscuro)]/10 text-lg font-semibold text-[var(--pabon-azul-oscuro)] ring-4 ring-white">
-            {esNuevo ? <IconoAdultos className="h-6 w-6" /> : iniciales(paciente?.nombre_completo ?? '?')}
-          </span>
-          <div className="min-w-0">
-            <h1 className="truncate text-lg font-semibold text-slate-900">
-              {esNuevo ? 'Nuevo paciente adulto' : paciente?.nombre_completo}
-            </h1>
-            {!esNuevo && paciente && (
-              <p className="mt-0.5 text-sm text-slate-500">
-                N° {paciente.numero_paciente} · Identificación {paciente.identificacion} ·{' '}
-                {formatearEdad(resumen?.edad_dias)} · {resumen?.diagnostico_valor ?? 'Sin diagnóstico'}
-              </p>
-            )}
-            {esNuevo && <p className="mt-0.5 text-sm text-slate-500">Completa el Módulo 1 para crear la ficha.</p>}
-          </div>
-        </div>
-
-        <div className="flex gap-1 overflow-x-auto border-t border-slate-100 bg-slate-50/70 px-3 py-3 sm:gap-2 sm:px-4">
-          {PESTANAS.map((p) => {
-            const bloqueada = esNuevo && p.clave !== 1
-            const activo = pestanaActiva === p.clave
-            return (
-              <button
-                key={p.clave}
-                type="button"
-                disabled={bloqueada}
-                onClick={() => setPestanaActiva(p.clave)}
-                title={bloqueada ? 'Guarda primero el Módulo 1' : undefined}
-                className={`flex flex-none items-center gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${
-                  activo ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-white/60'
-                } ${bloqueada ? 'cursor-not-allowed opacity-40' : ''}`}
-              >
-                <CirculoPaso numero={p.clave} estado={estados[p.clave]} activo={activo} />
-                <span className={`whitespace-nowrap text-sm font-medium ${activo ? 'text-slate-900' : 'text-slate-500'}`}>
-                  {p.etiqueta}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </Tarjeta>
-
-      <Tarjeta>
-        <div key={pestanaActiva} className="animate-in fade-in-0 slide-in-from-bottom-1 p-5 duration-300">
-          {pestanaActiva === 1 && (
-            <Modulo1FormAdulto
-              paciente={paciente ?? null}
-              onGuardado={(pacienteId) => {
-                if (esNuevo) navigate(`/adultos/${pacienteId}`, { replace: true })
-              }}
-            />
-          )}
-          {pestanaActiva === 2 && paciente && <Modulo2FormAdulto pacienteId={paciente.id} />}
-          {pestanaActiva === 3 && paciente && <Modulo3FormAdulto pacienteId={paciente.id} />}
-          {pestanaActiva === 4 && paciente && <Modulo4FormAdulto pacienteId={paciente.id} />}
-          {pestanaActiva === 5 && paciente && <Modulo5FormAdulto pacienteId={paciente.id} />}
-        </div>
-      </Tarjeta>
-    </div>
+    <FichaPaciente
+      rutaListado="/adultos"
+      etiquetaListado="Pacientes adultos"
+      esNuevo={esNuevo}
+      titulo={esNuevo ? 'Nuevo paciente adulto' : (paciente?.nombre_completo ?? '')}
+      avatar={esNuevo ? <IconoAdultos className="h-6 w-6" /> : iniciales(paciente?.nombre_completo ?? '?')}
+      subtitulo={esNuevo ? 'Completa el Módulo 1 para crear la ficha.' : paciente && `Paciente N° ${paciente.numero_paciente}`}
+      datos={
+        !esNuevo && paciente
+          ? [
+              { etiqueta: 'Identificación', valor: paciente.identificacion },
+              { etiqueta: 'Edad', valor: formatearEdad(resumen?.edad_dias) || '—' },
+              { etiqueta: 'Diagnóstico', valor: resumen?.diagnostico_valor ?? 'Sin diagnóstico', ancho: true },
+            ]
+          : undefined
+      }
+      estados={estados}
+      pestanaActiva={pestanaActiva}
+      onCambiarPestana={setPestanaActiva}
+    >
+      {pestanaActiva === 1 && (
+        <Modulo1FormAdulto
+          paciente={paciente ?? null}
+          onGuardado={(pacienteId) => {
+            if (esNuevo) navigate(`/adultos/${pacienteId}`, { replace: true })
+          }}
+        />
+      )}
+      {pestanaActiva === 2 && paciente && <Modulo2FormAdulto pacienteId={paciente.id} />}
+      {pestanaActiva === 3 && paciente && <Modulo3FormAdulto pacienteId={paciente.id} />}
+      {pestanaActiva === 4 && paciente && <Modulo4FormAdulto pacienteId={paciente.id} />}
+      {pestanaActiva === 5 && paciente && <Modulo5FormAdulto pacienteId={paciente.id} />}
+    </FichaPaciente>
   )
 }
