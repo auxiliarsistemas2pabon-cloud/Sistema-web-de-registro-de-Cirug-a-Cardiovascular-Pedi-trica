@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseBotonPrimario } from '../../components/Campo'
+import { Campo } from '../../components/Campo'
+import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { SeleccionRiesgos } from '../../components/SeleccionRiesgos'
 import { useOpciones } from '../../hooks/useOpciones'
@@ -45,6 +46,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
+  const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
 
   const { handleSubmit, watch, setValue, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(data?.diagnostico ?? null, data?.riesgoIds ?? []),
@@ -73,6 +75,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
+    setGuardadoEn(null)
     setErrorGuardado(null)
     setGuardando(true)
 
@@ -95,6 +98,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
       queryClient.invalidateQueries({ queryKey: ['diagnostico', pacienteId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
+      setGuardadoEn(new Date())
     } catch (causa) {
       setErrorGuardado(mensajeDe(causa, 'No se pudo guardar el Módulo 2.'))
     } finally {
@@ -103,44 +107,48 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Diagnóstico *">
-          <SelectOpciones categoria="DIAGNOSTICO" control={control} name="diagnostico_id" buscable permiteCrear />
-        </Campo>
+      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+        <div className="space-y-5">
+          <SeccionFormulario titulo="Diagnóstico">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Campo etiqueta="Diagnóstico *" className="sm:col-span-2">
+                <SelectOpciones categoria="DIAGNOSTICO" control={control} name="diagnostico_id" buscable permiteCrear />
+              </Campo>
 
-        <Campo etiqueta="Tipo de valvulopatía">
-          <SelectOpciones
-            categoria="VALVULOPATIA"
-            control={control} name="valvulopatia_id"
-            disabled={!esValvulopatias}
-            placeholder={esValvulopatias ? 'Seleccione…' : 'N/A'}
-          />
-        </Campo>
+              <Campo etiqueta="Tipo de valvulopatía">
+                <SelectOpciones
+                  categoria="VALVULOPATIA"
+                  control={control} name="valvulopatia_id"
+                  disabled={!esValvulopatias}
+                  placeholder={esValvulopatias ? 'Seleccione…' : 'N/A'}
+                />
+              </Campo>
+            </div>
+          </SeccionFormulario>
 
-        <Campo etiqueta="Escala RACHS-1 *">
-          <SelectOpciones categoria="RACHS" control={control} name="rachs_id" />
-        </Campo>
-      </div>
+          <SeccionFormulario titulo="Riesgo quirúrgico">
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Campo etiqueta="Escala RACHS-1 *">
+                  <SelectOpciones categoria="RACHS" control={control} name="rachs_id" />
+                </Campo>
+              </div>
 
-      <div>
-        <label className="mb-1 block text-sm font-medium text-slate-700">
-          Factores de riesgo *
-        </label>
-        <SeleccionRiesgos value={riesgoIds} onChange={(v) => setValue('riesgo_ids', v)} />
-      </div>
+              <div role="group" aria-labelledby="etiqueta-riesgos">
+                <p id="etiqueta-riesgos" className="mb-2 text-sm font-medium text-slate-700">
+                  Factores de riesgo *
+                </p>
+                <SeleccionRiesgos value={riesgoIds} onChange={(v) => setValue('riesgo_ids', v)} />
+              </div>
+            </div>
+          </SeccionFormulario>
+        </div>
 
-      {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
+        {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
-      <button
-        type="submit"
-        disabled={guardando}
-        className={claseBotonPrimario}
-      >
-        {guardando ? 'Guardando…' : 'Guardar Módulo 2'}
-      </button>
+        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 2" guardando={guardando} guardadoEn={guardadoEn} />}
       </fieldset>
     </form>
   )

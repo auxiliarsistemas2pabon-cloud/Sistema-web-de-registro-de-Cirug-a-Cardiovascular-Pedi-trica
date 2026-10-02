@@ -156,11 +156,15 @@ export function IndicadoresPage() {
       {data && (
         <div className="space-y-6">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            <TarjetaKpi
-              etiqueta="Total de cirugías"
-              valor={String(data.resumen.total_cirugias)}
-              icono={<IconoCorazon className="h-4 w-4" />}
-            />
+            {/* En el celular (2 columnas) el total ocupa la fila completa: así las 5 tarjetas no dejan
+                una sola suelta al final. */}
+            <div className="col-span-2 sm:col-span-1">
+              <TarjetaKpi
+                etiqueta="Total de cirugías"
+                valor={String(data.resumen.total_cirugias)}
+                icono={<IconoCorazon className="h-4 w-4" />}
+              />
+            </div>
             <TarjetaKpi
               etiqueta="Mortalidad hospitalaria"
               valor={`${num(data.resumen.mortalidad_hospitalaria_pct)}%`}
@@ -185,49 +189,37 @@ export function IndicadoresPage() {
           </div>
 
           <Tarjeta titulo="Tiempos y estancia (promedio / mediana)">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase tracking-wide text-slate-500">
-                <tr>
-                  <th className="py-1.5">Indicador</th>
-                  <th className="py-1.5">Promedio</th>
-                  <th className="py-1.5">Mediana</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 text-slate-700">
-                <tr>
-                  <td className="py-2">Días en UCI</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_uci_promedio)}</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_uci_mediana)}</td>
-                </tr>
-                <tr>
-                  <td className="py-2">Días de hospitalización</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_hospitalizacion_promedio)}</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.dias_hospitalizacion_mediana)}</td>
-                </tr>
-                <tr>
-                  <td className="py-2">Horas de ventilación mecánica</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.horas_ventilacion_promedio)}</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.horas_ventilacion_mediana)}</td>
-                </tr>
-                <tr>
-                  <td className="py-2">Tiempo de CEC (min)</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.tiempo_cec_promedio)}</td>
-                  <td className="py-2 text-slate-400">—</td>
-                </tr>
-                <tr>
-                  <td className="py-2">Tiempo de clamp de aorta (min)</td>
-                  <td className="py-2 font-medium tabular-nums">{num(data.resumen.tiempo_clamp_promedio)}</td>
-                  <td className="py-2 text-slate-400">—</td>
-                </tr>
-                {grupo === 'adultos' && (
-                  <tr>
-                    <td className="py-2">EuroSCORE (%)</td>
-                    <td className="py-2 font-medium tabular-nums">{num(data.resumen.euroscore_promedio, 2)}</td>
-                    <td className="py-2 font-medium tabular-nums">{num(data.resumen.euroscore_mediana, 2)}</td>
+            <div className="-mx-5 -my-2 overflow-x-auto">
+              <table className="w-full min-w-[22rem] text-left text-sm">
+                <thead className="text-xs uppercase tracking-wide text-slate-500">
+                  <tr className="border-b border-slate-100">
+                    <th scope="col" className="px-5 py-2 font-semibold">Indicador</th>
+                    <th scope="col" className="w-28 px-5 py-2 text-right font-semibold sm:w-36">Promedio</th>
+                    <th scope="col" className="w-28 px-5 py-2 text-right font-semibold sm:w-36">Mediana</th>
                   </tr>
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-slate-700">
+                  {[
+                    { etiqueta: 'Días en UCI', promedio: data.resumen.dias_uci_promedio, mediana: data.resumen.dias_uci_mediana },
+                    { etiqueta: 'Días de hospitalización', promedio: data.resumen.dias_hospitalizacion_promedio, mediana: data.resumen.dias_hospitalizacion_mediana },
+                    { etiqueta: 'Horas de ventilación mecánica', promedio: data.resumen.horas_ventilacion_promedio, mediana: data.resumen.horas_ventilacion_mediana },
+                    { etiqueta: 'Tiempo de CEC (min)', promedio: data.resumen.tiempo_cec_promedio, mediana: undefined },
+                    { etiqueta: 'Tiempo de clamp de aorta (min)', promedio: data.resumen.tiempo_clamp_promedio, mediana: undefined },
+                    ...(grupo === 'adultos'
+                      ? [{ etiqueta: 'EuroSCORE (%)', promedio: data.resumen.euroscore_promedio, mediana: data.resumen.euroscore_mediana, decimales: 2 }]
+                      : []),
+                  ].map((fila) => (
+                    <tr key={fila.etiqueta}>
+                      <th scope="row" className="px-5 py-2.5 font-normal">{fila.etiqueta}</th>
+                      <td className="px-5 py-2.5 text-right font-medium tabular-nums">{num(fila.promedio, fila.decimales)}</td>
+                      <td className="px-5 py-2.5 text-right font-medium tabular-nums">
+                        {fila.mediana === undefined ? '—' : num(fila.mediana, fila.decimales)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </Tarjeta>
 
           <Tarjeta titulo="Cirugías por mes">

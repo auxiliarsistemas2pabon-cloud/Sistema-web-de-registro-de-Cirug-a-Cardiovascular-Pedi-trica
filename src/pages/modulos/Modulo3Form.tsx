@@ -2,8 +2,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
+import { Campo, claseAccionCampo, claseBotonAgregar, claseInput } from '../../components/Campo'
+import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
+import { IconoCerrar, IconoMas } from '../../components/iconos'
 import { SelectOpciones } from '../../components/SelectOpciones'
+import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo3 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteDetalle } from '../../types/db'
@@ -15,6 +18,7 @@ interface CirugiaDetalle {
   fecha_procedimiento_2: string | null
   fecha_procedimiento_3: string | null
   implante_id: string | null
+  numero_implante: string | null
   uso_cec: 'SI' | 'NO' | null
   tiempo_cec_min: number | null
   tiempo_clamp_min: number | null
@@ -32,6 +36,7 @@ interface Valores {
   procedimiento_3_id: string
   fecha_procedimiento_3: string
   implante_id: string
+  numero_implante: string
   uso_cec: 'SI' | 'NO' | ''
   tiempo_cec_min: string
   tiempo_clamp_min: string
@@ -74,6 +79,7 @@ function valoresIniciales(cirugia: CirugiaDetalle | null, procedimientoIds: stri
     procedimiento_3_id: procedimientoIds[2] ?? '',
     fecha_procedimiento_3: cirugia?.fecha_procedimiento_3 ?? '',
     implante_id: cirugia?.implante_id ?? '',
+    numero_implante: cirugia?.numero_implante ?? '',
     uso_cec: cirugia?.uso_cec ?? '',
     tiempo_cec_min: cirugia?.tiempo_cec_min?.toString() ?? '',
     tiempo_clamp_min: cirugia?.tiempo_clamp_min?.toString() ?? '',
@@ -87,9 +93,11 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data, isLoading } = useCirugia(pacienteId)
+  const { data: opcionesImplante } = useOpciones('IMPLANTE')
   const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
 
   const { register, handleSubmit, watch, reset, setValue, control } = useForm<Valores>({
     defaultValues: valoresIniciales(data?.cirugia ?? null, data?.procedimientoIds ?? []),
@@ -109,6 +117,10 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   }, [data, reset])
 
   const usoCec = watch('uso_cec')
+  const implanteId = watch('implante_id')
+  // Al igual que el N/A de VALVULOPATIA, aquí se detecta por texto: el N/A de IMPLANTE nunca tuvo
+  // un `codigo` estable (ver catalogos.mjs), así que no se puede usar codigoDe/el patrón habitual.
+  const implanteEsNA = !implanteId || opcionesImplante?.find((o) => o.id === implanteId)?.valor === 'N/A'
   const p1 = watch('procedimiento_1_id')
   const p2 = watch('procedimiento_2_id')
   const p3 = watch('procedimiento_3_id')
@@ -139,6 +151,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
+    setGuardadoEn(null)
     if (data?.fechaNacimiento && valores.fecha_cirugia && valores.fecha_cirugia < data.fechaNacimiento) {
       setError('La fecha de cirugía no puede ser anterior a la fecha de nacimiento.')
       return
@@ -196,6 +209,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         fecha_procedimiento_2: valores.procedimiento_2_id ? valores.fecha_procedimiento_2 || null : null,
         fecha_procedimiento_3: valores.procedimiento_3_id ? valores.fecha_procedimiento_3 || null : null,
         implante_id: valores.implante_id || null,
+        numero_implante: !implanteEsNA && valores.numero_implante.trim() ? valores.numero_implante.trim() : null,
         uso_cec: valores.uso_cec || null,
         tiempo_cec_min: valores.uso_cec === 'SI' && valores.tiempo_cec_min ? Number(valores.tiempo_cec_min) : null,
         tiempo_clamp_min: valores.uso_cec === 'SI' && valores.tiempo_clamp_min ? Number(valores.tiempo_clamp_min) : null,
@@ -208,6 +222,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
       queryClient.invalidateQueries({ queryKey: ['cirugia', pacienteId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
+      setGuardadoEn(new Date())
     } catch (causa) {
       setError(mensajeDe(causa, 'No se pudo guardar el Módulo 3.'))
     } finally {
@@ -216,150 +231,154 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Fecha de cirugía *">
-          <input type="date" min={data?.fechaNacimiento ?? undefined} {...register('fecha_cirugia')} className={claseInput} />
-        </Campo>
-
-        <Campo etiqueta="Tipo de implante">
-          <SelectOpciones categoria="IMPLANTE" control={control} name="implante_id" />
-        </Campo>
-      </div>
-
-      <Campo etiqueta="Procedimiento quirúrgico 1 *">
-        <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_1_id" />
-      </Campo>
-
-      {/* Cada procedimiento adicional es una intervención aparte: se habilita al agregarla y exige su
-          propia fecha, distinta de la del procedimiento anterior. */}
-      {!mostrarP2 ? (
-        <button
-          type="button"
-          disabled={!p1}
-          onClick={() => setMostrarP2(true)}
-          className="rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
-        >
-          + Agregar otro procedimiento quirúrgico
-        </button>
-      ) : (
-        <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Campo etiqueta="Procedimiento quirúrgico 2 *">
-              <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_2_id" />
-            </Campo>
-            <Campo etiqueta="Fecha del procedimiento 2 *">
-              <input
-                type="date"
-                min={fechaCirugia ? diaSiguiente(fechaCirugia) : (data?.fechaNacimiento ?? undefined)}
-                {...register('fecha_procedimiento_2')}
-                className={claseInput}
-              />
-            </Campo>
-          </div>
-          {fecha2Invalida && (
-            <MensajeError>No puede ser el mismo día ni anterior a la fecha del procedimiento 1.</MensajeError>
-          )}
-          <button type="button" onClick={quitarProcedimiento2} className="text-xs font-medium text-red-600 hover:underline">
-            Quitar procedimiento 2
-          </button>
-
-          {!mostrarP3 ? (
-            <button
-              type="button"
-              disabled={!p2}
-              onClick={() => setMostrarP3(true)}
-              className="block rounded-md border border-sky-600 px-3 py-1.5 text-sm font-medium text-sky-700 hover:bg-sky-50 disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400"
-            >
-              + Agregar otro procedimiento quirúrgico
-            </button>
-          ) : (
-            <div className="space-y-3 rounded-lg border border-slate-200 bg-slate-50/40 p-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <Campo etiqueta="Procedimiento quirúrgico 3 *">
-                  <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_3_id" />
+      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+        <div className="space-y-5">
+          <SeccionFormulario titulo="Procedimientos realizados">
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <Campo etiqueta="Procedimiento quirúrgico 1 *" className="sm:col-span-2">
+                  <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_1_id" />
                 </Campo>
-                <Campo etiqueta="Fecha del procedimiento 3 *">
-                  <input
-                    type="date"
-                    min={fechaP2 ? diaSiguiente(fechaP2) : undefined}
-                    {...register('fecha_procedimiento_3')}
-                    className={claseInput}
-                  />
+                <Campo etiqueta="Fecha de cirugía *">
+                  <input type="date" min={data?.fechaNacimiento ?? undefined} {...register('fecha_cirugia')} className={claseInput} />
                 </Campo>
               </div>
-              {fecha3Invalida && (
-                <MensajeError>No puede ser el mismo día ni anterior a la fecha del procedimiento 2.</MensajeError>
+
+              {/* Cada procedimiento adicional es una intervención aparte: se habilita al agregarla y exige su
+                  propia fecha, distinta de la del procedimiento anterior. */}
+              {mostrarP2 && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Campo
+                    etiqueta="Procedimiento quirúrgico 2 *"
+                    className="sm:col-span-2"
+                    accion={
+                      <button type="button" onClick={quitarProcedimiento2} aria-label="Quitar procedimiento 2" className={claseAccionCampo}>
+                        <IconoCerrar className="h-3.5 w-3.5" />
+                        Quitar
+                      </button>
+                    }
+                  >
+                    <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_2_id" />
+                  </Campo>
+                  <Campo etiqueta="Fecha del procedimiento 2 *">
+                    <input
+                      type="date"
+                      min={fechaCirugia ? diaSiguiente(fechaCirugia) : (data?.fechaNacimiento ?? undefined)}
+                      {...register('fecha_procedimiento_2')}
+                      className={claseInput}
+                    />
+                  </Campo>
+                  {fecha2Invalida && (
+                    <div className="sm:col-span-3">
+                      <MensajeError>No puede ser el mismo día ni anterior a la fecha del procedimiento 1.</MensajeError>
+                    </div>
+                  )}
+                </div>
               )}
-              <button type="button" onClick={quitarProcedimiento3} className="text-xs font-medium text-red-600 hover:underline">
-                Quitar procedimiento 3
-              </button>
+
+              {mostrarP2 && mostrarP3 && (
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Campo
+                    etiqueta="Procedimiento quirúrgico 3 *"
+                    className="sm:col-span-2"
+                    accion={
+                      <button type="button" onClick={quitarProcedimiento3} aria-label="Quitar procedimiento 3" className={claseAccionCampo}>
+                        <IconoCerrar className="h-3.5 w-3.5" />
+                        Quitar
+                      </button>
+                    }
+                  >
+                    <SelectOpciones categoria="PROCEDIMIENTOS" control={control} name="procedimiento_3_id" />
+                  </Campo>
+                  <Campo etiqueta="Fecha del procedimiento 3 *">
+                    <input
+                      type="date"
+                      min={fechaP2 ? diaSiguiente(fechaP2) : undefined}
+                      {...register('fecha_procedimiento_3')}
+                      className={claseInput}
+                    />
+                  </Campo>
+                  {fecha3Invalida && (
+                    <div className="sm:col-span-3">
+                      <MensajeError>No puede ser el mismo día ni anterior a la fecha del procedimiento 2.</MensajeError>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {puedeEditar && !(mostrarP2 && mostrarP3) && (
+                <button
+                  type="button"
+                  disabled={mostrarP2 ? !p2 : !p1}
+                  onClick={() => (mostrarP2 ? setMostrarP3(true) : setMostrarP2(true))}
+                  title={(mostrarP2 ? !p2 : !p1) ? 'Elija primero el procedimiento anterior' : undefined}
+                  className={claseBotonAgregar}
+                >
+                  <IconoMas className="h-4 w-4" strokeWidth={2.2} />
+                  Agregar otro procedimiento quirúrgico
+                </button>
+              )}
+              {repetido && <MensajeError>Los procedimientos no pueden repetirse.</MensajeError>}
             </div>
-          )}
+          </SeccionFormulario>
+
+          <SeccionFormulario titulo="Implante">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Campo etiqueta="Tipo de implante">
+                <SelectOpciones categoria="IMPLANTE" control={control} name="implante_id" />
+              </Campo>
+              <Campo etiqueta="Número de implante">
+                <input disabled={implanteEsNA} placeholder={implanteEsNA ? 'N/A' : undefined} {...register('numero_implante')} className={claseInput} />
+              </Campo>
+            </div>
+          </SeccionFormulario>
+
+          <SeccionFormulario titulo="Circulación extracorpórea (CEC)">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3 sm:items-end">
+              <Campo etiqueta="Uso de CEC">
+                <select {...register('uso_cec')} className={claseInput}>
+                  <option value="">Seleccione…</option>
+                  <option value="SI">Sí</option>
+                  <option value="NO">No</option>
+                </select>
+              </Campo>
+              <Campo etiqueta="Tiempo de CEC (min)">
+                <input type="number" min="0" disabled={usoCec !== 'SI'} {...register('tiempo_cec_min')} className={claseInput} />
+              </Campo>
+              <Campo etiqueta="Tiempo de clamp de aorta (min)">
+                <input type="number" min="0" disabled={usoCec !== 'SI'} {...register('tiempo_clamp_min')} className={claseInput} />
+              </Campo>
+            </div>
+          </SeccionFormulario>
+
+          <SeccionFormulario titulo="Eventos en quirófano">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Campo etiqueta="Complicación intraquirúrgica" className="sm:col-span-2">
+                <SelectOpciones categoria="COMPLICACION_INTRAQX" control={control} name="complicacion_intraqx_id" />
+              </Campo>
+              <Campo etiqueta="Cierre esternal diferido">
+                <select {...register('cierre_esternal_diferido')} className={claseInput}>
+                  <option value="">Seleccione…</option>
+                  <option value="SI">Sí</option>
+                  <option value="NO">No</option>
+                </select>
+              </Campo>
+              <Campo etiqueta="Extubación en quirófano">
+                <select {...register('extubacion_quirofano')} className={claseInput}>
+                  <option value="">Seleccione…</option>
+                  <option value="SI">Sí</option>
+                  <option value="NO">No</option>
+                </select>
+              </Campo>
+            </div>
+          </SeccionFormulario>
         </div>
-      )}
-      {repetido && <MensajeError>Los procedimientos no pueden repetirse.</MensajeError>}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Campo etiqueta="Uso de circulación extracorpórea (CEC)">
-          <select {...register('uso_cec')} className={claseInput}>
-            <option value="">Seleccione…</option>
-            <option value="SI">Sí</option>
-            <option value="NO">No</option>
-          </select>
-        </Campo>
-        <Campo etiqueta="Tiempo de CEC (min)">
-          <input
-            type="number"
-            min="0"
-            disabled={usoCec !== 'SI'}
-            {...register('tiempo_cec_min')}
-            className={claseInput}
-          />
-        </Campo>
-        <Campo etiqueta="Tiempo de clamp de aorta (min)">
-          <input
-            type="number"
-            min="0"
-            disabled={usoCec !== 'SI'}
-            {...register('tiempo_clamp_min')}
-            className={claseInput}
-          />
-        </Campo>
-      </div>
+        {error && <MensajeError>{error}</MensajeError>}
 
-      <Campo etiqueta="Complicación intraquirúrgica">
-        <SelectOpciones categoria="COMPLICACION_INTRAQX" control={control} name="complicacion_intraqx_id" />
-      </Campo>
-
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Cierre esternal diferido">
-          <select {...register('cierre_esternal_diferido')} className={claseInput}>
-            <option value="">Seleccione…</option>
-            <option value="SI">Sí</option>
-            <option value="NO">No</option>
-          </select>
-        </Campo>
-        <Campo etiqueta="Extubación en quirófano">
-          <select {...register('extubacion_quirofano')} className={claseInput}>
-            <option value="">Seleccione…</option>
-            <option value="SI">Sí</option>
-            <option value="NO">No</option>
-          </select>
-        </Campo>
-      </div>
-
-      {error && <MensajeError>{error}</MensajeError>}
-
-      <button
-        type="submit"
-        disabled={guardando}
-        className={claseBotonPrimario}
-      >
-        {guardando ? 'Guardando…' : 'Guardar Módulo 3'}
-      </button>
+        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 3" guardando={guardando} guardadoEn={guardadoEn} />}
       </fieldset>
     </form>
   )

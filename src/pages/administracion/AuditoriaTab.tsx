@@ -63,31 +63,32 @@ export function AuditoriaTab() {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Tabla</label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Tabla</span>
           <select value={tabla} onChange={(e) => setTabla(e.target.value)} className={claseInput}>
             <option value="">Todas</option>
             {TABLAS.map((t) => (
               <option key={t} value={t}>{t}</option>
             ))}
           </select>
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Desde</label>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Desde</span>
           <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className={claseInput} />
-        </div>
-        <div>
-          <label className="mb-1 block text-xs text-slate-500">Hasta</label>
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-slate-500">Hasta</span>
           <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className={claseInput} />
-        </div>
+        </label>
       </div>
 
       {isLoading && <Cargando />}
       {error && <MensajeError>No se pudo cargar la auditoría.</MensajeError>}
 
       {registros && (
-        <div className="overflow-hidden rounded-lg border border-slate-200">
-          <table className="w-full text-left text-sm">
+        // overflow-x-auto: en el celular la tabla se desliza en vez de cortar las columnas.
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[40rem] text-left text-sm">
             <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2.5 font-semibold">Fecha</th>

@@ -1,11 +1,11 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { claseBotonPrimario, claseBotonSecundario } from '../components/Campo'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
-import { MensajeError, MensajeExito } from '../components/Estados'
+import { MensajeAdvertencia, MensajeError, MensajeExito } from '../components/Estados'
 import { Tarjeta } from '../components/Tarjeta'
-import { IconoBajar, IconoDocumento } from '../components/iconos'
+import { IconoAdultos, IconoBajar, IconoDocumento, IconoPacientes } from '../components/iconos'
 import { ENCABEZADOS_EXPORTACION, ENCABEZADOS_EXPORTACION_ADULTOS } from '../lib/importacion'
 import { api } from '../lib/api'
 import { useGrupoActivo } from '../lib/grupoActivo'
@@ -18,8 +18,45 @@ const TIPOS_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.
 // Límites (índice de inicio) de cada módulo dentro de ENCABEZADOS_EXPORTACION* — el último
 // elemento (undefined) deja el Módulo 5 abierto hasta el final del arreglo. Pediátricos y adultos
 // tienen cortes distintos porque sus columnas no son las mismas (ver lib/importacion.ts).
-const CORTES_PEDIATRICOS = [0, 12, 16, 25, 31, undefined] as const
-const CORTES_ADULTOS = [0, 11, 15, 24, 32, undefined] as const
+const CORTES_PEDIATRICOS = [0, 12, 16, 26, 32, undefined] as const
+const CORTES_ADULTOS = [0, 11, 15, 25, 33, undefined] as const
+
+/** Casilla grande (tarjeta seleccionable) para elegir un grupo de pacientes. */
+function OpcionGrupo({
+  marcado,
+  onCambiar,
+  icono,
+  titulo,
+  detalle,
+}: {
+  marcado: boolean
+  onCambiar: (marcado: boolean) => void
+  icono: ReactNode
+  titulo: string
+  detalle: string
+}) {
+  return (
+    <label
+      className={`flex cursor-pointer items-start gap-3 rounded-xl border bg-white p-4 transition-colors has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-[var(--pabon-azul-claro)]/40 ${
+        marcado ? 'border-[var(--pabon-azul-oscuro)] bg-sky-50/50 ring-1 ring-[var(--pabon-azul-oscuro)]' : 'border-slate-200 hover:border-slate-300'
+      }`}
+    >
+      <input
+        type="checkbox"
+        checked={marcado}
+        onChange={(e) => onCambiar(e.target.checked)}
+        className="mt-0.5 h-4 w-4 flex-none accent-[var(--pabon-azul-oscuro)]"
+      />
+      <span className="min-w-0 flex-1">
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <span className="text-[var(--pabon-azul-oscuro)]">{icono}</span>
+          {titulo}
+        </span>
+        <span className="mt-1 block text-xs text-slate-500">{detalle}</span>
+      </span>
+    </label>
+  )
+}
 
 function fechaArchivo(): string {
   return new Date().toLocaleDateString('en-CA')
@@ -147,36 +184,38 @@ export function ImportacionExportacionPage() {
         subtitulo="Descarga los pacientes activos y todos sus módulos en Excel o CSV, pediátricos y/o adultos."
       />
 
-      <div className="space-y-6">
+      <div className="max-w-3xl space-y-6">
         <Tarjeta titulo="Exportar registros" icono={<IconoBajar />}>
           <p className="text-sm text-slate-500">
             Incluye pacientes activos y todos sus módulos: una hoja plana con todo y una hoja adicional por cada módulo (1 a 5).
           </p>
 
-          <fieldset className="mt-4 flex flex-wrap gap-4">
-            <legend className="mb-2 w-full text-xs font-semibold uppercase tracking-wide text-slate-400">¿Qué pacientes exportar?</legend>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={incluirPediatricos}
-                onChange={(e) => setIncluirPediatricos(e.target.checked)}
-                className="h-4 w-4 accent-[var(--pabon-azul-oscuro)]"
+          <fieldset className="mt-5">
+            <legend className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">¿Qué pacientes exportar?</legend>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <OpcionGrupo
+                marcado={incluirPediatricos}
+                onCambiar={setIncluirPediatricos}
+                icono={<IconoPacientes className="h-4 w-4" />}
+                titulo="Pacientes pediátricos"
+                detalle={'Cirugía cardiovascular pediátrica, con escala RACHS\u20111.' /* guion que no se parte */}
               />
-              Pacientes pediátricos
-            </label>
-            <label className="flex items-center gap-2 text-sm text-slate-700">
-              <input
-                type="checkbox"
-                checked={incluirAdultos}
-                onChange={(e) => setIncluirAdultos(e.target.checked)}
-                className="h-4 w-4 accent-[var(--pabon-azul-oscuro)]"
+              <OpcionGrupo
+                marcado={incluirAdultos}
+                onCambiar={setIncluirAdultos}
+                icono={<IconoAdultos className="h-4 w-4" />}
+                titulo="Pacientes adultos"
+                detalle="Pacientes de 18 años o más, con escala EuroSCORE."
               />
-              Pacientes adultos
-            </label>
+            </div>
           </fieldset>
-          {ningunGrupo && <p className="mt-2 text-xs text-amber-600">Seleccione al menos un grupo para exportar.</p>}
+          {ningunGrupo && (
+            <div className="mt-3">
+              <MensajeAdvertencia>Seleccione al menos un grupo para exportar.</MensajeAdvertencia>
+            </div>
+          )}
 
-          <div className="mt-4 flex flex-wrap gap-3">
+          <div className="mt-5 flex flex-wrap gap-3 border-t border-slate-100 pt-5">
             <button type="button" onClick={() => void descargarExcel()} disabled={exportando || ningunGrupo} className={claseBotonPrimario}>
               <IconoBajar className="h-4 w-4" /> {exportando ? 'Generando…' : 'Descargar Excel'}
             </button>

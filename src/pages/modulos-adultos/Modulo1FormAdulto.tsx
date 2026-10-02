@@ -4,8 +4,9 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
+import { Campo, claseInput } from '../../components/Campo'
 import { AvisoSoloLectura, MensajeError } from '../../components/Estados'
+import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1Adulto } from '../../lib/completitud'
@@ -72,6 +73,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
   const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
+  const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
 
   const {
     register,
@@ -105,6 +107,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
     setErrorGuardado(null)
+    setGuardadoEn(null)
     setGuardando(true)
 
     const estado_modulo = calcularEstadoModulo1Adulto({
@@ -135,6 +138,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
         queryClient.invalidateQueries({ queryKey: ['paciente-adulto', paciente.id] })
         queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
         queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', paciente.id] })
+        setGuardadoEn(new Date())
         onGuardado(paciente.id)
       } else {
         const { id } = await api.post<{ id: string }>('/pacientes-adultos', payload)
@@ -149,79 +153,71 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
-      <div className="space-y-5">
-        <div>
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Datos personales</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Campo etiqueta="Nombre completo *" error={errors.nombre_completo?.message} className="sm:col-span-2">
-              <input {...register('nombre_completo')} className={claseInput} />
-            </Campo>
+      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+        <div className="space-y-5">
+          <SeccionFormulario titulo="Datos personales">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Campo etiqueta="Nombre completo *" error={errors.nombre_completo?.message} className="sm:col-span-2 lg:col-span-3">
+                <input {...register('nombre_completo')} className={claseInput} />
+              </Campo>
 
-            <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
-              <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
-            </Campo>
+              <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
+                <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
+              </Campo>
 
-            <Campo etiqueta="Sexo">
-              <SelectOpciones categoria="SEXO" control={control} name="sexo_id" />
-            </Campo>
+              <Campo etiqueta="Sexo">
+                <SelectOpciones categoria="SEXO" control={control} name="sexo_id" />
+              </Campo>
 
-            <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
-              <input type="date" max={edadMinimaIso(18)} {...register('fecha_nacimiento')} className={claseInput} />
-            </Campo>
-          </div>
+              <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
+                <input type="date" max={edadMinimaIso(18)} {...register('fecha_nacimiento')} className={claseInput} />
+              </Campo>
+            </div>
+          </SeccionFormulario>
+
+          <SeccionFormulario titulo="Salud y afiliación">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Campo etiqueta="EPS" className="sm:col-span-2 lg:col-span-1">
+                <SelectOpciones categoria="EPS" control={control} name="eps_id" />
+              </Campo>
+
+              <Campo etiqueta="Peso (kg)" error={errors.peso_kg?.message}>
+                <input type="number" min="30" max="300" step="0.1" {...register('peso_kg')} className={claseInput} />
+              </Campo>
+
+              <Campo etiqueta="Talla (cm)" error={errors.talla_cm?.message}>
+                <input type="number" min="120" max="230" step="1" {...register('talla_cm')} className={claseInput} />
+              </Campo>
+            </div>
+          </SeccionFormulario>
+
+          <SeccionFormulario titulo="Procedencia y contacto">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Campo etiqueta="Procedencia">
+                <SelectOpciones categoria="PROCEDENCIA" control={control} name="procedencia_id" />
+              </Campo>
+
+              <Campo etiqueta="Municipio de Nariño" error={errors.municipio_narino_id?.message}>
+                <SelectOpciones
+                  categoria="MUNICIPIOS"
+                  control={control} name="municipio_narino_id"
+                  disabled={!procedenciaEsNarino}
+                  placeholder={procedenciaEsNarino ? 'Seleccione…' : 'N/A'}
+                />
+              </Campo>
+
+              <Campo etiqueta="Teléfono" className="sm:col-span-2 lg:col-span-1">
+                <input {...register('telefono')} placeholder="Número de teléfono" inputMode="tel" className={claseInput} />
+              </Campo>
+            </div>
+          </SeccionFormulario>
         </div>
 
-        <div className="border-t border-slate-100 pt-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Salud y afiliación</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Campo etiqueta="EPS">
-              <SelectOpciones categoria="EPS" control={control} name="eps_id" />
-            </Campo>
+        {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
-            <Campo etiqueta="Peso (kg)" error={errors.peso_kg?.message}>
-              <input type="number" min="30" max="300" step="0.1" {...register('peso_kg')} className={claseInput} />
-            </Campo>
-
-            <Campo etiqueta="Talla (cm)" error={errors.talla_cm?.message}>
-              <input type="number" min="120" max="230" step="1" {...register('talla_cm')} className={claseInput} />
-            </Campo>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-100 pt-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Procedencia</p>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <Campo etiqueta="Procedencia">
-              <SelectOpciones categoria="PROCEDENCIA" control={control} name="procedencia_id" />
-            </Campo>
-
-            <Campo etiqueta="Municipio de Nariño" error={errors.municipio_narino_id?.message}>
-              <SelectOpciones
-                categoria="MUNICIPIOS"
-                control={control} name="municipio_narino_id"
-                disabled={!procedenciaEsNarino}
-                placeholder={procedenciaEsNarino ? 'Seleccione…' : 'N/A'}
-              />
-            </Campo>
-          </div>
-        </div>
-
-        <div className="border-t border-slate-100 pt-5">
-          <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-400">Contacto</p>
-          <Campo etiqueta="Teléfono">
-            <input {...register('telefono')} placeholder="Número de teléfono" className={claseInput} />
-          </Campo>
-        </div>
-      </div>
-
-      {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
-
-      <button type="submit" disabled={guardando} className={claseBotonPrimario}>
-        {guardando ? 'Guardando…' : 'Guardar Módulo 1'}
-      </button>
+        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 1" guardando={guardando} guardadoEn={guardadoEn} />}
       </fieldset>
     </form>
   )

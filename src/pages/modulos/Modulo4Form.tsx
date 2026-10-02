@@ -2,7 +2,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput, claseBotonPrimario } from '../../components/Campo'
+import { Campo, claseInput } from '../../components/Campo'
+import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo4 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
@@ -63,6 +64,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
   const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
 
   const { register, handleSubmit, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(null, false),
@@ -78,6 +80,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
 
   async function onSubmit(valores: Valores) {
     if (!perfil || !puedeEditar) return
+    setGuardadoEn(null)
     if (data?.fechaCirugia && valores.fecha_traslado_intermedio && valores.fecha_traslado_intermedio < data.fechaCirugia) {
       setError('La fecha de traslado a intermedio no puede ser anterior a la fecha de cirugía.')
       return
@@ -121,6 +124,7 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
       queryClient.invalidateQueries({ queryKey: ['pacientes'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-resumen', pacienteId] })
       queryClient.invalidateQueries({ queryKey: ['alertas'] })
+      setGuardadoEn(new Date())
     } catch (causa) {
       setError(mensajeDe(causa, 'No se pudo guardar el Módulo 4.'))
     } finally {
@@ -129,44 +133,46 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
   }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="max-w-3xl space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-4 disabled:opacity-70">
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Campo etiqueta="Unidad postoperatoria *">
-          <SelectOpciones categoria="UNIDAD_POP" control={control} name="unidad_pop_id" />
-        </Campo>
+      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+        <div className="space-y-5">
+          <SeccionFormulario titulo="Cuidado postoperatorio">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+              <Campo etiqueta="Unidad postoperatoria *">
+                <SelectOpciones categoria="UNIDAD_POP" control={control} name="unidad_pop_id" />
+              </Campo>
 
-        <Campo etiqueta="Horas de ventilación mecánica *">
-          <input type="number" min="0" step="1" {...register('horas_ventilacion_mecanica')} className={claseInput} />
-        </Campo>
+              <Campo etiqueta="Horas de ventilación mecánica *">
+                <input type="number" min="0" step="1" {...register('horas_ventilacion_mecanica')} className={claseInput} />
+              </Campo>
 
-        <Campo etiqueta="Complicación postoperatoria *" className="sm:col-span-2">
-          <SelectOpciones categoria="COMPLICACION_POP" control={control} name="complicacion_pop_id" />
-        </Campo>
+              <Campo etiqueta="Fecha de traslado a intermedio">
+                <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_traslado_intermedio')} className={claseInput} />
+              </Campo>
 
-        <Campo etiqueta="Fecha de traslado a intermedio">
-          <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_traslado_intermedio')} className={claseInput} />
-        </Campo>
+              <Campo etiqueta="Complicación postoperatoria *" className="lg:col-span-3">
+                <SelectOpciones categoria="COMPLICACION_POP" control={control} name="complicacion_pop_id" />
+              </Campo>
+            </div>
+          </SeccionFormulario>
 
-        <Campo etiqueta="Fecha de salida">
-          <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_salida')} className={claseInput} />
-        </Campo>
+          <SeccionFormulario titulo="Egreso">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Campo etiqueta="Fecha de salida">
+                <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_salida')} className={claseInput} />
+              </Campo>
 
-        <Campo etiqueta="Condición en que sale el paciente *">
-          <SelectOpciones categoria="CONDICION_SALIDA" control={control} name="condicion_salida_id" />
-        </Campo>
-      </div>
+              <Campo etiqueta="Condición en que sale el paciente *">
+                <SelectOpciones categoria="CONDICION_SALIDA" control={control} name="condicion_salida_id" />
+              </Campo>
+            </div>
+          </SeccionFormulario>
+        </div>
 
-      {error && <MensajeError>{error}</MensajeError>}
+        {error && <MensajeError>{error}</MensajeError>}
 
-      <button
-        type="submit"
-        disabled={guardando}
-        className={claseBotonPrimario}
-      >
-        {guardando ? 'Guardando…' : 'Guardar Módulo 4'}
-      </button>
+        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 4" guardando={guardando} guardadoEn={guardadoEn} />}
       </fieldset>
     </form>
   )

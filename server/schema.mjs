@@ -320,6 +320,8 @@ const tablas = [
 const alteraciones = [
   ['cirugias', 'fecha_procedimiento_2', `ALTER TABLE cirugias ADD COLUMN fecha_procedimiento_2 DATE NULL AFTER fecha_cirugia`],
   ['cirugias', 'fecha_procedimiento_3', `ALTER TABLE cirugias ADD COLUMN fecha_procedimiento_3 DATE NULL AFTER fecha_procedimiento_2`],
+  ['cirugias', 'numero_implante', `ALTER TABLE cirugias ADD COLUMN numero_implante VARCHAR(100) NULL AFTER implante_id`],
+  ['cirugias_adultos', 'numero_implante', `ALTER TABLE cirugias_adultos ADD COLUMN numero_implante VARCHAR(100) NULL AFTER implante_id`],
 ]
 
 const restricciones = [

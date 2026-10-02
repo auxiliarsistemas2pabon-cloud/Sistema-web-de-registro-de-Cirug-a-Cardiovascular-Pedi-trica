@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState, type FormEvent } from 'react'
-import { claseBotonPrimario, claseBotonSecundario, claseInput } from '../../components/Campo'
+import { Campo, claseBotonPrimario, claseBotonSecundario, claseBotonSecundarioCompacto, claseInput } from '../../components/Campo'
 import { Cargando, MensajeError } from '../../components/Estados'
 import { IconoUsuarioMas } from '../../components/iconos'
 import { Badge } from '../../components/ui/badge'
@@ -86,9 +86,21 @@ export function UsuariosTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-900">Usuarios</h2>
-        <button type="button" onClick={() => setMostrarForm((v) => !v)} className={claseBotonPrimario}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+          Usuarios
+          {perfiles && (
+            <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-slate-100 px-1.5 text-xs font-semibold tabular-nums text-slate-600">
+              {perfiles.length}
+            </span>
+          )}
+        </h2>
+        <button
+          type="button"
+          onClick={() => setMostrarForm((v) => !v)}
+          aria-expanded={mostrarForm}
+          className={mostrarForm ? claseBotonSecundario : claseBotonPrimario}
+        >
           {mostrarForm ? (
             'Cancelar'
           ) : (
@@ -100,15 +112,26 @@ export function UsuariosTab() {
       </div>
 
       {mostrarForm && (
-        <form onSubmit={crearUsuario} className="max-w-md space-y-3 rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-          <input placeholder="Nombre completo" required value={nombre} onChange={(e) => setNombre(e.target.value)} className={claseInput} />
-          <input type="email" placeholder="Correo electrónico" required value={email} onChange={(e) => setEmail(e.target.value)} className={claseInput} />
-          <input type="password" placeholder="Contraseña temporal (mín. 10, con mayúsculas, minúsculas y números)" required minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} className={claseInput} />
-          <select value={rol} onChange={(e) => setRol(e.target.value as Rol)} className={claseInput}>
-            <option value="administrador">Administrador</option>
-            <option value="registrador">Registrador</option>
-            <option value="consulta">Consulta</option>
-          </select>
+        <form onSubmit={crearUsuario} className="space-y-4 rounded-lg border border-slate-200 bg-slate-50/50 p-4 sm:p-5">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Campo etiqueta="Nombre completo *">
+              <input required value={nombre} onChange={(e) => setNombre(e.target.value)} autoComplete="off" className={claseInput} />
+            </Campo>
+            <Campo etiqueta="Correo electrónico *">
+              <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" className={claseInput} />
+            </Campo>
+            <Campo etiqueta="Contraseña temporal *">
+              <input type="password" required minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={claseInput} />
+              <span className="mt-1 block text-xs text-slate-500">Mínimo 10 caracteres, con mayúsculas, minúsculas y números.</span>
+            </Campo>
+            <Campo etiqueta="Rol *">
+              <select value={rol} onChange={(e) => setRol(e.target.value as Rol)} className={claseInput}>
+                <option value="administrador">Administrador</option>
+                <option value="registrador">Registrador</option>
+                <option value="consulta">Consulta</option>
+              </select>
+            </Campo>
+          </div>
           {error && <MensajeError>{error}</MensajeError>}
           <button type="submit" disabled={enviando} className={claseBotonPrimario}>
             {enviando ? 'Creando…' : 'Crear usuario'}
@@ -120,8 +143,10 @@ export function UsuariosTab() {
       {isLoading && <Cargando />}
 
       {perfiles && (
-        <div className="overflow-hidden rounded-lg border border-slate-200">
-          <table className="w-full text-left text-sm">
+        // overflow-x-auto (no overflow-hidden): en el celular la tabla se desliza en horizontal en vez
+        // de cortar las columnas de rol, estado y acciones.
+        <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <table className="w-full min-w-[46rem] text-left text-sm">
             <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2.5 font-semibold">Nombre</th>
@@ -139,7 +164,7 @@ export function UsuariosTab() {
                       <span className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-500">
                         {iniciales(p.nombre_completo)}
                       </span>
-                      <span className="font-medium text-slate-900">{p.nombre_completo}</span>
+                      <span className="whitespace-nowrap font-medium text-slate-900">{p.nombre_completo}</span>
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-slate-500">{p.email}</td>
@@ -147,7 +172,8 @@ export function UsuariosTab() {
                     <select
                       value={p.rol}
                       onChange={(e) => cambiarRol(p.id, e.target.value as Rol)}
-                      className="rounded-md border border-slate-300 px-2 py-1 text-sm text-slate-700"
+                      aria-label={`Rol de ${p.nombre_completo}`}
+                      className="h-8 rounded-md border border-slate-300 bg-white pl-2.5 text-sm text-slate-700 outline-none hover:border-slate-400 focus:border-[var(--pabon-azul-oscuro)] focus:ring-3 focus:ring-[var(--pabon-azul-claro)]/25"
                     >
                       <option value="administrador">Administrador</option>
                       <option value="registrador">Registrador</option>
@@ -160,7 +186,7 @@ export function UsuariosTab() {
                     </Badge>
                   </td>
                   <td className="px-3 py-2.5 text-right">
-                    <button type="button" onClick={() => pedirCambioActivo(p)} className={claseBotonSecundario}>
+                    <button type="button" onClick={() => pedirCambioActivo(p)} className={claseBotonSecundarioCompacto}>
                       {p.activo ? 'Desactivar' : 'Activar'}
                     </button>
                   </td>

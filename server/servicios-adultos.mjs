@@ -5,7 +5,7 @@
 import { hoyBogota, todas, una } from './db.mjs'
 import { ErrorApi, noEncontrado, reglaNegocio } from './errores.mjs'
 import { Validador, diasEntre } from './validar.mjs'
-import { actualizar, codigoDe, eliminarFila, filaApi, idPorCodigo, insertar } from './servicios.mjs'
+import { actualizar, codigoDe, eliminarFila, filaApi, idPorCodigo, insertar, valorDe } from './servicios.mjs'
 
 const ESTADOS = ['pendiente', 'completo']
 
@@ -158,6 +158,7 @@ export async function guardarCirugiaAdulto(conexion, usuario, pacienteId, cuerpo
   const datos = {
     fecha_cirugia: v.fecha('fecha_cirugia'),
     implante_id: v.id('implante_id'),
+    numero_implante: v.texto('numero_implante', { max: 100 }),
     uso_cec: v.opcion('uso_cec', ['SI', 'NO']),
     tiempo_cec_min: v.entero('tiempo_cec_min', { min: 0 }),
     tiempo_clamp_min: v.entero('tiempo_clamp_min', { min: 0 }),
@@ -175,6 +176,10 @@ export async function guardarCirugiaAdulto(conexion, usuario, pacienteId, cuerpo
   if (datos.uso_cec !== 'SI') {
     datos.tiempo_cec_min = null
     datos.tiempo_clamp_min = null
+  }
+  // Regla silenciosa: el número de implante solo aplica si se eligió un tipo de implante real.
+  if (!datos.implante_id || (await valorDe(conexion, datos.implante_id)) === 'N/A') {
+    datos.numero_implante = null
   }
   if (datos.tiempo_clamp_min !== null && (datos.tiempo_cec_min === null || datos.tiempo_clamp_min > datos.tiempo_cec_min)) {
     throw reglaNegocio('El tiempo de clamp de aorta no puede ser mayor que el tiempo de CEC.')
