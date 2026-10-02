@@ -73,7 +73,7 @@ export function LoginPage() {
           ilustración) para que el formulario de acceso quede a la vista sin tener que desplazarse. */}
       <div className="animate-in fade-in-0 slide-in-from-left-6 relative z-10 flex w-full min-w-0 max-w-xl flex-col items-center gap-6 text-center sm:gap-10 text-white duration-700 lg:max-w-3xl lg:flex-1 lg:items-start lg:justify-between lg:gap-0 lg:py-2 lg:text-left">
         <div className="inline-flex w-fit items-center gap-3 rounded-xl bg-white px-4 py-3 shadow-lg sm:gap-4 sm:px-5 sm:py-4">
-          <img src="/branding/clinica-pabon.jpg" alt="Clínica Pabón" className="h-9 w-auto sm:h-11" />
+          <img src="/branding/clinica-pabon-logo.png" alt="Clínica Pabón" className="h-9 w-auto sm:h-11" />
           <span className="h-8 w-px bg-slate-200 sm:h-9" />
           <img
             src="/branding/centro-cardioneurovascular.png"

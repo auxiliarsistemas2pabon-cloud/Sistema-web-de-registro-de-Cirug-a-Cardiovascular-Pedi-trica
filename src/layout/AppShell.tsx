@@ -98,7 +98,9 @@ export function AppShell() {
   return (
     <GrupoActivoProvider>
     <div className="min-h-screen bg-[var(--lienzo)]">
-      <header ref={refEncabezado} className="sticky top-0 z-40 border-b border-slate-200/80 bg-white/95 backdrop-blur-md">
+      {/* Fondo blanco sólido (no translúcido): el logo de Clínica Pabón trae su propio fondo blanco
+          y sobre un encabezado semitransparente se notaría como un recuadro al pasar contenido debajo. */}
+      <header ref={refEncabezado} className="sticky top-0 z-40 border-b border-slate-200/80 bg-white">
         {/* Franja institucional (gris / azul oscuro / azul claro del manual de marca). Va en el
             borde superior: debajo de las pestañas se confundía con la línea de la pestaña activa. */}
         <div className="flex h-[3px]" aria-hidden>
@@ -108,16 +110,21 @@ export function AppShell() {
         </div>
 
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
+          {/* Marca: Clínica Pabón | Centro de Cuidados Cardioneurovasculares (el mismo par de logos que
+              en la pantalla de inicio de sesión). En el celular van solo los logos: con el título al
+              lado no cabía nada completo y ambos textos quedaban recortados. */}
           <NavLink
             to="/pacientes"
-            className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40"
+            className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40 sm:gap-3.5"
           >
+            <img src="/branding/clinica-pabon-logo.png" alt="Clínica Pabón" className="h-9 w-auto flex-none sm:h-10" />
+            <span aria-hidden className="h-8 w-px flex-none bg-slate-200" />
             <img
               src="/branding/centro-cardioneurovascular-icono.png"
               alt=""
               className="h-10 w-10 flex-none rounded-full shadow-sm ring-1 ring-slate-200"
             />
-            <div className="min-w-0 leading-tight">
+            <div className="hidden min-w-0 leading-tight sm:block">
               <p className="truncate text-[15px] font-semibold tracking-tight text-slate-900">Cirugía Cardiovascular Pediátrica</p>
               <p className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">
                 Centro de Cuidados Cardioneurovasculares Pabón

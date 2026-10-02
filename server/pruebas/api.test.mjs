@@ -184,7 +184,11 @@ describe('API cirugía cardiovascular pediátrica', () => {
     assert.ok(Array.isArray((await api('GET', '/alertas', { token: consulta })).datos))
     const i = (await api('GET', '/indicadores?desde=2000-01-01&hasta=2100-01-01', { token: consulta })).datos
     assert.ok(i.resumen.total_cirugias >= 1)
-    for (const k of ['por_mes', 'por_diagnostico', 'por_procedimiento', 'por_rachs', 'por_eps', 'por_procedencia']) assert.ok(Array.isArray(i[k]), k)
+    for (const k of ['por_mes', 'por_diagnostico', 'por_procedimiento', 'por_rachs', 'por_eps', 'por_procedencia',
+      'por_sexo', 'por_peso', 'por_talla', 'por_superficie_corporal', 'por_dias_uci', 'por_horas_vm', 'por_estado_herida']) assert.ok(Array.isArray(i[k]), k)
+    // Las distribuciones por rango traen todos los rangos (también los vacíos) y suman el total de cirugías.
+    const sumaPeso = i.por_peso.reduce((suma, r) => suma + r.total_cirugias, 0)
+    assert.equal(sumaPeso, i.resumen.total_cirugias)
     assert.equal((await api('GET', '/indicadores', { token: consulta })).estado, 400)
   })
 

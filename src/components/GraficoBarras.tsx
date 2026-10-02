@@ -38,6 +38,9 @@ export function GraficoBarras({ datos, color = 'azul', sufijoValor = '', alturaP
   const relleno = color === 'rojo' ? 'var(--chart-rojo)' : 'var(--chart-azul)'
   const altura = Math.max(datos.length * alturaPorFila, 80)
   const conEtiquetas = datos.length <= MAX_BARRAS_CON_ETIQUETA
+  // El eje de categorías mide lo que pide la etiqueta más larga (~7 px por carácter a 12 px), hasta
+  // 190 px: con un ancho fijo, las etiquetas cortas (rangos de peso, sexo) dejaban media tarjeta vacía.
+  const anchoEje = Math.min(190, Math.max(56, Math.max(...datos.map((d) => d.etiqueta.length)) * 7 + 12))
 
   return (
     <div>
@@ -52,7 +55,7 @@ export function GraficoBarras({ datos, color = 'azul', sufijoValor = '', alturaP
             <YAxis
               type="category"
               dataKey="etiqueta"
-              width={190}
+              width={anchoEje}
               interval={0}
               tick={<TickTruncado maxCaracteres={28} />}
             />
