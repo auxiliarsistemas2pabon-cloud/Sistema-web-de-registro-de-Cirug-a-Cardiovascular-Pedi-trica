@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { claseInput } from '../components/Campo'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
 import { Cargando, MensajeError } from '../components/Estados'
@@ -41,7 +41,14 @@ interface Resumen {
   // Solo en el grupo adultos.
   euroscore_promedio?: number | null
   euroscore_mediana?: number | null
+  peso_mediana: number | null
+  talla_mediana: number | null
+  superficie_corporal_mediana: number | null
 }
+
+/** Conteo de cirugías por categoría o por rango (las distribuciones vienen ya agrupadas del servidor). */
+type Conteo = { categoria: string; total_cirugias: number }[]
+const aDatos = (conteo: Conteo) => conteo.map((d) => ({ etiqueta: d.categoria, valor: d.total_cirugias }))
 
 /** El módulo pediátrico clasifica el riesgo con RACHS-1 (categórico, I a VI); el de adultos con
  * EuroSCORE (un porcentaje continuo), así que cada grupo trae su propio desglose de riesgo con su
@@ -60,6 +67,13 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string) {
         por_euroscore?: { categoria: string; total_cirugias: number; mortalidad_pct: number }[]
         por_eps: { eps: string; total_cirugias: number }[]
         por_procedencia: { procedencia: string; total_cirugias: number }[]
+        por_sexo: Conteo
+        por_peso: Conteo
+        por_talla: Conteo
+        por_superficie_corporal: Conteo
+        por_dias_uci: Conteo
+        por_horas_vm: Conteo
+        por_estado_herida: Conteo
       }>(`${ruta}?desde=${desde}&hasta=${hasta}`)
       return {
         resumen: r.resumen,
@@ -76,6 +90,13 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string) {
         })),
         porEps: r.por_eps.map((d) => ({ etiqueta: d.eps, valor: d.total_cirugias })),
         porProcedencia: r.por_procedencia.map((d) => ({ etiqueta: d.procedencia, valor: d.total_cirugias })),
+        porSexo: aDatos(r.por_sexo),
+        porPeso: aDatos(r.por_peso),
+        porTalla: aDatos(r.por_talla),
+        porSuperficieCorporal: aDatos(r.por_superficie_corporal),
+        porDiasUci: aDatos(r.por_dias_uci),
+        porHorasVm: aDatos(r.por_horas_vm),
+        porEstadoHerida: aDatos(r.por_estado_herida),
       }
     },
   })
@@ -84,6 +105,59 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string) {
 function num(v: number | null | undefined, decimales = 1): string {
   if (v === null || v === undefined) return '—'
   return v.toFixed(decimales)
+}
+
+/** Bloque titulado del tablero: agrupa gráficos relacionados para recorrer la página por temas. */
+function SeccionIndicadores({ titulo, descripcion, children }: { titulo: string; descripcion?: string; children: ReactNode }) {
+  return (
+    <section className="space-y-4 pt-2">
+      <div className="border-b border-slate-200 pb-2">
+        <h2 className="text-base font-semibold tracking-tight text-slate-900">{titulo}</h2>
+        {descripcion && <p className="mt-0.5 text-sm text-slate-500">{descripcion}</p>}
+      </div>
+      {children}
+    </section>
+  )
+}
+
+/** Pocas categorías (sexo): cifra, porcentaje y una barra de proporción por categoría, en vez de un
+ * gráfico de 2–3 barras que dejaba la tarjeta casi vacía. Los números quedan a la vista, sin tooltip. */
+function ProporcionesCompactas({ datos }: { datos: { etiqueta: string; valor: number }[] }) {
+  const total = datos.reduce((suma, d) => suma + d.valor, 0)
+  if (!total) return <p className="py-8 text-center text-sm text-slate-400">Sin datos para este rango.</p>
+  return (
+    <ul className="grid grid-cols-2 gap-x-6 gap-y-5 sm:grid-cols-4">
+      {datos.map((d) => {
+        const pct = Math.round((d.valor / total) * 100)
+        return (
+          <li key={d.etiqueta}>
+            <p className="text-sm text-slate-600">{d.etiqueta}</p>
+            <p className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold tracking-tight text-slate-900">{d.valor}</span>
+              <span className="text-sm tabular-nums text-slate-500">{pct}%</span>
+            </p>
+            {/* Medidor: el riel es un tono claro de la misma rampa azul que el relleno. */}
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-sky-100" aria-hidden>
+              <div className="h-full rounded-full bg-[var(--chart-azul)]" style={{ width: `${pct}%` }} />
+            </div>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+/** Mediana del periodo junto al título de un gráfico de distribución (nada si no hay datos). */
+function Mediana({ valor, unidad, decimales = 1 }: { valor: number | null | undefined; unidad: string; decimales?: number }) {
+  if (valor === null || valor === undefined) return null
+  return (
+    <span className="whitespace-nowrap text-xs text-slate-500">
+      Mediana{' '}
+      <span className="font-semibold tabular-nums text-slate-900">
+        {valor.toFixed(decimales)} {unidad}
+      </span>
+    </span>
+  )
 }
 
 type Preset = '30' | 'anio' | 'todo' | 'personalizado'
@@ -226,31 +300,80 @@ export function IndicadoresPage() {
             <GraficoBarrasTiempo datos={data.porMes} />
           </Tarjeta>
 
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Tarjeta titulo={`Cirugías por ${tituloRiesgo}`}>
-              <GraficoBarras datos={data.porRiesgoTotal} />
-            </Tarjeta>
-            <Tarjeta titulo={`Mortalidad por ${tituloRiesgo} (%)`}>
-              <GraficoBarras datos={data.porRiesgoMortalidad} color="rojo" sufijoValor="%" />
-            </Tarjeta>
-          </div>
+          <SeccionIndicadores titulo="Riesgo, diagnóstico y procedimientos">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Tarjeta titulo={`Cirugías por ${tituloRiesgo}`}>
+                <GraficoBarras datos={data.porRiesgoTotal} />
+              </Tarjeta>
+              <Tarjeta titulo={`Mortalidad por ${tituloRiesgo} (%)`}>
+                <GraficoBarras datos={data.porRiesgoMortalidad} color="rojo" sufijoValor="%" />
+              </Tarjeta>
+            </div>
 
-          <Tarjeta titulo="Cirugías por diagnóstico">
-            <GraficoBarras datos={data.porDiagnostico} />
-          </Tarjeta>
-
-          <Tarjeta titulo="Cirugías por procedimiento">
-            <GraficoBarras datos={data.porProcedimiento} />
-          </Tarjeta>
-
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <Tarjeta titulo="Distribución por EPS">
-              <GraficoBarras datos={data.porEps} />
+            <Tarjeta titulo="Cirugías por diagnóstico">
+              <GraficoBarras datos={data.porDiagnostico} />
             </Tarjeta>
-            <Tarjeta titulo="Distribución por procedencia">
-              <GraficoBarras datos={data.porProcedencia} />
+
+            <Tarjeta titulo="Cirugías por procedimiento">
+              <GraficoBarras datos={data.porProcedimiento} />
             </Tarjeta>
-          </div>
+          </SeccionIndicadores>
+
+          {/* Peso, talla y superficie corporal se agrupan en rangos fijos de uso clínico (definidos en
+              server/rutas-consultas.mjs), distintos para niños y adultos; las barras siguen el orden
+              de los rangos, no el de la cantidad, para que se lea la forma de la distribución. */}
+          <SeccionIndicadores
+            titulo="Características de los pacientes"
+            descripcion="Datos del Módulo 1 de los pacientes operados en el periodo."
+          >
+            <Tarjeta titulo="Cirugías por sexo">
+              <ProporcionesCompactas datos={data.porSexo} />
+            </Tarjeta>
+
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Tarjeta titulo="Cirugías por peso" acciones={<Mediana valor={data.resumen.peso_mediana} unidad="kg" />}>
+                <GraficoBarras datos={data.porPeso} />
+              </Tarjeta>
+              <Tarjeta titulo="Cirugías por talla" acciones={<Mediana valor={data.resumen.talla_mediana} unidad="cm" />}>
+                <GraficoBarras datos={data.porTalla} />
+              </Tarjeta>
+              <Tarjeta
+                titulo="Cirugías por superficie corporal"
+                acciones={<Mediana valor={data.resumen.superficie_corporal_mediana} unidad="m²" decimales={2} />}
+              >
+                <GraficoBarras datos={data.porSuperficieCorporal} />
+                <p className="mt-3 text-xs text-slate-500">
+                  Calculada con la fórmula de Mosteller, √(peso en kg × talla en cm ÷ 3600), con el peso y la talla del Módulo 1.
+                </p>
+              </Tarjeta>
+              <Tarjeta titulo="Distribución por EPS">
+                <GraficoBarras datos={data.porEps} />
+              </Tarjeta>
+              <Tarjeta titulo="Distribución por procedencia" className="lg:col-span-2">
+                <GraficoBarras datos={data.porProcedencia} />
+              </Tarjeta>
+            </div>
+          </SeccionIndicadores>
+
+          <SeccionIndicadores titulo="Estancia y evolución postoperatoria">
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Tarjeta titulo="Cirugías por días de estancia en UCI" acciones={<Mediana valor={data.resumen.dias_uci_mediana} unidad="días" />}>
+                <GraficoBarras datos={data.porDiasUci} />
+              </Tarjeta>
+              <Tarjeta
+                titulo="Cirugías por horas de ventilación mecánica"
+                acciones={<Mediana valor={data.resumen.horas_ventilacion_mediana} unidad="h" />}
+              >
+                <GraficoBarras datos={data.porHorasVm} />
+              </Tarjeta>
+              <Tarjeta titulo="Estado de la herida quirúrgica" className="lg:col-span-2">
+                <GraficoBarras datos={data.porEstadoHerida} />
+                <p className="mt-3 text-xs text-slate-500">
+                  Según el seguimiento post-egreso (Módulo 5). No incluye a los pacientes fallecidos, para quienes el seguimiento no aplica.
+                </p>
+              </Tarjeta>
+            </div>
+          </SeccionIndicadores>
         </div>
       )}
     </div>

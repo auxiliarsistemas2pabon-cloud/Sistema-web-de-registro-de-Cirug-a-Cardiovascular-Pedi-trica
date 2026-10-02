@@ -62,16 +62,16 @@ rutasAlertas.get('/adultos', asincrono(async (_req, res) => {
 // Indicadores (las medianas se calculan aquí: MySQL no tiene percentile_cont)
 // ---------------------------------------------------------------------------------------------
 
-const redondear = (n) => Math.round(n * 10) / 10
-const promedio = (valores) => {
+const redondear = (n, decimales = 1) => Math.round(n * 10 ** decimales) / 10 ** decimales
+const promedio = (valores, decimales = 1) => {
   const v = valores.filter((x) => x !== null && x !== undefined)
-  return v.length ? redondear(v.reduce((a, b) => a + b, 0) / v.length) : null
+  return v.length ? redondear(v.reduce((a, b) => a + b, 0) / v.length, decimales) : null
 }
-const mediana = (valores) => {
+const mediana = (valores, decimales = 1) => {
   const v = valores.filter((x) => x !== null && x !== undefined).sort((a, b) => a - b)
   if (!v.length) return null
   const m = Math.floor(v.length / 2)
-  return redondear(v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2)
+  return redondear(v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2, decimales)
 }
 const porcentaje = (parte, total) => (total ? redondear((100 * parte) / total) : 0)
 
@@ -79,6 +79,102 @@ function contarPor(filas, clave, etiquetaVacia) {
   const conteo = new Map()
   for (const fila of filas) conteo.set(fila[clave] ?? etiquetaVacia, (conteo.get(fila[clave] ?? etiquetaVacia) ?? 0) + 1)
   return [...conteo.entries()]
+}
+
+/** Superficie corporal en m² por la fórmula de Mosteller: √(peso kg × talla cm ÷ 3600). */
+const superficieCorporal = (pesoKg, tallaCm) => (pesoKg && tallaCm ? Math.sqrt((pesoKg * tallaCm) / 3600) : null)
+
+/** Conteo por categoría, de mayor a menor, con la categoría vacía siempre al final. */
+function conteoNominal(valores, etiquetaVacia) {
+  const conteo = new Map()
+  for (const v of valores) conteo.set(v ?? etiquetaVacia, (conteo.get(v ?? etiquetaVacia) ?? 0) + 1)
+  return [...conteo.entries()]
+    .sort((a, b) => (a[0] === etiquetaVacia) - (b[0] === etiquetaVacia) || b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+    .map(([categoria, total_cirugias]) => ({ categoria, total_cirugias }))
+}
+
+/**
+ * Cuenta las cirugías por rangos de un valor numérico. Cada rango declara su límite superior
+ * exclusivo (`hasta`); el último va sin límite. Se devuelven todos los rangos, también los vacíos,
+ * para que la forma de la distribución se compare entre periodos, y al final "Sin dato" solo si
+ * alguna cirugía no tiene el valor.
+ */
+function distribucion(valores, rangos) {
+  if (!valores.length) return []
+  const conteo = rangos.map(() => 0)
+  let sinDato = 0
+  for (const v of valores) {
+    if (v === null || v === undefined) sinDato += 1
+    else conteo[rangos.findIndex((r) => r.hasta === undefined || v < r.hasta)] += 1
+  }
+  const salida = rangos.map((r, i) => ({ categoria: r.etiqueta, total_cirugias: conteo[i] }))
+  return sinDato ? [...salida, { categoria: 'Sin dato', total_cirugias: sinDato }] : salida
+}
+
+// Rangos de los gráficos de distribución: cortes fijos de uso clínico corriente (no salen de los
+// datos), así un rango significa lo mismo en cualquier periodo. Peso, talla y superficie corporal
+// tienen cortes propios por grupo porque niños y adultos viven en escalas distintas.
+const RANGOS_PEDIATRICOS = {
+  peso: [
+    { hasta: 2.5, etiqueta: '<2.5 kg' }, { hasta: 5, etiqueta: '2.5–4.9 kg' }, { hasta: 10, etiqueta: '5–9.9 kg' },
+    { hasta: 20, etiqueta: '10–19.9 kg' }, { hasta: 40, etiqueta: '20–39.9 kg' }, { etiqueta: '≥40 kg' },
+  ],
+  talla: [
+    { hasta: 50, etiqueta: '<50 cm' }, { hasta: 75, etiqueta: '50–74 cm' }, { hasta: 100, etiqueta: '75–99 cm' },
+    { hasta: 125, etiqueta: '100–124 cm' }, { hasta: 150, etiqueta: '125–149 cm' }, { etiqueta: '≥150 cm' },
+  ],
+  superficie: [
+    { hasta: 0.3, etiqueta: '<0.30 m²' }, { hasta: 0.5, etiqueta: '0.30–0.49 m²' }, { hasta: 1, etiqueta: '0.50–0.99 m²' },
+    { hasta: 1.5, etiqueta: '1.00–1.49 m²' }, { etiqueta: '≥1.50 m²' },
+  ],
+}
+const RANGOS_ADULTOS = {
+  peso: [
+    { hasta: 50, etiqueta: '<50 kg' }, { hasta: 60, etiqueta: '50–59.9 kg' }, { hasta: 70, etiqueta: '60–69.9 kg' },
+    { hasta: 80, etiqueta: '70–79.9 kg' }, { hasta: 90, etiqueta: '80–89.9 kg' }, { hasta: 100, etiqueta: '90–99.9 kg' },
+    { etiqueta: '≥100 kg' },
+  ],
+  talla: [
+    { hasta: 150, etiqueta: '<150 cm' }, { hasta: 160, etiqueta: '150–159 cm' }, { hasta: 170, etiqueta: '160–169 cm' },
+    { hasta: 180, etiqueta: '170–179 cm' }, { etiqueta: '≥180 cm' },
+  ],
+  superficie: [
+    { hasta: 1.6, etiqueta: '<1.60 m²' }, { hasta: 1.8, etiqueta: '1.60–1.79 m²' }, { hasta: 2, etiqueta: '1.80–1.99 m²' },
+    { hasta: 2.2, etiqueta: '2.00–2.19 m²' }, { etiqueta: '≥2.20 m²' },
+  ],
+}
+const RANGOS_DIAS_UCI = [
+  { hasta: 2, etiqueta: '0–1 días' }, { hasta: 4, etiqueta: '2–3 días' }, { hasta: 8, etiqueta: '4–7 días' },
+  { hasta: 15, etiqueta: '8–14 días' }, { hasta: 31, etiqueta: '15–30 días' }, { etiqueta: '>30 días' },
+]
+const RANGOS_HORAS_VM = [
+  { hasta: 1, etiqueta: '0 h' }, { hasta: 7, etiqueta: '1–6 h' }, { hasta: 25, etiqueta: '7–24 h' },
+  { hasta: 49, etiqueta: '25–48 h' }, { hasta: 169, etiqueta: '49–168 h' }, { etiqueta: '>168 h' },
+]
+
+/**
+ * Características de los pacientes operados y su evolución postoperatoria: mismos gráficos para
+ * pediátricos y adultos, cada grupo con sus rangos. El estado de la herida no cuenta a quienes
+ * fallecieron (su seguimiento "no aplica").
+ */
+function caracteristicasYEvolucion(filas, rangos) {
+  const superficies = filas.map((f) => superficieCorporal(f.peso_kg, f.talla_cm))
+  return {
+    resumen: {
+      peso_mediana: mediana(filas.map((f) => f.peso_kg)),
+      talla_mediana: mediana(filas.map((f) => f.talla_cm)),
+      superficie_corporal_mediana: mediana(superficies, 2),
+    },
+    graficos: {
+      por_sexo: conteoNominal(filas.map((f) => f.sexo), 'Sin dato'),
+      por_peso: distribucion(filas.map((f) => f.peso_kg), rangos.peso),
+      por_talla: distribucion(filas.map((f) => f.talla_cm), rangos.talla),
+      por_superficie_corporal: distribucion(superficies, rangos.superficie),
+      por_dias_uci: distribucion(filas.map((f) => f.dias_uci), RANGOS_DIAS_UCI),
+      por_horas_vm: distribucion(filas.map((f) => f.horas_vm), RANGOS_HORAS_VM),
+      por_estado_herida: conteoNominal(filas.filter((f) => !f.seguimiento_no_aplica).map((f) => f.estado_herida), 'Sin registrar'),
+    },
+  }
 }
 
 rutasIndicadores.get('/', asincrono(async (req, res) => {
@@ -95,7 +191,8 @@ rutasIndicadores.get('/', asincrono(async (req, res) => {
       (c.complicacion_intraqx_id IS NOT NULL AND (ci.codigo IS NULL OR ci.codigo <> 'NINGUNA')) AS comp_intraqx,
       (po.complicacion_pop_id IS NOT NULL AND (cp.codigo IS NULL OR cp.codigo <> 'NO')) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
-      dg.valor AS diagnostico, rc.valor AS rachs, eps.valor AS eps, pr.valor AS procedencia
+      dg.valor AS diagnostico, rc.valor AS rachs, eps.valor AS eps, pr.valor AS procedencia,
+      p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica
     FROM cirugias c
     JOIN pacientes p ON p.id = c.paciente_id
     LEFT JOIN diagnosticos d ON d.paciente_id = p.id
@@ -108,6 +205,8 @@ rutasIndicadores.get('/', asincrono(async (req, res) => {
     LEFT JOIN opciones_lista rc ON rc.id = d.rachs_id
     LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
     LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
+    LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
+    LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
 
   const total = filas.length
@@ -140,8 +239,11 @@ rutasIndicadores.get('/', asincrono(async (req, res) => {
     rachs.set(clave, acumulado)
   }
 
+  const pacientes = caracteristicasYEvolucion(filas, RANGOS_PEDIATRICOS)
+
   res.json({
     resumen: {
+      ...pacientes.resumen,
       total_cirugias: total,
       mortalidad_hospitalaria_pct: porcentaje(cuenta((f) => f.muerte), total),
       dias_uci_promedio: promedio(filas.map((f) => f.dias_uci)),
@@ -164,6 +266,7 @@ rutasIndicadores.get('/', asincrono(async (req, res) => {
       .map(([nombre, r]) => ({ rachs: nombre, total_cirugias: r.total, mortalidad_pct: porcentaje(r.muertes, r.total) })),
     por_eps: ordenarConteo(contarPor(filas, 'eps', 'Sin EPS')).map(([eps, n]) => ({ eps, total_cirugias: n })),
     por_procedencia: ordenarConteo(contarPor(filas, 'procedencia', 'Sin procedencia')).map(([procedencia, n]) => ({ procedencia, total_cirugias: n })),
+    ...pacientes.graficos,
   })
 }))
 
@@ -195,7 +298,8 @@ rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
       (c.complicacion_intraqx_id IS NOT NULL AND (ci.codigo IS NULL OR ci.codigo <> 'NINGUNA')) AS comp_intraqx,
       (po.complicacion_pop_id IS NOT NULL AND (cp.codigo IS NULL OR cp.codigo <> 'NO')) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
-      dg.valor AS diagnostico, d.euroscore, eps.valor AS eps, pr.valor AS procedencia
+      dg.valor AS diagnostico, d.euroscore, eps.valor AS eps, pr.valor AS procedencia,
+      p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica
     FROM cirugias_adultos c
     JOIN pacientes_adultos p ON p.id = c.paciente_id
     LEFT JOIN diagnosticos_adultos d ON d.paciente_id = p.id
@@ -207,6 +311,8 @@ rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
     LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
     LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
     LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
+    LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
+    LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
 
   const total = filas.length
@@ -239,8 +345,11 @@ rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
     euroscoreMap.set(clave, acumulado)
   }
 
+  const pacientes = caracteristicasYEvolucion(filas, RANGOS_ADULTOS)
+
   res.json({
     resumen: {
+      ...pacientes.resumen,
       total_cirugias: total,
       mortalidad_hospitalaria_pct: porcentaje(cuenta((f) => f.muerte), total),
       dias_uci_promedio: promedio(filas.map((f) => f.dias_uci)),
@@ -266,6 +375,7 @@ rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
     }),
     por_eps: ordenarConteo(contarPor(filas, 'eps', 'Sin EPS')).map(([eps, n]) => ({ eps, total_cirugias: n })),
     por_procedencia: ordenarConteo(contarPor(filas, 'procedencia', 'Sin procedencia')).map(([procedencia, n]) => ({ procedencia, total_cirugias: n })),
+    ...pacientes.graficos,
   })
 }))
 
