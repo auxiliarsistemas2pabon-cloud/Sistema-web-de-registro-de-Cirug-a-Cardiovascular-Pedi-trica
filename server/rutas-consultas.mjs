@@ -100,8 +100,8 @@ function resumenNumerico(valores, decimales = 1) {
   }
 }
 
-/** Superficie corporal en m² por la fórmula de Mosteller: √(peso kg × talla cm ÷ 3600). */
-const superficieCorporal = (pesoKg, tallaCm) => (pesoKg && tallaCm ? Math.sqrt((pesoKg * tallaCm) / 3600) : null)
+/** Área de superficie corporal en m² a partir del peso: (peso kg × 4 + 7) ÷ (peso kg + 90). */
+const superficieCorporal = (pesoKg) => (pesoKg ? (pesoKg * 4 + 7) / (pesoKg + 90) : null)
 
 /** Conteo por categoría, de mayor a menor, con la categoría vacía siempre al final. */
 function conteoNominal(valores, etiquetaVacia) {
@@ -224,7 +224,7 @@ function grupoHerida(estado) {
 
 /** Etiquetas de un paciente en cada campo filtrable: las mismas que muestran los gráficos. */
 function etiquetarFila(f, rangos) {
-  const superficie = superficieCorporal(f.peso_kg, f.talla_cm)
+  const superficie = superficieCorporal(f.peso_kg)
   // Los fallecidos no tienen seguimiento: no entran en el estado de la herida ni en su filtro.
   const conSeguimiento = !f.seguimiento_no_aplica
   return {
