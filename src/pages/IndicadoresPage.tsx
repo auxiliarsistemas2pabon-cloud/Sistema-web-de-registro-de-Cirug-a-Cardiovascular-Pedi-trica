@@ -218,13 +218,15 @@ function num(v: number | null | undefined, decimales = 1): string {
 }
 
 /** El tablero se recorre por categorías, una a la vez, en vez de una sola página con todos los
- * gráficos apilados. La pestaña activa va en la URL (?vista=…) para que sobreviva a una recarga. */
+ * gráficos apilados. La pestaña activa va en la URL (?vista=…) para que sobreviva a una recarga.
+ * Van en el orden de los módulos de la ficha (paciente, riesgo y cirugía, postoperatorio), con la
+ * matriz por paciente al final, como consulta de detalle. */
 const PESTANAS = [
   { clave: 'resumen', etiqueta: 'Resumen', icono: <IconoGrafico /> },
-  { clave: 'matriz', etiqueta: 'Matriz de resumen', etiquetaCorta: 'Matriz', icono: <IconoLista /> },
-  { clave: 'riesgo', etiqueta: 'Riesgo y cirugía', icono: <IconoCorazon /> },
   { clave: 'pacientes', etiqueta: 'Pacientes', icono: <IconoPacientes /> },
+  { clave: 'riesgo', etiqueta: 'Riesgo y cirugía', icono: <IconoCorazon /> },
   { clave: 'postoperatorio', etiqueta: 'Postoperatorio', icono: <IconoReloj /> },
+  { clave: 'matriz', etiqueta: 'Matriz de resumen', etiquetaCorta: 'Matriz', icono: <IconoLista /> },
 ] as const
 
 type Vista = (typeof PESTANAS)[number]['clave']
@@ -495,43 +497,6 @@ export function IndicadoresPage() {
             </div>
           )}
 
-          {vista === 'matriz' && (
-            <MatrizResumen
-              pacientes={matriz.data}
-              cargando={matriz.isLoading}
-              grupo={grupo === 'adultos' ? 'Pacientes adultos' : 'Pacientes pediátricos'}
-              claveGrupo={grupo}
-              desde={desde}
-              hasta={hasta}
-              filtros={filtros}
-              onFiltrar={alternarFiltro}
-              nombreArchivo={`matriz-por-paciente-${grupo}-${desde}-a-${hasta}.xlsx`}
-            />
-          )}
-
-          {vista === 'riesgo' && (
-            <div className="space-y-4">
-              {/* Columnas para la escala ordinal de riesgo y puntos para la tasa de mortalidad: mismas
-                  categorías, en el mismo orden, una junto a la otra (y el mismo filtro). */}
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Tarjeta titulo={`Cirugías por ${tituloRiesgo}`}>
-                  <GraficoColumnas datos={data.porRiesgoTotal} {...interaccion('riesgo')} />
-                </Tarjeta>
-                <Tarjeta titulo={`Mortalidad por ${tituloRiesgo} (%)`}>
-                  <GraficoPuntos datos={data.porRiesgoMortalidad} nombreCasos={['fallecido', 'fallecidos']} {...interaccion('riesgo')} />
-                </Tarjeta>
-              </div>
-
-              <Tarjeta titulo="Cirugías por diagnóstico">
-                <GraficoBarras datos={data.porDiagnostico} {...interaccion('diagnostico')} />
-              </Tarjeta>
-
-              <Tarjeta titulo="Cirugías por procedimiento">
-                <GraficoBarras datos={data.porProcedimiento} {...interaccion('procedimiento')} />
-              </Tarjeta>
-            </div>
-          )}
-
           {/* Peso, talla y superficie corporal se agrupan en rangos fijos de uso clínico (definidos en
               server/rutas-consultas.mjs), distintos para niños y adultos: histogramas en el orden de
               los rangos, no el de la cantidad, para que se lea la forma de la distribución. */}
@@ -566,6 +531,29 @@ export function IndicadoresPage() {
             </div>
           )}
 
+          {vista === 'riesgo' && (
+            <div className="space-y-4">
+              {/* Columnas para la escala ordinal de riesgo y puntos para la tasa de mortalidad: mismas
+                  categorías, en el mismo orden, una junto a la otra (y el mismo filtro). */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Tarjeta titulo={`Cirugías por ${tituloRiesgo}`}>
+                  <GraficoColumnas datos={data.porRiesgoTotal} {...interaccion('riesgo')} />
+                </Tarjeta>
+                <Tarjeta titulo={`Mortalidad por ${tituloRiesgo} (%)`}>
+                  <GraficoPuntos datos={data.porRiesgoMortalidad} nombreCasos={['fallecido', 'fallecidos']} {...interaccion('riesgo')} />
+                </Tarjeta>
+              </div>
+
+              <Tarjeta titulo="Cirugías por diagnóstico">
+                <GraficoBarras datos={data.porDiagnostico} {...interaccion('diagnostico')} />
+              </Tarjeta>
+
+              <Tarjeta titulo="Cirugías por procedimiento">
+                <GraficoBarras datos={data.porProcedimiento} {...interaccion('procedimiento')} />
+              </Tarjeta>
+            </div>
+          )}
+
           {vista === 'postoperatorio' && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
               <Tarjeta titulo="Cirugías por días de estancia en UCI" acciones={<Mediana valor={data.estadisticas.dias_uci.mediana} unidad="días" />}>
@@ -584,6 +572,20 @@ export function IndicadoresPage() {
                 </p>
               </Tarjeta>
             </div>
+          )}
+
+          {vista === 'matriz' && (
+            <MatrizResumen
+              pacientes={matriz.data}
+              cargando={matriz.isLoading}
+              grupo={grupo === 'adultos' ? 'Pacientes adultos' : 'Pacientes pediátricos'}
+              claveGrupo={grupo}
+              desde={desde}
+              hasta={hasta}
+              filtros={filtros}
+              onFiltrar={alternarFiltro}
+              nombreArchivo={`matriz-por-paciente-${grupo}-${desde}-a-${hasta}.xlsx`}
+            />
           )}
         </div>
       )}
