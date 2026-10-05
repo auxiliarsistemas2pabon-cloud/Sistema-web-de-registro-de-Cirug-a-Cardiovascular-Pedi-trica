@@ -189,6 +189,29 @@ describe('API cirugía cardiovascular pediátrica', () => {
     // Las distribuciones por rango traen todos los rangos (también los vacíos) y suman el total de cirugías.
     const sumaPeso = i.por_peso.reduce((suma, r) => suma + r.total_cirugias, 0)
     assert.equal(sumaPeso, i.resumen.total_cirugias)
+    // Matriz de resumen: cada variable numérica trae n, mediana, RIC y rango; RACHS trae sus fallecidos.
+    for (const k of ['peso', 'talla', 'superficie_corporal', 'dias_uci', 'horas_vm']) {
+      for (const medida of ['n', 'promedio', 'mediana', 'q1', 'q3', 'minimo', 'maximo']) assert.ok(medida in i.estadisticas[k], `${k}.${medida}`)
+    }
+    assert.ok(i.por_rachs.every((r) => Number.isInteger(r.fallecidos) && r.fallecidos <= r.total_cirugias))
+    // La dona de la herida agrupa a los mismos pacientes que su distribución.
+    const suma = (lista, clave) => lista.reduce((total, x) => total + x[clave], 0)
+    assert.equal(suma(i.por_herida_grupo, 'total'), suma(i.por_estado_herida, 'total_cirugias'))
+    // Filtro con un clic: el total baja a esos pacientes y el gráfico de su propio campo sigue completo.
+    const sexo = i.por_sexo[0]
+    const filtros = encodeURIComponent(JSON.stringify([{ campo: 'sexo', valor: sexo.categoria }]))
+    const filtrado = (await api('GET', `/indicadores?desde=2000-01-01&hasta=2100-01-01&filtros=${filtros}`, { token: consulta })).datos
+    assert.equal(filtrado.resumen.total_cirugias, sexo.total_cirugias)
+    assert.deepEqual(filtrado.por_sexo, i.por_sexo)
+    assert.equal(suma(filtrado.por_peso, 'total_cirugias'), sexo.total_cirugias)
+    assert.equal((await api('GET', '/indicadores?desde=2000-01-01&hasta=2100-01-01&filtros=no-es-json', { token: consulta })).estado, 400)
+    // Matriz de resumen: una fila por paciente operado, con los mismos filtros.
+    const { pacientes } = (await api('GET', '/indicadores/pacientes?desde=2000-01-01&hasta=2100-01-01', { token: consulta })).datos
+    assert.equal(pacientes.length, i.resumen.total_cirugias)
+    // Cada fila trae el documento del paciente, para el buscador de la matriz.
+    assert.ok(pacientes.every((p) => /^\d+$/.test(p.identificacion)))
+    const filtradas = (await api('GET', `/indicadores/pacientes?desde=2000-01-01&hasta=2100-01-01&filtros=${filtros}`, { token: consulta })).datos.pacientes
+    assert.ok(filtradas.length === sexo.total_cirugias && filtradas.every((p) => p.etiquetas.sexo === sexo.categoria))
     assert.equal((await api('GET', '/indicadores', { token: consulta })).estado, 400)
   })
 

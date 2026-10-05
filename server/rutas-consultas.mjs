@@ -75,10 +75,29 @@ const mediana = (valores, decimales = 1) => {
 }
 const porcentaje = (parte, total) => (total ? redondear((100 * parte) / total) : 0)
 
-function contarPor(filas, clave, etiquetaVacia) {
-  const conteo = new Map()
-  for (const fila of filas) conteo.set(fila[clave] ?? etiquetaVacia, (conteo.get(fila[clave] ?? etiquetaVacia) ?? 0) + 1)
-  return [...conteo.entries()]
+/** Percentil por interpolación lineal sobre valores ya ordenados: el mismo método de CUARTIL.INC
+ * de Excel, para que la matriz de resumen coincida con lo que el equipo calcule en una hoja. */
+function percentil(ordenados, p) {
+  const posicion = (ordenados.length - 1) * p
+  const base = Math.floor(posicion)
+  const siguiente = ordenados[base + 1]
+  return siguiente === undefined ? ordenados[base] : ordenados[base] + (posicion - base) * (siguiente - ordenados[base])
+}
+
+/** Medidas de resumen de una variable numérica, sin contar los vacíos: n, promedio, mediana, rango
+ * intercuartílico (q1–q3) y rango (mínimo–máximo). Sin ningún dato, todo queda en null. */
+function resumenNumerico(valores, decimales = 1) {
+  const v = valores.filter((x) => x !== null && x !== undefined).sort((a, b) => a - b)
+  if (!v.length) return { n: 0, promedio: null, mediana: null, q1: null, q3: null, minimo: null, maximo: null }
+  return {
+    n: v.length,
+    promedio: redondear(v.reduce((a, b) => a + b, 0) / v.length, decimales),
+    mediana: redondear(percentil(v, 0.5), decimales),
+    q1: redondear(percentil(v, 0.25), decimales),
+    q3: redondear(percentil(v, 0.75), decimales),
+    minimo: redondear(v[0], decimales),
+    maximo: redondear(v[v.length - 1], decimales),
+  }
 }
 
 /** Superficie corporal en m² por la fórmula de Mosteller: √(peso kg × talla cm ÷ 3600). */
@@ -152,37 +171,243 @@ const RANGOS_HORAS_VM = [
   { hasta: 49, etiqueta: '25–48 h' }, { hasta: 169, etiqueta: '49–168 h' }, { etiqueta: '>168 h' },
 ]
 
+// ---------------------------------------------------------------------------------------------
+// Tablero dinámico: al hacer clic en una categoría de cualquier gráfico, todo el tablero se
+// recalcula solo con esos pacientes. Cada fila es un paciente operado (cirugias, diagnosticos,
+// postoperatorio y seguimientos tienen paciente_id UNIQUE), así que contar filas es contar pacientes.
+// ---------------------------------------------------------------------------------------------
+
+/** Campos filtrables: uno por gráfico, y el filtro usa exactamente la etiqueta que ese gráfico muestra. */
+const CAMPOS_FILTRO = [
+  'mes', 'riesgo', 'diagnostico', 'procedimiento', 'eps', 'procedencia', 'sexo', 'peso', 'talla', 'superficie',
+  'dias_uci', 'horas_vm', 'estado_herida', 'herida_grupo',
+]
+
+function leerFiltros(texto) {
+  if (texto === undefined || texto === '') return []
+  let filtros
+  try {
+    filtros = JSON.parse(texto)
+  } catch {
+    throw validacion('Los filtros no tienen un formato válido.')
+  }
+  const validos = Array.isArray(filtros) && filtros.length <= 20 && filtros.every((f) =>
+    f && CAMPOS_FILTRO.includes(f.campo) && typeof f.valor === 'string' && f.valor.length <= 300)
+  if (!validos) throw validacion('Los filtros no tienen un formato válido.')
+  return filtros.map(({ campo, valor }) => ({ campo, valor }))
+}
+
+function leerConsulta(req) {
+  const { desde, hasta, filtros } = req.query
+  if (!esFechaIso(desde) || !esFechaIso(hasta)) throw validacion('Indique desde y hasta con formato aaaa-mm-dd.')
+  return { desde, hasta, filtros: leerFiltros(filtros) }
+}
+
+/** Etiqueta del rango donde cae un valor, con el mismo corte que distribucion() (o "Sin dato"). */
+function etiquetaRango(valor, rangos) {
+  if (valor === null || valor === undefined) return 'Sin dato'
+  return rangos[rangos.findIndex((r) => r.hasta === undefined || valor < r.hasta)].etiqueta
+}
+
 /**
- * Características de los pacientes operados y su evolución postoperatoria: mismos gráficos para
- * pediátricos y adultos, cada grupo con sus rangos. El estado de la herida no cuenta a quienes
- * fallecieron (su seguimiento "no aplica").
+ * El estado de la herida tiene 11 opciones, pero la lectura clínica es "¿cicatrizó bien?": adecuada,
+ * con alguna alteración, no aplica o sin registrar. La opción adecuada y "N/A" se reconocen por su
+ * texto porque el catálogo no les da un código estable (mismo criterio que la valvulopatía).
  */
-function caracteristicasYEvolucion(filas, rangos) {
-  const superficies = filas.map((f) => superficieCorporal(f.peso_kg, f.talla_cm))
+const GRUPOS_HERIDA = ['adecuada', 'alteracion', 'no_aplica', 'sin_registrar']
+function grupoHerida(estado) {
+  if (estado === null || estado === undefined) return 'sin_registrar'
+  if (/adecuad/i.test(estado)) return 'adecuada'
+  if (/^(n\/?a|no aplica)$/i.test(estado.trim())) return 'no_aplica'
+  return 'alteracion'
+}
+
+/** Etiquetas de un paciente en cada campo filtrable: las mismas que muestran los gráficos. */
+function etiquetarFila(f, rangos) {
+  const superficie = superficieCorporal(f.peso_kg, f.talla_cm)
+  // Los fallecidos no tienen seguimiento: no entran en el estado de la herida ni en su filtro.
+  const conSeguimiento = !f.seguimiento_no_aplica
   return {
-    resumen: {
-      peso_mediana: mediana(filas.map((f) => f.peso_kg)),
-      talla_mediana: mediana(filas.map((f) => f.talla_cm)),
-      superficie_corporal_mediana: mediana(superficies, 2),
-    },
-    graficos: {
-      por_sexo: conteoNominal(filas.map((f) => f.sexo), 'Sin dato'),
-      por_peso: distribucion(filas.map((f) => f.peso_kg), rangos.peso),
-      por_talla: distribucion(filas.map((f) => f.talla_cm), rangos.talla),
-      por_superficie_corporal: distribucion(superficies, rangos.superficie),
-      por_dias_uci: distribucion(filas.map((f) => f.dias_uci), RANGOS_DIAS_UCI),
-      por_horas_vm: distribucion(filas.map((f) => f.horas_vm), RANGOS_HORAS_VM),
-      por_estado_herida: conteoNominal(filas.filter((f) => !f.seguimiento_no_aplica).map((f) => f.estado_herida), 'Sin registrar'),
+    ...f,
+    superficie,
+    etiquetas: {
+      mes: f.fecha_cirugia.slice(0, 7),
+      riesgo: f.riesgo,
+      diagnostico: f.diagnostico ?? 'Sin diagnóstico',
+      eps: f.eps ?? 'Sin EPS',
+      procedencia: f.procedencia ?? 'Sin procedencia',
+      sexo: f.sexo ?? 'Sin dato',
+      peso: etiquetaRango(f.peso_kg, rangos.peso),
+      talla: etiquetaRango(f.talla_cm, rangos.talla),
+      superficie: etiquetaRango(superficie, rangos.superficie),
+      dias_uci: etiquetaRango(f.dias_uci, RANGOS_DIAS_UCI),
+      horas_vm: etiquetaRango(f.horas_vm, RANGOS_HORAS_VM),
+      estado_herida: conSeguimiento ? (f.estado_herida ?? 'Sin registrar') : null,
+      herida_grupo: conSeguimiento ? grupoHerida(f.estado_herida) : null,
     },
   }
 }
 
-rutasIndicadores.get('/', asincrono(async (req, res) => {
-  const { desde, hasta } = req.query
-  if (!esFechaIso(desde) || !esFechaIso(hasta)) throw validacion('Indique desde y hasta con formato aaaa-mm-dd.')
+const cumple = (fila, filtro) =>
+  filtro.campo === 'procedimiento' ? fila.procedimientos.has(filtro.valor) : fila.etiquetas[filtro.campo] === filtro.valor
 
-  const filas = await todas(pool, `
-    SELECT c.id AS cirugia_id, c.fecha_cirugia, c.tiempo_cec_min, c.tiempo_clamp_min,
+/** Pares (cantidad por etiqueta) de mayor a menor, y en orden alfabético los empates. */
+function contarEtiquetas(filas, campo) {
+  const conteo = new Map()
+  for (const f of filas) conteo.set(f.etiquetas[campo], (conteo.get(f.etiquetas[campo]) ?? 0) + 1)
+  return [...conteo.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'es'))
+}
+
+/** Procedimientos de cada cirugía del periodo (cirugia_id → Set), para contarlos y filtrar por ellos.
+ * Los nombres de tabla son fijos, nunca vienen de la petición. */
+async function procedimientosPorCirugia(tablas, desde, hasta) {
+  const pares = await todas(pool, `
+    SELECT cp.cirugia_id, o.valor AS procedimiento
+    FROM ${tablas.cirugias} c
+    JOIN ${tablas.pacientes} p ON p.id = c.paciente_id
+    JOIN ${tablas.procedimientos} cp ON cp.cirugia_id = c.id
+    JOIN opciones_lista o ON o.id = cp.procedimiento_id
+    WHERE p.eliminado = 0 AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
+  const mapa = new Map()
+  for (const { cirugia_id, procedimiento } of pares) {
+    if (!mapa.has(cirugia_id)) mapa.set(cirugia_id, new Set())
+    mapa.get(cirugia_id).add(procedimiento)
+  }
+  return mapa
+}
+
+/**
+ * Todos los indicadores de un grupo a partir de sus pacientes operados en el periodo. Con filtros,
+ * los totales, las tasas y los tiempos usan solo a los pacientes que cumplen todos. Cada gráfico, en
+ * cambio, ignora el filtro de su propio campo: así el gráfico donde se hizo clic sigue mostrando
+ * todas sus categorías (con la elegida resaltada en la pantalla) y los demás muestran solo a esos
+ * pacientes, como en Power BI. El estado de la herida no cuenta a los fallecidos.
+ */
+function calcularIndicadores({ filas, filtros, rangos, formatearRiesgo, resumenExtra = () => ({}) }) {
+  const filtradas = (...excepto) =>
+    filas.filter((f) => filtros.every((filtro) => excepto.includes(filtro.campo) || cumple(f, filtro)))
+
+  const pacientes = filtradas()
+  const total = pacientes.length
+  const cuenta = (fn) => pacientes.filter(fn).length
+  const columna = (lista, clave) => lista.map((f) => f[clave])
+
+  const porMes = new Map()
+  for (const f of filtradas('mes')) {
+    const [anio, mes] = f.fecha_cirugia.split('-').map(Number)
+    const clave = `${anio}-${mes}`
+    porMes.set(clave, { anio, mes, total_cirugias: (porMes.get(clave)?.total_cirugias ?? 0) + 1 })
+  }
+
+  const porProcedimiento = new Map()
+  for (const f of filtradas('procedimiento')) {
+    for (const p of f.procedimientos) porProcedimiento.set(p, (porProcedimiento.get(p) ?? 0) + 1)
+  }
+
+  const riesgo = new Map()
+  for (const f of filtradas('riesgo')) {
+    const acumulado = riesgo.get(f.riesgo) ?? { total: 0, muertes: 0 }
+    acumulado.total += 1
+    if (f.muerte) acumulado.muertes += 1
+    riesgo.set(f.riesgo, acumulado)
+  }
+
+  const herida = filtradas('estado_herida', 'herida_grupo').filter((f) => !f.seguimiento_no_aplica)
+  const peso = filtradas('peso')
+  const talla = filtradas('talla')
+  const superficie = filtradas('superficie')
+  const diasUci = filtradas('dias_uci')
+  const horasVm = filtradas('horas_vm')
+
+  return {
+    resumen: {
+      total_cirugias: total,
+      mortalidad_hospitalaria_pct: porcentaje(cuenta((f) => f.muerte), total),
+      dias_uci_promedio: promedio(columna(pacientes, 'dias_uci')),
+      dias_uci_mediana: mediana(columna(pacientes, 'dias_uci')),
+      dias_hospitalizacion_promedio: promedio(columna(pacientes, 'dias_hosp')),
+      dias_hospitalizacion_mediana: mediana(columna(pacientes, 'dias_hosp')),
+      horas_ventilacion_promedio: promedio(columna(pacientes, 'horas_vm')),
+      horas_ventilacion_mediana: mediana(columna(pacientes, 'horas_vm')),
+      tasa_complicacion_intraqx_pct: porcentaje(cuenta((f) => f.comp_intraqx), total),
+      tasa_complicacion_pop_pct: porcentaje(cuenta((f) => f.comp_pop), total),
+      tasa_reingreso_30d_pct: porcentaje(cuenta((f) => f.reingreso), total),
+      tiempo_cec_promedio: promedio(columna(pacientes, 'tiempo_cec_min')),
+      tiempo_clamp_promedio: promedio(columna(pacientes, 'tiempo_clamp_min')),
+      ...resumenExtra(pacientes),
+    },
+    por_mes: [...porMes.values()].sort((a, b) => a.anio - b.anio || a.mes - b.mes),
+    por_diagnostico: contarEtiquetas(filtradas('diagnostico'), 'diagnostico').map(([diagnostico, n]) => ({ diagnostico, total_cirugias: n })),
+    por_procedimiento: [...porProcedimiento.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+      .map(([procedimiento, n]) => ({ procedimiento, total_cirugias: n })),
+    ...formatearRiesgo(riesgo),
+    por_eps: contarEtiquetas(filtradas('eps'), 'eps').map(([eps, n]) => ({ eps, total_cirugias: n })),
+    por_procedencia: contarEtiquetas(filtradas('procedencia'), 'procedencia').map(([procedencia, n]) => ({ procedencia, total_cirugias: n })),
+    por_sexo: conteoNominal(columna(filtradas('sexo'), 'sexo'), 'Sin dato'),
+    por_peso: distribucion(columna(peso, 'peso_kg'), rangos.peso),
+    por_talla: distribucion(columna(talla, 'talla_cm'), rangos.talla),
+    por_superficie_corporal: distribucion(columna(superficie, 'superficie'), rangos.superficie),
+    por_dias_uci: distribucion(columna(diasUci, 'dias_uci'), RANGOS_DIAS_UCI),
+    por_horas_vm: distribucion(columna(horasVm, 'horas_vm'), RANGOS_HORAS_VM),
+    por_estado_herida: conteoNominal(columna(herida, 'estado_herida'), 'Sin registrar'),
+    // La dona del tablero: los mismos pacientes, agrupados con la regla de grupoHerida().
+    por_herida_grupo: GRUPOS_HERIDA.map((grupo) => {
+      const delGrupo = herida.filter((f) => f.etiquetas.herida_grupo === grupo)
+      return { grupo, total: delGrupo.length, categorias: conteoNominal(columna(delGrupo, 'estado_herida'), 'Sin registrar') }
+    }),
+    // Matriz de resumen: cada variable numérica con su mediana, RIC y rango (sobre los mismos
+    // pacientes que su gráfico).
+    estadisticas: {
+      peso: resumenNumerico(columna(peso, 'peso_kg')),
+      talla: resumenNumerico(columna(talla, 'talla_cm')),
+      superficie_corporal: resumenNumerico(columna(superficie, 'superficie'), 2),
+      dias_uci: resumenNumerico(columna(diasUci, 'dias_uci')),
+      horas_vm: resumenNumerico(columna(horasVm, 'horas_vm')),
+    },
+  }
+}
+
+const formatearRiesgoPediatrico = (riesgo) => ({
+  por_rachs: [...riesgo.entries()]
+    .sort((a, b) => (a[0] === 'Sin RACHS') - (b[0] === 'Sin RACHS') || a[0].localeCompare(b[0]))
+    .map(([nombre, r]) => ({ rachs: nombre, total_cirugias: r.total, fallecidos: r.muertes, mortalidad_pct: porcentaje(r.muertes, r.total) })),
+})
+
+/**
+ * Matriz de resumen por paciente: una fila por paciente operado con sus variables, con todos los
+ * filtros aplicados (es una lista, no un gráfico: aquí no aplica el "ignorar su propio filtro"), en
+ * orden de fecha de cirugía. Las etiquetas van para que un clic en un valor filtre el tablero.
+ */
+function listarPacientes(filas, filtros) {
+  const campos = ['sexo', 'procedencia', 'peso', 'talla', 'superficie', 'dias_uci', 'horas_vm', 'estado_herida']
+  return filas
+    .filter((f) => filtros.every((filtro) => cumple(f, filtro)))
+    .sort((a, b) => a.fecha_cirugia.localeCompare(b.fecha_cirugia) || a.numero_paciente - b.numero_paciente)
+    .map((f) => ({
+      paciente_id: f.paciente_id,
+      numero_paciente: f.numero_paciente,
+      // Documento del paciente: la matriz permite buscar por él.
+      identificacion: f.identificacion,
+      fecha_cirugia: f.fecha_cirugia,
+      sexo: f.sexo,
+      procedencia: f.procedencia,
+      peso_kg: f.peso_kg,
+      talla_cm: f.talla_cm,
+      // Sin redondear: la matriz calcula su mediana con los mismos valores que el servidor.
+      superficie_corporal: f.superficie,
+      dias_uci: f.dias_uci,
+      horas_vm: f.horas_vm,
+      estado_herida: f.seguimiento_no_aplica ? null : f.estado_herida,
+      seguimiento_no_aplica: Boolean(f.seguimiento_no_aplica),
+      etiquetas: Object.fromEntries(campos.map((campo) => [campo, f.etiquetas[campo]])),
+    }))
+}
+
+/** Pacientes pediátricos operados en el periodo, cada uno con sus etiquetas para filtrar. */
+async function cargarPediatricos(desde, hasta) {
+  const crudas = await todas(pool, `
+    SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, c.id AS cirugia_id, c.fecha_cirugia, c.tiempo_cec_min, c.tiempo_clamp_min,
       CASE WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
            WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_uci,
       CASE WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_hosp,
@@ -208,66 +433,25 @@ rutasIndicadores.get('/', asincrono(async (req, res) => {
     LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
+  const procedimientos = await procedimientosPorCirugia(
+    { cirugias: 'cirugias', pacientes: 'pacientes', procedimientos: 'cirugias_procedimientos' }, desde, hasta)
 
-  const total = filas.length
-  const cuenta = (fn) => filas.filter(fn).length
+  return crudas.map((f) => etiquetarFila({
+    ...f,
+    riesgo: f.rachs ?? 'Sin RACHS',
+    procedimientos: procedimientos.get(f.cirugia_id) ?? new Set(),
+  }, RANGOS_PEDIATRICOS))
+}
 
-  const porMes = new Map()
-  for (const f of filas) {
-    const [anio, mes] = f.fecha_cirugia.split('-').map(Number)
-    const clave = `${anio}-${mes}`
-    porMes.set(clave, { anio, mes, total_cirugias: (porMes.get(clave)?.total_cirugias ?? 0) + 1 })
-  }
+rutasIndicadores.get('/', asincrono(async (req, res) => {
+  const { desde, hasta, filtros } = leerConsulta(req)
+  const filas = await cargarPediatricos(desde, hasta)
+  res.json(calcularIndicadores({ filas, filtros, rangos: RANGOS_PEDIATRICOS, formatearRiesgo: formatearRiesgoPediatrico }))
+}))
 
-  const porProcedimiento = await todas(pool, `
-    SELECT o.valor AS procedimiento, COUNT(DISTINCT c.id) AS total_cirugias
-    FROM cirugias c
-    JOIN pacientes p ON p.id = c.paciente_id
-    JOIN cirugias_procedimientos cp ON cp.cirugia_id = c.id
-    JOIN opciones_lista o ON o.id = cp.procedimiento_id
-    WHERE p.eliminado = 0 AND c.fecha_cirugia BETWEEN ? AND ?
-    GROUP BY o.valor ORDER BY total_cirugias DESC, o.valor`, [desde, hasta])
-
-  const ordenarConteo = (pares) => pares.sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'es'))
-
-  const rachs = new Map()
-  for (const f of filas) {
-    const clave = f.rachs ?? 'Sin RACHS'
-    const acumulado = rachs.get(clave) ?? { total: 0, muertes: 0 }
-    acumulado.total += 1
-    if (f.muerte) acumulado.muertes += 1
-    rachs.set(clave, acumulado)
-  }
-
-  const pacientes = caracteristicasYEvolucion(filas, RANGOS_PEDIATRICOS)
-
-  res.json({
-    resumen: {
-      ...pacientes.resumen,
-      total_cirugias: total,
-      mortalidad_hospitalaria_pct: porcentaje(cuenta((f) => f.muerte), total),
-      dias_uci_promedio: promedio(filas.map((f) => f.dias_uci)),
-      dias_uci_mediana: mediana(filas.map((f) => f.dias_uci)),
-      dias_hospitalizacion_promedio: promedio(filas.map((f) => f.dias_hosp)),
-      dias_hospitalizacion_mediana: mediana(filas.map((f) => f.dias_hosp)),
-      horas_ventilacion_promedio: promedio(filas.map((f) => f.horas_vm)),
-      horas_ventilacion_mediana: mediana(filas.map((f) => f.horas_vm)),
-      tasa_complicacion_intraqx_pct: porcentaje(cuenta((f) => f.comp_intraqx), total),
-      tasa_complicacion_pop_pct: porcentaje(cuenta((f) => f.comp_pop), total),
-      tasa_reingreso_30d_pct: porcentaje(cuenta((f) => f.reingreso), total),
-      tiempo_cec_promedio: promedio(filas.map((f) => f.tiempo_cec_min)),
-      tiempo_clamp_promedio: promedio(filas.map((f) => f.tiempo_clamp_min)),
-    },
-    por_mes: [...porMes.values()].sort((a, b) => a.anio - b.anio || a.mes - b.mes),
-    por_diagnostico: ordenarConteo(contarPor(filas, 'diagnostico', 'Sin diagnóstico')).map(([diagnostico, n]) => ({ diagnostico, total_cirugias: n })),
-    por_procedimiento: porProcedimiento.map((f) => ({ procedimiento: f.procedimiento, total_cirugias: Number(f.total_cirugias) })),
-    por_rachs: [...rachs.entries()]
-      .sort((a, b) => (a[0] === 'Sin RACHS') - (b[0] === 'Sin RACHS') || a[0].localeCompare(b[0]))
-      .map(([nombre, r]) => ({ rachs: nombre, total_cirugias: r.total, mortalidad_pct: porcentaje(r.muertes, r.total) })),
-    por_eps: ordenarConteo(contarPor(filas, 'eps', 'Sin EPS')).map(([eps, n]) => ({ eps, total_cirugias: n })),
-    por_procedencia: ordenarConteo(contarPor(filas, 'procedencia', 'Sin procedencia')).map(([procedencia, n]) => ({ procedencia, total_cirugias: n })),
-    ...pacientes.graficos,
-  })
+rutasIndicadores.get('/pacientes', asincrono(async (req, res) => {
+  const { desde, hasta, filtros } = leerConsulta(req)
+  res.json({ pacientes: listarPacientes(await cargarPediatricos(desde, hasta), filtros) })
 }))
 
 // ---------------------------------------------------------------------------------------------
@@ -286,12 +470,17 @@ function categoriaEuroscore(valor) {
   return 'Muy alto (≥10%)'
 }
 
-rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
-  const { desde, hasta } = req.query
-  if (!esFechaIso(desde) || !esFechaIso(hasta)) throw validacion('Indique desde y hasta con formato aaaa-mm-dd.')
+const formatearRiesgoAdultos = (riesgo) => ({
+  por_euroscore: ORDEN_EUROSCORE.filter((c) => riesgo.has(c)).map((c) => {
+    const r = riesgo.get(c)
+    return { categoria: c, total_cirugias: r.total, fallecidos: r.muertes, mortalidad_pct: porcentaje(r.muertes, r.total) }
+  }),
+})
 
-  const filas = await todas(pool, `
-    SELECT c.id AS cirugia_id, c.fecha_cirugia, c.tiempo_cec_min, c.tiempo_clamp_min,
+/** Pacientes adultos operados en el periodo, cada uno con sus etiquetas para filtrar. */
+async function cargarAdultos(desde, hasta) {
+  const crudas = await todas(pool, `
+    SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, c.id AS cirugia_id, c.fecha_cirugia, c.tiempo_cec_min, c.tiempo_clamp_min,
       po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hosp,
       po.horas_ventilacion_mecanica AS horas_vm,
       (cs.codigo = 'MUERTE') AS muerte,
@@ -314,69 +503,33 @@ rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
     LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
+  const procedimientos = await procedimientosPorCirugia(
+    { cirugias: 'cirugias_adultos', pacientes: 'pacientes_adultos', procedimientos: 'cirugias_adultos_procedimientos' }, desde, hasta)
 
-  const total = filas.length
-  const cuenta = (fn) => filas.filter(fn).length
+  return crudas.map((f) => etiquetarFila({
+    ...f,
+    riesgo: categoriaEuroscore(f.euroscore),
+    procedimientos: procedimientos.get(f.cirugia_id) ?? new Set(),
+  }, RANGOS_ADULTOS))
+}
 
-  const porMes = new Map()
-  for (const f of filas) {
-    const [anio, mes] = f.fecha_cirugia.split('-').map(Number)
-    const clave = `${anio}-${mes}`
-    porMes.set(clave, { anio, mes, total_cirugias: (porMes.get(clave)?.total_cirugias ?? 0) + 1 })
-  }
-
-  const porProcedimiento = await todas(pool, `
-    SELECT o.valor AS procedimiento, COUNT(DISTINCT c.id) AS total_cirugias
-    FROM cirugias_adultos c
-    JOIN pacientes_adultos p ON p.id = c.paciente_id
-    JOIN cirugias_adultos_procedimientos cp ON cp.cirugia_id = c.id
-    JOIN opciones_lista o ON o.id = cp.procedimiento_id
-    WHERE p.eliminado = 0 AND c.fecha_cirugia BETWEEN ? AND ?
-    GROUP BY o.valor ORDER BY total_cirugias DESC, o.valor`, [desde, hasta])
-
-  const ordenarConteo = (pares) => pares.sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'es'))
-
-  const euroscoreMap = new Map()
-  for (const f of filas) {
-    const clave = categoriaEuroscore(f.euroscore)
-    const acumulado = euroscoreMap.get(clave) ?? { total: 0, muertes: 0 }
-    acumulado.total += 1
-    if (f.muerte) acumulado.muertes += 1
-    euroscoreMap.set(clave, acumulado)
-  }
-
-  const pacientes = caracteristicasYEvolucion(filas, RANGOS_ADULTOS)
-
-  res.json({
-    resumen: {
-      ...pacientes.resumen,
-      total_cirugias: total,
-      mortalidad_hospitalaria_pct: porcentaje(cuenta((f) => f.muerte), total),
-      dias_uci_promedio: promedio(filas.map((f) => f.dias_uci)),
-      dias_uci_mediana: mediana(filas.map((f) => f.dias_uci)),
-      dias_hospitalizacion_promedio: promedio(filas.map((f) => f.dias_hosp)),
-      dias_hospitalizacion_mediana: mediana(filas.map((f) => f.dias_hosp)),
-      horas_ventilacion_promedio: promedio(filas.map((f) => f.horas_vm)),
-      horas_ventilacion_mediana: mediana(filas.map((f) => f.horas_vm)),
-      tasa_complicacion_intraqx_pct: porcentaje(cuenta((f) => f.comp_intraqx), total),
-      tasa_complicacion_pop_pct: porcentaje(cuenta((f) => f.comp_pop), total),
-      tasa_reingreso_30d_pct: porcentaje(cuenta((f) => f.reingreso), total),
-      tiempo_cec_promedio: promedio(filas.map((f) => f.tiempo_cec_min)),
-      tiempo_clamp_promedio: promedio(filas.map((f) => f.tiempo_clamp_min)),
-      euroscore_promedio: promedio(filas.map((f) => f.euroscore)),
-      euroscore_mediana: mediana(filas.map((f) => f.euroscore)),
-    },
-    por_mes: [...porMes.values()].sort((a, b) => a.anio - b.anio || a.mes - b.mes),
-    por_diagnostico: ordenarConteo(contarPor(filas, 'diagnostico', 'Sin diagnóstico')).map(([diagnostico, n]) => ({ diagnostico, total_cirugias: n })),
-    por_procedimiento: porProcedimiento.map((f) => ({ procedimiento: f.procedimiento, total_cirugias: Number(f.total_cirugias) })),
-    por_euroscore: ORDEN_EUROSCORE.filter((c) => euroscoreMap.has(c)).map((c) => {
-      const r = euroscoreMap.get(c)
-      return { categoria: c, total_cirugias: r.total, mortalidad_pct: porcentaje(r.muertes, r.total) }
+rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
+  const { desde, hasta, filtros } = leerConsulta(req)
+  res.json(calcularIndicadores({
+    filas: await cargarAdultos(desde, hasta),
+    filtros,
+    rangos: RANGOS_ADULTOS,
+    formatearRiesgo: formatearRiesgoAdultos,
+    resumenExtra: (pacientes) => ({
+      euroscore_promedio: promedio(pacientes.map((f) => f.euroscore)),
+      euroscore_mediana: mediana(pacientes.map((f) => f.euroscore)),
     }),
-    por_eps: ordenarConteo(contarPor(filas, 'eps', 'Sin EPS')).map(([eps, n]) => ({ eps, total_cirugias: n })),
-    por_procedencia: ordenarConteo(contarPor(filas, 'procedencia', 'Sin procedencia')).map(([procedencia, n]) => ({ procedencia, total_cirugias: n })),
-    ...pacientes.graficos,
-  })
+  }))
+}))
+
+rutasIndicadores.get('/adultos/pacientes', asincrono(async (req, res) => {
+  const { desde, hasta, filtros } = leerConsulta(req)
+  res.json({ pacientes: listarPacientes(await cargarAdultos(desde, hasta), filtros) })
 }))
 
 // ---------------------------------------------------------------------------------------------
