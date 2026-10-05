@@ -559,7 +559,7 @@ export function IndicadoresPage() {
               >
                 <GraficoColumnas datos={data.porSuperficieCorporal} histograma unidad="m²" {...interaccion('superficie')} />
                 <p className="mt-3 text-xs text-slate-500">
-                  Calculada con la fórmula de Mosteller, √(peso en kg × talla en cm ÷ 3600), con el peso y la talla del Módulo 1.
+                  Calculada con la fórmula (peso en kg × 4 + 7) ÷ (peso en kg + 90), con el peso del Módulo 1.
                 </p>
               </Tarjeta>
             </div>
