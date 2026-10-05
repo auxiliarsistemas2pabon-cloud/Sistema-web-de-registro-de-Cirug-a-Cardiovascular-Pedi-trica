@@ -65,6 +65,18 @@
   --chart-grid: #e1e0d9;
   --status-good: #0ca30c;
   --status-critical: #d03b3b;
+  /* Columnas de los histogramas: el sky-400 de la rampa institucional, porque son bloques anchos y
+     en el azul oscuro pesaban demasiado (3.18:1 sobre blanco, y cada columna lleva su valor escrito). */
+  --chart-histograma: #4594e3;
+  /* Colores categóricos (identidad: sexo en la dona), en este orden fijo. Validados con el script
+     de la skill de dataviz sobre blanco: todos los pares distinguibles con daltonismo (ΔE ≥ 19.4)
+     y con visión normal (ΔE ≥ 24.3). El 3 queda bajo 3:1, así que su valor siempre va escrito. */
+  --chart-cat-1: #0e5093;
+  --chart-cat-2: #eb6834;
+  --chart-cat-3: #37a2c2;
+  /* Datos faltantes ("Sin dato", "Sin registrar") y "No aplica": grises que se apartan sin competir. */
+  --chart-sin-dato: #c9c8c2;
+  --chart-no-aplica: #9a9893;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -111,6 +123,13 @@
   --chart-grid: #2c2c2a;
   --status-good: #0ca30c;
   --status-critical: #e66767;
+  --chart-histograma: #3987e5;
+  /* En oscuro el azul claro institucional se confunde con el azul (ΔE 10.3): el 3 pasa a aguamarina. */
+  --chart-cat-1: #3987e5;
+  --chart-cat-2: #d95926;
+  --chart-cat-3: #199e70;
+  --chart-sin-dato: #4a4945;
+  --chart-no-aplica: #6e6c66;
 }
 
 /* Pedido explícito: absolutamente todo el texto en negro puro — títulos, párrafos, subtítulos,
@@ -315,4 +334,12 @@ select {
   to {
     stroke-dashoffset: -100;
   }
+}
+
+/* Recharts 3 vuelve enfocables algunas capas del gráfico (para recorrerlo con el teclado). Con el
+   mouse, el clic que filtra el tablero dejaba un recuadro de foco alrededor del gráfico: se quita
+   solo cuando el foco no viene del teclado, que sigue viendo dónde está. */
+.recharts-wrapper:focus:not(:focus-visible),
+.recharts-wrapper :focus:not(:focus-visible) {
+  outline: none;
 }
