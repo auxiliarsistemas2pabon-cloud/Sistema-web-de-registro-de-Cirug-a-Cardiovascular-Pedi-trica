@@ -500,6 +500,7 @@ export function IndicadoresPage() {
               pacientes={matriz.data}
               cargando={matriz.isLoading}
               grupo={grupo === 'adultos' ? 'Pacientes adultos' : 'Pacientes pediátricos'}
+              claveGrupo={grupo}
               desde={desde}
               hasta={hasta}
               filtros={filtros}

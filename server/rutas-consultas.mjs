@@ -1,7 +1,7 @@
 // Alertas, indicadores y exportación (solo lectura).
 import { Router } from 'express'
-import { hoyBogota, pool, todas } from './db.mjs'
-import { asincrono, validacion } from './errores.mjs'
+import { hoyBogota, pool, todas, una } from './db.mjs'
+import { asincrono, noEncontrado, validacion } from './errores.mjs'
 import { esFechaIso } from './validar.mjs'
 
 export const rutasAlertas = Router()
@@ -530,6 +530,108 @@ rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
 rutasIndicadores.get('/adultos/pacientes', asincrono(async (req, res) => {
   const { desde, hasta, filtros } = leerConsulta(req)
   res.json({ pacientes: listarPacientes(await cargarAdultos(desde, hasta), filtros) })
+}))
+
+// ---------------------------------------------------------------------------------------------
+// Detalle de un paciente para la matriz de resumen: al buscarlo por documento se ve todo lo que se
+// le hizo, módulo por módulo, con el texto de cada lista (no su id) y sin nombre ni teléfonos, igual
+// que la matriz. Entre pediátricos y adultos cambian las tablas (fijas, nunca vienen de la petición)
+// y las pocas columnas propias de cada grupo.
+// ---------------------------------------------------------------------------------------------
+
+const DETALLE_PEDIATRICO = {
+  tablas: {
+    pacientes: 'pacientes', diagnosticos: 'diagnosticos', riesgos: 'diagnosticos_riesgos', cirugias: 'cirugias',
+    procedimientos: 'cirugias_procedimientos', postoperatorio: 'postoperatorio', seguimientos: 'seguimientos',
+  },
+  // Los días de UCI y de hospitalización se calculan de las fechas, igual que en los indicadores.
+  columnas: `rc.valor AS rachs, s.fecha_llamada_15_dias,
+    CASE WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
+         WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_uci,
+    CASE WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_hospitalizacion`,
+  uniones: 'LEFT JOIN opciones_lista rc ON rc.id = d.rachs_id',
+  // Cada procedimiento adicional es otra intervención, con su propia fecha.
+  fechaProcedimiento: 'CASE cp.orden WHEN 1 THEN c.fecha_cirugia WHEN 2 THEN c.fecha_procedimiento_2 ELSE c.fecha_procedimiento_3 END',
+}
+const DETALLE_ADULTO = {
+  tablas: {
+    pacientes: 'pacientes_adultos', diagnosticos: 'diagnosticos_adultos', riesgos: 'diagnosticos_adultos_riesgos',
+    cirugias: 'cirugias_adultos', procedimientos: 'cirugias_adultos_procedimientos', postoperatorio: 'postoperatorio_adultos',
+    seguimientos: 'seguimientos_adultos',
+  },
+  columnas: 'd.euroscore, s.llamado_15_dias, po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hospitalizacion',
+  uniones: '',
+  // Todos los procedimientos son de la misma cirugía.
+  fechaProcedimiento: 'c.fecha_cirugia',
+}
+
+async function detallePaciente({ tablas, columnas, uniones, fechaProcedimiento }, pacienteId) {
+  const ficha = await una(pool, `
+    SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, sx.valor AS sexo, p.fecha_nacimiento,
+      DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_cirugia_dias, p.peso_kg, p.talla_cm,
+      pr.valor AS procedencia, mu.valor AS municipio_narino, eps.valor AS eps,
+      dg.valor AS diagnostico, va.valor AS valvulopatia,
+      c.fecha_cirugia, im.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
+      ci.valor AS complicacion_intraqx, c.cierre_esternal_diferido, c.extubacion_quirofano,
+      up.valor AS unidad_pop, po.horas_ventilacion_mecanica, cpo.valor AS complicacion_pop, po.fecha_traslado_intermedio,
+      po.fecha_salida, cs.valor AS condicion_salida,
+      (s.no_aplica = 1) AS seguimiento_no_aplica, s.fecha_control_cirugia, s.rehabilitacion_cardiaca, eh.valor AS estado_herida,
+      s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, cr.valor AS causa_reingreso, s.observaciones,
+      ${columnas}
+    FROM ${tablas.pacientes} p
+    LEFT JOIN ${tablas.diagnosticos} d ON d.paciente_id = p.id
+    LEFT JOIN ${tablas.cirugias} c ON c.paciente_id = p.id
+    LEFT JOIN ${tablas.postoperatorio} po ON po.paciente_id = p.id
+    LEFT JOIN ${tablas.seguimientos} s ON s.paciente_id = p.id
+    LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
+    LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
+    LEFT JOIN opciones_lista mu ON mu.id = p.municipio_narino_id
+    LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
+    LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
+    LEFT JOIN opciones_lista va ON va.id = d.valvulopatia_id
+    LEFT JOIN opciones_lista im ON im.id = c.implante_id
+    LEFT JOIN opciones_lista ci ON ci.id = c.complicacion_intraqx_id
+    LEFT JOIN opciones_lista up ON up.id = po.unidad_pop_id
+    LEFT JOIN opciones_lista cpo ON cpo.id = po.complicacion_pop_id
+    LEFT JOIN opciones_lista cs ON cs.id = po.condicion_salida_id
+    LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
+    LEFT JOIN opciones_lista cr ON cr.id = s.causa_reingreso_id
+    ${uniones}
+    WHERE p.eliminado = 0 AND p.id = ?`, [pacienteId])
+  if (!ficha) throw noEncontrado('No se encontró el paciente.')
+
+  const [riesgos, procedimientos] = await Promise.all([
+    todas(pool, `
+      SELECT o.valor
+      FROM ${tablas.riesgos} dr
+      JOIN ${tablas.diagnosticos} d ON d.id = dr.diagnostico_id
+      JOIN opciones_lista o ON o.id = dr.riesgo_id
+      WHERE d.paciente_id = ?
+      ORDER BY o.orden, o.valor`, [pacienteId]),
+    todas(pool, `
+      SELECT o.valor AS procedimiento, ${fechaProcedimiento} AS fecha
+      FROM ${tablas.procedimientos} cp
+      JOIN ${tablas.cirugias} c ON c.id = cp.cirugia_id
+      JOIN opciones_lista o ON o.id = cp.procedimiento_id
+      WHERE c.paciente_id = ?
+      ORDER BY cp.orden`, [pacienteId]),
+  ])
+
+  return {
+    ...ficha,
+    superficie_corporal: superficieCorporal(ficha.peso_kg),
+    seguimiento_no_aplica: Boolean(ficha.seguimiento_no_aplica),
+    riesgos: riesgos.map((r) => r.valor),
+    procedimientos,
+  }
+}
+
+rutasIndicadores.get('/pacientes/:id', asincrono(async (req, res) => {
+  res.json(await detallePaciente(DETALLE_PEDIATRICO, req.params.id))
+}))
+
+rutasIndicadores.get('/adultos/pacientes/:id', asincrono(async (req, res) => {
+  res.json(await detallePaciente(DETALLE_ADULTO, req.params.id))
 }))
 
 // ---------------------------------------------------------------------------------------------
