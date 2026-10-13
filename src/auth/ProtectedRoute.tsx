@@ -1,12 +1,7 @@
 import { Navigate, Outlet } from 'react-router-dom'
-import type { Rol } from '../types/db'
 import { useAuth } from './AuthProvider'
 
-interface Props {
-  rolesPermitidos?: Rol[]
-}
-
-export function ProtectedRoute({ rolesPermitidos }: Props) {
+export function ProtectedRoute() {
   const { perfil, cargando } = useAuth()
 
   if (cargando) {
@@ -19,10 +14,6 @@ export function ProtectedRoute({ rolesPermitidos }: Props) {
 
   if (!perfil) {
     return <Navigate to="/login" replace />
-  }
-
-  if (rolesPermitidos && !rolesPermitidos.includes(perfil.rol)) {
-    return <Navigate to="/pacientes" replace />
   }
 
   return <Outlet />

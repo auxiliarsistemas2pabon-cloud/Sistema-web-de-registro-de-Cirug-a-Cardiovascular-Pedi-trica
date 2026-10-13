@@ -24,17 +24,14 @@ async function login(email, password) {
 }
 
 describe('API cirugía cardiovascular pediátrica', () => {
-  let admin, registrador, consulta
+  // No hay roles: todo usuario es administrador, así que las pruebas usan al administrador inicial y
+  // no crean usuarios (no hay forma de borrarlos por la API y quedarían en la base en cada ejecución).
+  let admin, perfil
   const op = {}
 
   before(async () => {
     admin = await login(process.env.INITIAL_ADMIN_EMAIL, process.env.INITIAL_ADMIN_PASSWORD)
-    for (const [rol, email] of [['registrador', `reg${sufijo}@prueba.local`], ['consulta', `con${sufijo}@prueba.local`]]) {
-      const r = await api('POST', '/admin/usuarios', { token: admin, cuerpo: { email, nombre_completo: `Usuario ${rol}`, rol, password: 'ClaveSegura123' } })
-      assert.equal(r.estado, 201, JSON.stringify(r.datos))
-    }
-    registrador = await login(`reg${sufijo}@prueba.local`, 'ClaveSegura123')
-    consulta = await login(`con${sufijo}@prueba.local`, 'ClaveSegura123')
+    perfil = (await api('GET', '/auth/me', { token: admin })).datos
     const todas = (await api('GET', '/listas/opciones', { token: admin })).datos
     for (const o of todas) (op[o.categoria_codigo] ??= []).push(o)
   })
@@ -50,13 +47,25 @@ describe('API cirugía cardiovascular pediátrica', () => {
   })
 
   it('rechaza contraseñas débiles al crear usuarios', async () => {
-    const r = await api('POST', '/admin/usuarios', { token: admin, cuerpo: { email: `x${sufijo}@p.local`, nombre_completo: 'X', rol: 'consulta', password: 'corta' } })
+    const r = await api('POST', '/admin/usuarios', { token: admin, cuerpo: { email: `x${sufijo}@p.local`, nombre_completo: 'X', password: 'corta' } })
     assert.equal(r.estado, 400)
     assert.ok(r.datos.error.campos.password)
   })
 
-  it('siembra las 16 listas y los códigos estables', async () => {
-    assert.equal(Object.keys(op).length, 16)
+  it('los usuarios no tienen rol y no se puede desactivar al último activo', async () => {
+    assert.ok(!('rol' in perfil))
+    const usuarios = (await api('GET', '/admin/usuarios', { token: admin })).datos
+    assert.ok(usuarios.length >= 1 && usuarios.every((u) => !('rol' in u)))
+    // Solo se comprueba la regla si el administrador de las pruebas es el único activo: si no, la
+    // petición lo desactivaría de verdad.
+    if (usuarios.filter((u) => u.activo).length === 1) {
+      const r = await api('PATCH', `/admin/usuarios/${perfil.id}`, { token: admin, cuerpo: { activo: false } })
+      assert.equal(r.estado, 422)
+    }
+  })
+
+  it('siembra las 19 listas (16 del módulo pediátrico y 3 propias de adultos) y los códigos estables', async () => {
+    assert.equal(Object.keys(op).length, 19)
     assert.ok(porCodigo('PROCEDENCIA', 'NARINO'))
     assert.ok(porCodigo('CONDICION_SALIDA', 'MUERTE'))
   })
@@ -65,51 +74,46 @@ describe('API cirugía cardiovascular pediátrica', () => {
     let id
 
     it('crea paciente, valida y limpia el municipio si no es Nariño', async () => {
-      const malo = await api('POST', '/pacientes', { token: registrador, cuerpo: { nombre_completo: 'A', identificacion: '12ab', fecha_nacimiento: '2999-01-01', peso_kg: 900 } })
+      const malo = await api('POST', '/pacientes', { token: admin, cuerpo: { nombre_completo: 'A', identificacion: '12ab', fecha_nacimiento: '2999-01-01', peso_kg: 900 } })
       assert.equal(malo.estado, 400)
       assert.ok(malo.datos.error.campos.identificacion && malo.datos.error.campos.fecha_nacimiento && malo.datos.error.campos.peso_kg)
 
       const r = await api('POST', '/pacientes', {
-        token: registrador,
+        token: admin,
         cuerpo: { nombre_completo: `Paciente Prueba ${sufijo}`, identificacion: `9${sufijo}`, fecha_nacimiento: '2023-01-10', procedencia_id: porValor('PROCEDENCIA', 'Antioquia'), municipio_narino_id: porValor('MUNICIPIOS', 'Pasto'), sin_telefono: true, estado_modulo: 'completo' },
       })
       assert.equal(r.estado, 201, JSON.stringify(r.datos))
       id = r.datos.id
-      const detalle = (await api('GET', `/pacientes/${id}`, { token: consulta })).datos
+      const detalle = (await api('GET', `/pacientes/${id}`, { token: admin })).datos
       assert.equal(detalle.municipio_narino_id, null)
       assert.equal(detalle.sin_telefono, true)
       assert.equal(detalle.eliminado, false)
-      const dup = await api('POST', '/pacientes', { token: registrador, cuerpo: { nombre_completo: 'Dup', identificacion: `9${sufijo}`, fecha_nacimiento: '2023-01-10' } })
+      const dup = await api('POST', '/pacientes', { token: admin, cuerpo: { nombre_completo: 'Dup', identificacion: `9${sufijo}`, fecha_nacimiento: '2023-01-10' } })
       assert.equal(dup.estado, 409)
       assert.equal(dup.datos.error.codigo, 'IDENTIFICACION_DUPLICADA')
     })
 
-    it('consulta no puede escribir', async () => {
-      const r = await api('PUT', `/pacientes/${id}`, { token: consulta, cuerpo: { nombre_completo: 'X' } })
-      assert.equal(r.estado, 403)
-    })
-
     it('Módulo 2: valvulopatía a N/A y "Ninguno" exclusivo', async () => {
       const cuerpo = { diagnostico_id: porValor('DIAGNOSTICO', 'Coartación de aorta'), valvulopatia_id: porValor('VALVULOPATIA', 'Estenosis'), rachs_id: porValor('RACHS', 'II'), riesgo_ids: [porCodigo('RIESGOS', 'NINGUNO'), porValor('RIESGOS', 'Obesidad')], estado_modulo: 'completo' }
-      const malo = await api('PUT', `/pacientes/${id}/diagnostico`, { token: registrador, cuerpo })
+      const malo = await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo })
       assert.equal(malo.estado, 422)
-      const ok = await api('PUT', `/pacientes/${id}/diagnostico`, { token: registrador, cuerpo: { ...cuerpo, riesgo_ids: [porValor('RIESGOS', 'Obesidad')] } })
+      const ok = await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...cuerpo, riesgo_ids: [porValor('RIESGOS', 'Obesidad')] } })
       assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
-      const d = (await api('GET', `/pacientes/${id}/diagnostico`, { token: registrador })).datos
+      const d = (await api('GET', `/pacientes/${id}/diagnostico`, { token: admin })).datos
       assert.equal(d.valvulopatia_id, porCodigo('VALVULOPATIA', 'NA'))
       assert.deepEqual(d.riesgo_ids, [porValor('RIESGOS', 'Obesidad')])
     })
 
     it('Módulo 3: fechas, CEC y procedimientos', async () => {
       const base = { fecha_cirugia: '2023-06-01', uso_cec: 'SI', tiempo_cec_min: 80, tiempo_clamp_min: 40, procedimiento_ids: [porValor('PROCEDIMIENTOS', 'Cirugía de coartación de aorta')], estado_modulo: 'completo' }
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, fecha_cirugia: '2022-01-01' } })).estado, 422)
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, tiempo_clamp_min: 200 } })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_cirugia: '2022-01-01' } })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, tiempo_clamp_min: 200 } })).estado, 422)
       const p = porValor('PROCEDIMIENTOS', 'Otro')
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, procedimiento_ids: [p, p] } })).estado, 422)
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: base })).estado, 200)
-      const sinCec = await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, uso_cec: 'NO' } })
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, procedimiento_ids: [p, p] } })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: base })).estado, 200)
+      const sinCec = await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, uso_cec: 'NO' } })
       assert.equal(sinCec.estado, 200)
-      const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: registrador })).datos
+      const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
       assert.equal(c.tiempo_cec_min, null)
       assert.equal(c.procedimiento_ids.length, 1)
     })
@@ -117,72 +121,73 @@ describe('API cirugía cardiovascular pediátrica', () => {
     it('Módulo 3: cada procedimiento adicional exige su propia fecha, posterior a la anterior', async () => {
       const base = { fecha_cirugia: '2023-06-01', procedimiento_ids: [porValor('PROCEDIMIENTOS', 'Cirugía de coartación de aorta'), porValor('PROCEDIMIENTOS', 'Otro')], estado_modulo: 'pendiente' }
       // Falta la fecha del procedimiento 2.
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: base })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: base })).estado, 422)
       // Mismo día que el procedimiento 1: no está permitido.
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-01' } })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-01' } })).estado, 422)
       // Anterior al procedimiento 1: tampoco.
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, fecha_procedimiento_2: '2023-05-01' } })).estado, 422)
-      const ok = await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-15' } })
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_procedimiento_2: '2023-05-01' } })).estado, 422)
+      const ok = await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-15' } })
       assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
-      const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: registrador })).datos
+      const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
       assert.equal(c.fecha_procedimiento_2, '2023-06-15')
       // Al quitar el procedimiento 2, su fecha se descarta en silencio.
-      const sinP2 = await api('PUT', `/pacientes/${id}/cirugia`, { token: registrador, cuerpo: { fecha_cirugia: '2023-06-01', procedimiento_ids: [base.procedimiento_ids[0]], estado_modulo: 'completo' } })
+      const sinP2 = await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2023-06-01', procedimiento_ids: [base.procedimiento_ids[0]], estado_modulo: 'completo' } })
       assert.equal(sinP2.estado, 200, JSON.stringify(sinP2.datos))
-      const c2 = (await api('GET', `/pacientes/${id}/cirugia`, { token: registrador })).datos
+      const c2 = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
       assert.equal(c2.fecha_procedimiento_2, null)
     })
 
     it('Módulo 5 exige Módulo 4; Muerte bloquea el Módulo 5 y se revierte', async () => {
       const seg = { fecha_control_cirugia: '2023-06-20', rehabilitacion_cardiaca: 'NO', reingreso_30_dias: 'NO', persona_recibe_llamada: 'Madre', estado_modulo: 'pendiente' }
-      const antes = await api('PUT', `/pacientes/${id}/seguimiento`, { token: registrador, cuerpo: seg })
+      const antes = await api('PUT', `/pacientes/${id}/seguimiento`, { token: admin, cuerpo: seg })
       assert.equal(antes.estado, 409)
       assert.equal(antes.datos.error.codigo, 'POSTOPERATORIO_REQUERIDO')
 
       const pop = { unidad_pop_id: porValor('UNIDAD_POP', 'UCI Pediátrica'), horas_ventilacion_mecanica: 5, complicacion_pop_id: porCodigo('COMPLICACION_POP', 'NO'), fecha_salida: '2023-06-08', estado_modulo: 'completo' }
-      assert.equal((await api('PUT', `/pacientes/${id}/postoperatorio`, { token: registrador, cuerpo: { ...pop, fecha_salida: '2023-05-01' } })).estado, 422)
-      const muerte = await api('PUT', `/pacientes/${id}/postoperatorio`, { token: registrador, cuerpo: { ...pop, condicion_salida_id: porCodigo('CONDICION_SALIDA', 'MUERTE') } })
+      assert.equal((await api('PUT', `/pacientes/${id}/postoperatorio`, { token: admin, cuerpo: { ...pop, fecha_salida: '2023-05-01' } })).estado, 422)
+      const muerte = await api('PUT', `/pacientes/${id}/postoperatorio`, { token: admin, cuerpo: { ...pop, condicion_salida_id: porCodigo('CONDICION_SALIDA', 'MUERTE') } })
       assert.equal(muerte.estado, 200, JSON.stringify(muerte.datos))
-      const s1 = (await api('GET', `/pacientes/${id}/seguimiento`, { token: registrador })).datos
+      const s1 = (await api('GET', `/pacientes/${id}/seguimiento`, { token: admin })).datos
       assert.equal(s1.no_aplica, true)
       assert.equal(s1.estado_modulo, 'no_aplica')
-      assert.equal((await api('PUT', `/pacientes/${id}/seguimiento`, { token: registrador, cuerpo: seg })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/seguimiento`, { token: admin, cuerpo: seg })).estado, 422)
 
-      await api('PUT', `/pacientes/${id}/postoperatorio`, { token: registrador, cuerpo: { ...pop, condicion_salida_id: porValor('CONDICION_SALIDA', 'Estable') } })
-      const s2 = (await api('GET', `/pacientes/${id}/seguimiento`, { token: registrador })).datos
+      await api('PUT', `/pacientes/${id}/postoperatorio`, { token: admin, cuerpo: { ...pop, condicion_salida_id: porValor('CONDICION_SALIDA', 'Estable') } })
+      const s2 = (await api('GET', `/pacientes/${id}/seguimiento`, { token: admin })).datos
       assert.equal(s2.no_aplica, false)
       assert.equal(s2.estado_modulo, 'pendiente')
       const fuera = { ...seg, reingreso_30_dias: 'SI', fecha_reingreso: '2023-08-30', causa_reingreso_id: porValor('CAUSA_REINGRESO', 'Sangrado') }
-      assert.equal((await api('PUT', `/pacientes/${id}/seguimiento`, { token: registrador, cuerpo: fuera })).estado, 422)
-      assert.equal((await api('PUT', `/pacientes/${id}/seguimiento`, { token: registrador, cuerpo: seg })).estado, 200)
+      assert.equal((await api('PUT', `/pacientes/${id}/seguimiento`, { token: admin, cuerpo: fuera })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/seguimiento`, { token: admin, cuerpo: seg })).estado, 200)
     })
 
-    it('resumen calcula edad y días; el listado filtra; solo admin elimina y ve eliminados', async () => {
-      const r = (await api('GET', `/pacientes/${id}/resumen`, { token: consulta })).datos
+    it('resumen calcula edad y días; el listado filtra; un eliminado sale del listado y se restaura', async () => {
+      const r = (await api('GET', `/pacientes/${id}/resumen`, { token: admin })).datos
       assert.equal(r.estado_m2, 'completo')
       assert.equal(r.dias_hospitalizacion_posqx, 7)
       assert.ok(r.edad_dias > 365)
-      const lista = (await api('GET', `/pacientes?busqueda=${encodeURIComponent('prueba ' + sufijo)}`, { token: consulta })).datos
-      assert.equal(lista.length, 1)
-      assert.equal((await api('PUT', `/pacientes/${id}/eliminado`, { token: registrador, cuerpo: { eliminado: true } })).estado, 403)
+      const buscar = async (extra = '') => (await api('GET', `/pacientes?busqueda=${encodeURIComponent('prueba ' + sufijo)}${extra}`, { token: admin })).datos
+      assert.equal((await buscar()).length, 1)
       assert.equal((await api('PUT', `/pacientes/${id}/eliminado`, { token: admin, cuerpo: { eliminado: true } })).estado, 200)
-      assert.equal((await api('GET', `/pacientes/${id}`, { token: registrador })).estado, 404)
+      // Eliminado: no aparece en el listado normal, sí al pedir los eliminados, y su ficha sigue abriendo.
+      assert.equal((await buscar()).length, 0)
+      assert.equal((await buscar('&eliminados=1')).length, 1)
       assert.equal((await api('GET', `/pacientes/${id}`, { token: admin })).estado, 200)
       assert.equal((await api('PUT', `/pacientes/${id}/eliminado`, { token: admin, cuerpo: { eliminado: false } })).estado, 200)
+      assert.equal((await buscar()).length, 1)
     })
 
-    it('la auditoría registra los cambios con el usuario real (solo admin)', async () => {
-      assert.equal((await api('GET', '/admin/auditoria', { token: registrador })).estado, 403)
+    it('la auditoría registra los cambios con el usuario real', async () => {
       const filas = (await api('GET', '/admin/auditoria?tabla=pacientes', { token: admin })).datos
       const propia = filas.filter((f) => f.registro_id === id)
-      assert.ok(propia.some((f) => f.operacion === 'INSERT' && f.usuario_nombre === 'Usuario registrador'))
+      assert.ok(propia.some((f) => f.operacion === 'INSERT' && f.usuario_nombre === perfil.nombre_completo))
       assert.ok(propia.some((f) => f.operacion === 'UPDATE' && f.valores_anteriores && f.valores_nuevos))
     })
   })
 
   it('alertas e indicadores responden con la forma acordada', async () => {
-    assert.ok(Array.isArray((await api('GET', '/alertas', { token: consulta })).datos))
-    const i = (await api('GET', '/indicadores?desde=2000-01-01&hasta=2100-01-01', { token: consulta })).datos
+    assert.ok(Array.isArray((await api('GET', '/alertas', { token: admin })).datos))
+    const i = (await api('GET', '/indicadores?desde=2000-01-01&hasta=2100-01-01', { token: admin })).datos
     assert.ok(i.resumen.total_cirugias >= 1)
     for (const k of ['por_mes', 'por_diagnostico', 'por_procedimiento', 'por_rachs', 'por_eps', 'por_procedencia',
       'por_sexo', 'por_peso', 'por_talla', 'por_superficie_corporal', 'por_dias_uci', 'por_horas_vm', 'por_estado_herida']) assert.ok(Array.isArray(i[k]), k)
@@ -200,30 +205,28 @@ describe('API cirugía cardiovascular pediátrica', () => {
     // Filtro con un clic: el total baja a esos pacientes y el gráfico de su propio campo sigue completo.
     const sexo = i.por_sexo[0]
     const filtros = encodeURIComponent(JSON.stringify([{ campo: 'sexo', valor: sexo.categoria }]))
-    const filtrado = (await api('GET', `/indicadores?desde=2000-01-01&hasta=2100-01-01&filtros=${filtros}`, { token: consulta })).datos
+    const filtrado = (await api('GET', `/indicadores?desde=2000-01-01&hasta=2100-01-01&filtros=${filtros}`, { token: admin })).datos
     assert.equal(filtrado.resumen.total_cirugias, sexo.total_cirugias)
     assert.deepEqual(filtrado.por_sexo, i.por_sexo)
     assert.equal(suma(filtrado.por_peso, 'total_cirugias'), sexo.total_cirugias)
-    assert.equal((await api('GET', '/indicadores?desde=2000-01-01&hasta=2100-01-01&filtros=no-es-json', { token: consulta })).estado, 400)
+    assert.equal((await api('GET', '/indicadores?desde=2000-01-01&hasta=2100-01-01&filtros=no-es-json', { token: admin })).estado, 400)
     // Matriz de resumen: una fila por paciente operado, con los mismos filtros.
-    const { pacientes } = (await api('GET', '/indicadores/pacientes?desde=2000-01-01&hasta=2100-01-01', { token: consulta })).datos
+    const { pacientes } = (await api('GET', '/indicadores/pacientes?desde=2000-01-01&hasta=2100-01-01', { token: admin })).datos
     assert.equal(pacientes.length, i.resumen.total_cirugias)
     // Cada fila trae el documento del paciente, para el buscador de la matriz.
     assert.ok(pacientes.every((p) => /^\d+$/.test(p.identificacion)))
-    const filtradas = (await api('GET', `/indicadores/pacientes?desde=2000-01-01&hasta=2100-01-01&filtros=${filtros}`, { token: consulta })).datos.pacientes
+    const filtradas = (await api('GET', `/indicadores/pacientes?desde=2000-01-01&hasta=2100-01-01&filtros=${filtros}`, { token: admin })).datos.pacientes
     assert.ok(filtradas.length === sexo.total_cirugias && filtradas.every((p) => p.etiquetas.sexo === sexo.categoria))
-    assert.equal((await api('GET', '/indicadores', { token: consulta })).estado, 400)
+    assert.equal((await api('GET', '/indicadores', { token: admin })).estado, 400)
   })
 
-  it('protege el código de las opciones y solo el admin edita listas', async () => {
-    const opcion = op.EPS[0]
-    assert.equal((await api('PATCH', `/admin/listas/opciones/${opcion.id}`, { token: registrador, cuerpo: { valor: 'x' } })).estado, 403)
+  it('protege el código de las opciones al editar listas', async () => {
     assert.equal((await api('PATCH', `/admin/listas/opciones/${porCodigo('RIESGOS', 'NINGUNO')}`, { token: admin, cuerpo: { codigo: 'OTRO' } })).estado, 422)
     assert.equal((await api('PATCH', `/admin/listas/opciones/${porCodigo('RIESGOS', 'NINGUNO')}`, { token: admin, cuerpo: { orden: 150 } })).estado, 200)
   })
 
   it('exportación plana', async () => {
-    const filas = (await api('GET', '/exportacion/pacientes', { token: registrador })).datos
+    const filas = (await api('GET', '/exportacion/pacientes', { token: admin })).datos
     assert.ok(filas.length >= 1)
     assert.ok('nombre_completo' in filas[0] && 'procedimientos' in filas[0])
   })

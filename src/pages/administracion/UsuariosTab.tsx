@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog'
 import { api, mensajeDe } from '../../lib/api'
-import type { Perfil, Rol } from '../../types/db'
+import type { Perfil } from '../../types/db'
 
 function usePerfiles() {
   return useQuery({
@@ -36,7 +36,6 @@ export function UsuariosTab() {
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [rol, setRol] = useState<Rol>('registrador')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorLista, setErrorLista] = useState<string | null>(null)
@@ -47,11 +46,10 @@ export function UsuariosTab() {
     setError(null)
     setEnviando(true)
     try {
-      await api.post('/admin/usuarios', { email, password, nombre_completo: nombre, rol })
+      await api.post('/admin/usuarios', { email, password, nombre_completo: nombre })
       setNombre('')
       setEmail('')
       setPassword('')
-      setRol('registrador')
       setMostrarForm(false)
       queryClient.invalidateQueries({ queryKey: ['perfiles'] })
     } catch (causa) {
@@ -61,26 +59,24 @@ export function UsuariosTab() {
     }
   }
 
-  async function actualizar(id: string, cambios: { rol?: Rol; activo?: boolean }) {
+  async function cambiarActivo(id: string, activo: boolean) {
     setErrorLista(null)
     try {
-      await api.patch(`/admin/usuarios/${id}`, cambios)
+      await api.patch(`/admin/usuarios/${id}`, { activo })
     } catch (causa) {
       setErrorLista(mensajeDe(causa))
     }
     queryClient.invalidateQueries({ queryKey: ['perfiles'] })
   }
 
-  const cambiarRol = (id: string, nuevoRol: Rol) => actualizar(id, { rol: nuevoRol })
-
   function pedirCambioActivo(perfil: Perfil) {
     if (perfil.activo) setPorDesactivar(perfil) // desactivar es lo único que se confirma: reactivar es de bajo riesgo.
-    else void actualizar(perfil.id, { activo: true })
+    else void cambiarActivo(perfil.id, true)
   }
 
   async function confirmarDesactivar() {
     if (!porDesactivar) return
-    await actualizar(porDesactivar.id, { activo: false })
+    await cambiarActivo(porDesactivar.id, false)
     setPorDesactivar(null)
   }
 
@@ -124,14 +120,10 @@ export function UsuariosTab() {
               <input type="password" required minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={claseInput} />
               <span className="mt-1 block text-xs text-slate-500">Mínimo 10 caracteres, con mayúsculas, minúsculas y números.</span>
             </Campo>
-            <Campo etiqueta="Rol *">
-              <select value={rol} onChange={(e) => setRol(e.target.value as Rol)} className={claseInput}>
-                <option value="administrador">Administrador</option>
-                <option value="registrador">Registrador</option>
-                <option value="consulta">Consulta</option>
-              </select>
-            </Campo>
           </div>
+          <p className="text-xs text-slate-500">
+            Todos los usuarios son administradores: pueden registrar y modificar pacientes, exportar datos y gestionar usuarios y listas.
+          </p>
           {error && <MensajeError>{error}</MensajeError>}
           <button type="submit" disabled={enviando} className={claseBotonPrimario}>
             {enviando ? 'Creando…' : 'Crear usuario'}
@@ -144,14 +136,13 @@ export function UsuariosTab() {
 
       {perfiles && (
         // overflow-x-auto (no overflow-hidden): en el celular la tabla se desliza en horizontal en vez
-        // de cortar las columnas de rol, estado y acciones.
+        // de cortar las columnas de estado y acciones.
         <div className="overflow-x-auto rounded-lg border border-slate-200">
-          <table className="w-full min-w-[46rem] text-left text-sm">
+          <table className="w-full min-w-[36rem] text-left text-sm">
             <thead className="bg-slate-50/70 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-2.5 font-semibold">Nombre</th>
                 <th className="px-3 py-2.5 font-semibold">Correo</th>
-                <th className="px-3 py-2.5 font-semibold">Rol</th>
                 <th className="px-3 py-2.5 font-semibold">Estado</th>
                 <th className="px-3 py-2.5"></th>
               </tr>
@@ -168,18 +159,6 @@ export function UsuariosTab() {
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-slate-500">{p.email}</td>
-                  <td className="px-3 py-2.5">
-                    <select
-                      value={p.rol}
-                      onChange={(e) => cambiarRol(p.id, e.target.value as Rol)}
-                      aria-label={`Rol de ${p.nombre_completo}`}
-                      className="h-8 rounded-md border border-slate-300 bg-white pl-2.5 text-sm text-slate-700 outline-none hover:border-slate-400 focus:border-[var(--pabon-azul-oscuro)] focus:ring-3 focus:ring-[var(--pabon-azul-claro)]/25"
-                    >
-                      <option value="administrador">Administrador</option>
-                      <option value="registrador">Registrador</option>
-                      <option value="consulta">Consulta</option>
-                    </select>
-                  </td>
                   <td className="px-3 py-2.5">
                     <Badge variant="outline" className={p.activo ? 'bg-emerald-100 text-emerald-700 border-emerald-200/60' : 'bg-slate-100 text-slate-500 border-slate-200'}>
                       {p.activo ? 'Activo' : 'Inactivo'}

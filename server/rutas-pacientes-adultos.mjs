@@ -1,5 +1,4 @@
 import { Router } from 'express'
-import { puedeEscribir, requiereRol } from './auth.mjs'
 import { conTransaccion, hoyBogota, pool, todas, una } from './db.mjs'
 import { asincrono, validacion } from './errores.mjs'
 import { filaApi } from './servicios.mjs'
@@ -45,8 +44,8 @@ rutasPacientesAdultos.get('/', asincrono(async (req, res) => {
   const condiciones = []
   const parametros = [hoyBogota()]
 
-  // Solo el administrador puede ver eliminados (y únicamente cuando lo pide con ?eliminados=1).
-  condiciones.push(req.usuario.rol === 'administrador' && q.eliminados === '1' ? 'p.eliminado = 1' : 'p.eliminado = 0')
+  // Los eliminados solo se listan cuando se piden con ?eliminados=1.
+  condiciones.push(q.eliminados === '1' ? 'p.eliminado = 1' : 'p.eliminado = 0')
 
   if (typeof q.busqueda === 'string' && q.busqueda.trim()) {
     const palabras = q.busqueda.trim().split(/\s+/).filter(Boolean)
@@ -76,27 +75,27 @@ rutasPacientesAdultos.get('/', asincrono(async (req, res) => {
   res.json(filas.map(resumenApi))
 }))
 
-rutasPacientesAdultos.post('/', puedeEscribir, asincrono(async (req, res) => {
+rutasPacientesAdultos.post('/', asincrono(async (req, res) => {
   const id = await conTransaccion((conexion) => crearPacienteAdulto(conexion, req.usuario, req.body))
   res.status(201).json({ id })
 }))
 
 rutasPacientesAdultos.get('/:id', asincrono(async (req, res) => {
-  res.json(filaApi('pacientes_adultos', await obtenerPacienteAdulto(pool, req.params.id, req.usuario)))
+  res.json(filaApi('pacientes_adultos', await obtenerPacienteAdulto(pool, req.params.id)))
 }))
 
 rutasPacientesAdultos.get('/:id/resumen', asincrono(async (req, res) => {
-  await obtenerPacienteAdulto(pool, req.params.id, req.usuario)
+  await obtenerPacienteAdulto(pool, req.params.id)
   const fila = await una(pool, `${SQL_RESUMEN} WHERE p.id = ?`, [hoyBogota(), req.params.id])
   res.json(resumenApi(fila))
 }))
 
-rutasPacientesAdultos.put('/:id', puedeEscribir, asincrono(async (req, res) => {
+rutasPacientesAdultos.put('/:id', asincrono(async (req, res) => {
   const id = await conTransaccion((conexion) => actualizarPacienteAdulto(conexion, req.usuario, req.params.id, req.body))
   res.json({ id })
 }))
 
-rutasPacientesAdultos.put('/:id/eliminado', requiereRol('administrador'), asincrono(async (req, res) => {
+rutasPacientesAdultos.put('/:id/eliminado', asincrono(async (req, res) => {
   if (typeof req.body?.eliminado !== 'boolean') throw validacion('Indique { "eliminado": true|false }.')
   const id = await conTransaccion((conexion) => marcarEliminadoAdulto(conexion, req.usuario, req.params.id, req.body.eliminado))
   res.json({ id })
@@ -112,13 +111,13 @@ const modulos = {
 
 for (const [ruta, { obtener, guardar }] of Object.entries(modulos)) {
   rutasPacientesAdultos.get(`/:id/${ruta}`, asincrono(async (req, res) => {
-    await obtenerPacienteAdulto(pool, req.params.id, req.usuario)
+    await obtenerPacienteAdulto(pool, req.params.id)
     res.json(await obtener(pool, req.params.id))
   }))
 
-  rutasPacientesAdultos.put(`/:id/${ruta}`, puedeEscribir, asincrono(async (req, res) => {
+  rutasPacientesAdultos.put(`/:id/${ruta}`, asincrono(async (req, res) => {
     const id = await conTransaccion(async (conexion) => {
-      await obtenerPacienteAdulto(conexion, req.params.id, req.usuario)
+      await obtenerPacienteAdulto(conexion, req.params.id)
       return guardar(conexion, req.usuario, req.params.id, req.body)
     })
     res.json({ id })

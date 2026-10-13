@@ -105,9 +105,9 @@ const ESTADOS = ['pendiente', 'completo']
 // Pacientes
 // ---------------------------------------------------------------------------------------------
 
-export async function obtenerPaciente(conexion, id, usuario) {
+export async function obtenerPaciente(conexion, id) {
   const fila = await una(conexion, 'SELECT * FROM pacientes WHERE id = ?', [id])
-  if (!fila || (fila.eliminado && usuario.rol !== 'administrador')) throw noEncontrado('No se encontró el paciente.')
+  if (!fila) throw noEncontrado('No se encontró el paciente.')
   return fila
 }
 
@@ -146,7 +146,7 @@ export async function crearPaciente(conexion, usuario, cuerpo, extras = {}) {
 }
 
 export async function actualizarPaciente(conexion, usuario, id, cuerpo) {
-  await obtenerPaciente(conexion, id, usuario)
+  await obtenerPaciente(conexion, id)
   const datos = await normalizarPaciente(conexion, leerPaciente(cuerpo))
   await actualizar(conexion, usuario, 'pacientes', id, datos)
   return id

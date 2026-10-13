@@ -34,20 +34,15 @@ function App() {
             <Route path="/alertas" element={<AlertasPage />} />
             <Route path="/indicadores" element={<IndicadoresPage />} />
 
-            <Route element={<ProtectedRoute rolesPermitidos={['administrador', 'registrador']} />}>
-              <Route
-                path="/datos"
-                element={
-                  <Suspense fallback={<p className="text-sm text-slate-500">Cargando…</p>}>
-                    <ImportacionExportacionPage />
-                  </Suspense>
-                }
-              />
-            </Route>
-
-            <Route element={<ProtectedRoute rolesPermitidos={['administrador']} />}>
-              <Route path="/administracion" element={<AdministracionPage />} />
-            </Route>
+            <Route
+              path="/datos"
+              element={
+                <Suspense fallback={<p className="text-sm text-slate-500">Cargando…</p>}>
+                  <ImportacionExportacionPage />
+                </Suspense>
+              }
+            />
+            <Route path="/administracion" element={<AdministracionPage />} />
           </Route>
         </Route>
 

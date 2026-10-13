@@ -1,12 +1,10 @@
-export type Rol = 'administrador' | 'registrador' | 'consulta'
-
 export type EstadoModulo = 'pendiente' | 'completo' | 'no_aplica'
 
+/** Un usuario del sistema. No hay roles: todos los usuarios son administradores. */
 export interface Perfil {
   id: string
   email?: string
   nombre_completo: string
-  rol: Rol
   activo: boolean
 }
 

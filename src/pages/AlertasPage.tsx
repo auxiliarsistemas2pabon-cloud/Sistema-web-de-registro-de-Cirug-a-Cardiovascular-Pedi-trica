@@ -47,29 +47,51 @@ function IconoCalendario() {
 
 function IconoCheck() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-6 w-6">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-5 w-5">
       <circle cx="12" cy="12" r="9" />
       <path d="m8.5 12.5 2.3 2.3L15.5 9.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }
 
-function Seccion({ titulo, icono, alertas, rutaBase }: { titulo: string; icono: ReactNode; alertas: Alerta[]; rutaBase: string }) {
+interface PropsSeccion {
+  titulo: string
+  /** Qué pone a un paciente en esta lista: la segunda línea del encabezado. */
+  detalle: string
+  /** Lo que se lee cuando no hay ningún paciente en la lista. */
+  mensajeVacio: string
+  icono: ReactNode
+  alertas: Alerta[]
+  rutaBase: string
+}
+
+function Seccion({ titulo, detalle, mensajeVacio, icono, alertas, rutaBase }: PropsSeccion) {
   return (
-    <div className="overflow-clip rounded-xl border border-slate-200/80 bg-white shadow-[var(--sombra-tarjeta)]">
+    <section className="@container overflow-clip rounded-xl border border-slate-200/80 bg-white shadow-[var(--sombra-tarjeta)]">
+      {/* Título y detalle en una línea cada uno cuando las dos tarjetas van lado a lado (lg): así sus
+          encabezados miden lo mismo y las listas arrancan a la misma altura. */}
       <div className="flex items-center gap-3 border-b border-slate-100 px-5 py-3.5">
-        <span className="flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-[var(--pabon-azul-oscuro)]/[0.08] text-[var(--pabon-azul-oscuro)]">
+        <span className="flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-[var(--pabon-azul-oscuro)]/[0.08] text-[var(--pabon-azul-oscuro)]">
           {icono}
         </span>
-        <h2 className="text-[15px] font-semibold text-slate-900">{titulo}</h2>
+        <div className="min-w-0">
+          <h2 className="text-[15px] font-semibold text-slate-900 lg:truncate">{titulo}</h2>
+          <p className="text-xs text-slate-500 lg:truncate" title={detalle}>{detalle}</p>
+        </div>
         <span className="ml-auto inline-flex h-5 min-w-5 flex-none items-center justify-center rounded-full bg-slate-100 px-1.5 text-xs font-semibold tabular-nums text-slate-600">
           {alertas.length}
         </span>
       </div>
       {alertas.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 px-4 py-10 text-center text-[#059669]">
-          <IconoCheck />
-          <p className="text-sm text-slate-400">Sin pendientes.</p>
+        // Vacío compacto, en una fila: una tarjeta sin pendientes no necesita ocupar media pantalla.
+        <div className="flex items-center gap-3 px-5 py-4">
+          <span className="flex h-9 w-9 flex-none items-center justify-center rounded-full bg-emerald-50 text-[#059669]">
+            <IconoCheck />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-slate-900">Sin pendientes</p>
+            <p className="text-xs text-slate-500">{mensajeVacio}</p>
+          </div>
         </div>
       ) : (
         <ul className="divide-y divide-slate-100">
@@ -96,7 +118,9 @@ function Seccion({ titulo, icono, alertas, rutaBase }: { titulo: string; icono: 
                   >
                     {textoEstado(a.dias_desde_referencia)}
                   </Badge>
-                  <span className="hidden flex-none text-xs text-slate-400 sm:block">
+                  {/* La fecha solo cabe si la tarjeta es ancha (según la tarjeta, no la pantalla: lado a
+                      lado miden la mitad); si no, le quitaría espacio al nombre. */}
+                  <span className="hidden flex-none text-xs text-slate-400 @lg:block">
                     {formatearFecha(a.fecha_referencia)}
                   </span>
                 </Link>
@@ -105,7 +129,7 @@ function Seccion({ titulo, icono, alertas, rutaBase }: { titulo: string; icono: 
           })}
         </ul>
       )}
-    </div>
+    </section>
   )
 }
 
@@ -138,10 +162,26 @@ export function AlertasPage() {
       {error && <MensajeError>No se pudieron cargar las alertas.</MensajeError>}
 
       {!isLoading && !error && (
-        <>
-          <Seccion titulo="Llamada de los 15 días pendiente o vencida" icono={<IconoTelefono />} alertas={llamadas} rutaBase={rutaBase} />
-          <Seccion titulo="Alta hace menos de 30 días sin seguimiento completo" icono={<IconoCalendario />} alertas={altas} rutaBase={rutaBase} />
-        </>
+        // Lado a lado en pantallas anchas: cada lista ocupa media página en vez de una franja a todo
+        // lo ancho. items-start: una tarjeta vacía no se estira hasta el alto de la que tiene pacientes.
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+          <Seccion
+            titulo="Llamada de los 15 días"
+            detalle="Pendiente o vencida"
+            mensajeVacio="Ningún paciente tiene pendiente la llamada de los 15 días."
+            icono={<IconoTelefono />}
+            alertas={llamadas}
+            rutaBase={rutaBase}
+          />
+          <Seccion
+            titulo="Seguimiento después del alta"
+            detalle="Alta hace menos de 30 días, sin seguimiento completo"
+            mensajeVacio="Ningún paciente dado de alta en los últimos 30 días tiene el seguimiento incompleto."
+            icono={<IconoCalendario />}
+            alertas={altas}
+            rutaBase={rutaBase}
+          />
+        </div>
       )}
     </div>
   )

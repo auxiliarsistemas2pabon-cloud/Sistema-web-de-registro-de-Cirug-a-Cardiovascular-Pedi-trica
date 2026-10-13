@@ -1,13 +1,11 @@
 import { Router } from 'express'
-import { puedeEscribir } from './auth.mjs'
 import { conTransaccion, nuevoId, pool, todas, una } from './db.mjs'
-import { ErrorApi, asincrono, noEncontrado, sinPermiso, validacion } from './errores.mjs'
+import { ErrorApi, asincrono, noEncontrado, validacion } from './errores.mjs'
 import {
   crearPaciente, guardarCirugia, guardarDiagnostico, guardarPostoperatorio, guardarSeguimiento,
 } from './servicios.mjs'
 
 export const rutasImportaciones = Router()
-rutasImportaciones.use(puedeEscribir)
 
 const TAMANO_MAXIMO_LOTE = 5000
 
@@ -45,9 +43,8 @@ rutasImportaciones.post('/lotes', asincrono(async (req, res) => {
 
 /** Aplica una fila validada en una sola transacción. Si falla, la fila queda en `con_errores` con el motivo. */
 rutasImportaciones.post('/filas/:id/aplicar', asincrono(async (req, res) => {
-  const fila = await una(pool, `SELECT f.*, l.cargado_por FROM importaciones_filas f JOIN importaciones_lote l ON l.id = f.lote_id WHERE f.id = ?`, [req.params.id])
+  const fila = await una(pool, 'SELECT * FROM importaciones_filas WHERE id = ?', [req.params.id])
   if (!fila) throw noEncontrado('No se encontró la fila de importación.')
-  if (req.usuario.rol !== 'administrador' && fila.cargado_por !== req.usuario.id) throw sinPermiso('Solo puede aplicar sus propios lotes de importación.')
   if (fila.estado !== 'valido') throw new ErrorApi(409, 'FILA_NO_VALIDA', 'La fila no está validada para importación.')
   const datos = fila.datos_normalizados
 

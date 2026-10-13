@@ -6,7 +6,7 @@ El diagrama y las reglas del esquema están en [`docs/modelo-de-datos.md`](docs/
 
 ## Incluye
 
-- Autenticación, cierre por inactividad y roles: Administrador, Registrador y Consulta.
+- Autenticación y cierre por inactividad. No hay roles: todos los usuarios son administradores.
 - Ficha por paciente dividida en cinco módulos clínicos, con guardado independiente, validaciones y cálculos automáticos.
 - Listado con búsqueda y filtros, alertas de seguimiento e indicadores filtrables por fecha.
 - Listas desplegables administrables y auditoría de cambios.
@@ -81,7 +81,7 @@ Ejecute ese archivo solo en desarrollo o una demo y después de crear el adminis
 
 ## Importación y exportación
 
-Las funciones están en **Importar / exportar**, disponibles para Administrador y Registrador.
+Las funciones están en **Importar / exportar**.
 
 - Descargue la plantilla para conocer las columnas canónicas.
 - Al cargar un `.xlsx`, la aplicación normaliza espacios, equivalentes de `N/A`, números con coma decimal y fechas `dd/mm/aaaa` o `aaaa-mm-dd`.

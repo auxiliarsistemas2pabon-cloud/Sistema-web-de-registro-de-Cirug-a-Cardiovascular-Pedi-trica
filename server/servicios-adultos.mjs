@@ -19,9 +19,9 @@ function haceAnios(anios) {
 // Pacientes
 // ---------------------------------------------------------------------------------------------
 
-export async function obtenerPacienteAdulto(conexion, id, usuario) {
+export async function obtenerPacienteAdulto(conexion, id) {
   const fila = await una(conexion, 'SELECT * FROM pacientes_adultos WHERE id = ?', [id])
-  if (!fila || (fila.eliminado && usuario.rol !== 'administrador')) throw noEncontrado('No se encontró el paciente.')
+  if (!fila) throw noEncontrado('No se encontró el paciente.')
   return fila
 }
 
@@ -62,7 +62,7 @@ export async function crearPacienteAdulto(conexion, usuario, cuerpo, extras = {}
 }
 
 export async function actualizarPacienteAdulto(conexion, usuario, id, cuerpo) {
-  await obtenerPacienteAdulto(conexion, id, usuario)
+  await obtenerPacienteAdulto(conexion, id)
   const datos = await normalizarPacienteAdulto(conexion, leerPacienteAdulto(cuerpo))
   await actualizar(conexion, usuario, 'pacientes_adultos', id, datos)
   return id

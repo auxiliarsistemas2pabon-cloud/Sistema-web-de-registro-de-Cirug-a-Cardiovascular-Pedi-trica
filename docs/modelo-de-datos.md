@@ -38,6 +38,6 @@ categorias_lista ─────┤        │
 - Los riesgos y procedimientos se guardan en tablas de relación para evitar columnas repetidas.
 - Los pacientes no tienen permiso de borrado físico por la API. Un administrador solo puede usar el campo de borrado lógico.
 - Las vistas, indicadores y alertas excluyen a los pacientes eliminados.
-- Las políticas RLS permiten escritura a Administrador y Registrador; Consulta puede leer datos no eliminados e indicadores.
+- No hay roles: todo usuario activo es administrador y puede leer y escribir.
 
 La definición ejecutable del esquema está en `supabase/migrations/` y es la fuente de verdad para despliegues.

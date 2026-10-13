@@ -1,7 +1,6 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../auth/AuthProvider'
 import { claseBotonPrimario, claseBotonSecundario, claseBotonTexto, claseInput } from '../components/Campo'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
 import { EstadoVacio, MensajeError } from '../components/Estados'
@@ -156,7 +155,6 @@ const claseBotonPagina =
 
 export function PacientesAdultosListaPage() {
   const navigate = useNavigate()
-  const { perfil } = useAuth()
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIALES)
   const [estadoFicha, setEstadoFicha] = useState<EstadoFicha>('todos')
   const [pagina, setPagina] = useState(1)
@@ -171,8 +169,6 @@ export function PacientesAdultosListaPage() {
   const { data: listaEps } = useOpciones('EPS')
   const { data: listaDiagnosticos } = useOpciones('DIAGNOSTICO_ADULTO')
   const { data: listaCondicionSalida } = useOpciones('CONDICION_SALIDA')
-
-  const puedeCrear = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
 
   const filtrosDelPanel =
     [filtros.epsValor, filtros.diagnosticoValor, filtros.condicionSalidaValor].filter(Boolean).length +
@@ -228,12 +224,10 @@ export function PacientesAdultosListaPage() {
         titulo="Pacientes adultos"
         subtitulo="Registro y seguimiento de las fichas de cirugía cardiovascular de adultos."
         acciones={
-          puedeCrear && (
-            <Link to="/adultos/nuevo" className={claseBotonPrimario}>
-              <IconoMas className="h-4 w-4" strokeWidth={2.2} />
-              Nuevo paciente
-            </Link>
-          )
+          <Link to="/adultos/nuevo" className={claseBotonPrimario}>
+            <IconoMas className="h-4 w-4" strokeWidth={2.2} />
+            Nuevo paciente
+          </Link>
         }
       />
 
@@ -463,12 +457,10 @@ export function PacientesAdultosListaPage() {
                   Limpiar filtros
                 </button>
               ) : (
-                puedeCrear && (
-                  <Link to="/adultos/nuevo" className={claseBotonPrimario}>
-                    <IconoMas className="h-4 w-4" strokeWidth={2.2} />
-                    Nuevo paciente
-                  </Link>
-                )
+                <Link to="/adultos/nuevo" className={claseBotonPrimario}>
+                  <IconoMas className="h-4 w-4" strokeWidth={2.2} />
+                  Nuevo paciente
+                </Link>
               )
             }
           />

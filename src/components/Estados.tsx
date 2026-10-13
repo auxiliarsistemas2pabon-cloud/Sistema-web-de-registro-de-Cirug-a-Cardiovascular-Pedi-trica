@@ -82,16 +82,3 @@ export function AvisoInformativo({ icono, children }: { icono: ReactNode; childr
     </div>
   )
 }
-
-/** Aviso de solo lectura para los formularios de módulo cuando el rol es "consulta". */
-export function AvisoSoloLectura() {
-  return (
-    <div className="flex items-center gap-2.5 rounded-lg border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm text-slate-600">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="h-4 w-4 flex-none text-slate-400">
-        <rect x="5" y="11" width="14" height="9" rx="2" />
-        <path d="M8 11V8a4 4 0 0 1 8 0v3" strokeLinecap="round" />
-      </svg>
-      Modo consulta: este registro es de solo lectura.
-    </div>
-  )
-}

@@ -7,7 +7,7 @@ import { PieFormulario, SeccionFormulario } from '../../components/FormularioMod
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo4Adulto } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
-import { Cargando, MensajeError, AvisoSoloLectura } from '../../components/Estados'
+import { Cargando, MensajeError } from '../../components/Estados'
 
 interface PostoperatorioAdultoDetalle {
   id: string
@@ -66,7 +66,6 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data, isLoading } = usePostoperatorioAdulto(pacienteId)
-  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
@@ -84,7 +83,7 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
   if (isLoading) return <Cargando />
 
   async function onSubmit(valores: Valores) {
-    if (!perfil || !puedeEditar) return
+    if (!perfil) return
     setGuardadoEn(null)
     if (data?.fechaCirugia && valores.fecha_traslado_intermedio && valores.fecha_traslado_intermedio < data.fechaCirugia) {
       setError('La fecha de traslado a intermedio no puede ser anterior a la fecha de cirugía.')
@@ -142,8 +141,7 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-      {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+      <fieldset className="space-y-5">
         <div className="space-y-5">
           <SeccionFormulario titulo="Cuidado postoperatorio">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
@@ -188,7 +186,7 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
 
         {error && <MensajeError>{error}</MensajeError>}
 
-        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 4" guardando={guardando} guardadoEn={guardadoEn} />}
+        <PieFormulario etiqueta="Guardar Módulo 4" guardando={guardando} guardadoEn={guardadoEn} />
       </fieldset>
     </form>
   )
