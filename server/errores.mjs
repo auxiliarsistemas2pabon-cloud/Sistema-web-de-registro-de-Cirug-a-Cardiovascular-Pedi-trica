@@ -10,7 +10,6 @@ export class ErrorApi extends Error {
 export const validacion = (mensaje, campos) => new ErrorApi(400, 'VALIDACION', mensaje, campos)
 export const noAutenticado = (mensaje = 'Su sesión no es válida o expiró. Inicie sesión de nuevo.') =>
   new ErrorApi(401, 'NO_AUTENTICADO', mensaje)
-export const sinPermiso = (mensaje = 'Su rol no permite realizar esta acción.') => new ErrorApi(403, 'SIN_PERMISO', mensaje)
 export const noEncontrado = (mensaje = 'No se encontró el recurso solicitado.') => new ErrorApi(404, 'NO_ENCONTRADO', mensaje)
 export const reglaNegocio = (mensaje) => new ErrorApi(422, 'REGLA_NEGOCIO', mensaje)
 

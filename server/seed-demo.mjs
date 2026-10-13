@@ -16,7 +16,7 @@ if (n > 0 && !process.argv.includes('--forzar')) {
   process.exit(0)
 }
 
-const admin = await una(pool, "SELECT id, rol FROM usuarios WHERE rol = 'administrador' AND activo = 1 ORDER BY creado_en LIMIT 1")
+const admin = await una(pool, 'SELECT id FROM usuarios WHERE activo = 1 ORDER BY creado_en LIMIT 1')
 if (!admin) throw new Error('No hay un administrador activo. Configure INITIAL_ADMIN_* en .env y reinicie el servidor.')
 
 const filasOpciones = await todas(pool, 'SELECT o.id, o.codigo, o.valor, c.codigo AS categoria FROM opciones_lista o JOIN categorias_lista c ON c.id = o.categoria_id')

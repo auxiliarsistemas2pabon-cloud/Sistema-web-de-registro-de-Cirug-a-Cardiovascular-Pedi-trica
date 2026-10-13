@@ -22,7 +22,7 @@ export function AdministracionPage() {
       <EncabezadoPagina
         icono={<IconoEngranaje className="h-5 w-5" />}
         titulo="Administración"
-        subtitulo="Usuarios y roles, listas desplegables y el historial de auditoría."
+        subtitulo="Usuarios, listas desplegables y el historial de auditoría."
       />
 
       <div className="mb-4 flex gap-1 rounded-lg bg-slate-100 p-1 sm:inline-flex">

@@ -7,7 +7,7 @@ import { PieFormulario, SeccionFormulario } from '../../components/FormularioMod
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo5Adulto } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
-import { AvisoInformativo, AvisoSoloLectura, Cargando, MensajeError } from '../../components/Estados'
+import { AvisoInformativo, Cargando, MensajeError } from '../../components/Estados'
 
 interface SeguimientoAdultoDetalle {
   no_aplica: boolean
@@ -71,7 +71,6 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data, isLoading } = useSeguimientoAdulto(pacienteId)
-  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
@@ -119,7 +118,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
   }
 
   async function onSubmit(valores: Valores) {
-    if (!perfil || !puedeEditar) return
+    if (!perfil) return
     setGuardadoEn(null)
     if (valores.reingreso_30_dias === 'SI' && (!valores.fecha_reingreso || !valores.causa_reingreso_id)) {
       setError('Si hubo reingreso, la fecha y la causa son obligatorias.')
@@ -174,8 +173,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-      {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+      <fieldset className="space-y-5">
         <div className="space-y-5">
           <SeccionFormulario titulo="Control posterior">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
@@ -256,7 +254,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
 
         {error && <MensajeError>{error}</MensajeError>}
 
-        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 5" guardando={guardando} guardadoEn={guardadoEn} />}
+        <PieFormulario etiqueta="Guardar Módulo 5" guardando={guardando} guardadoEn={guardadoEn} />
       </fieldset>
     </form>
   )

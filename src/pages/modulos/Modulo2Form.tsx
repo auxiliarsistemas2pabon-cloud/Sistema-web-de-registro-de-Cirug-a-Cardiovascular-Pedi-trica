@@ -10,7 +10,7 @@ import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo2 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
 import type { DiagnosticoDetalle } from '../../types/db'
-import { Cargando, MensajeError, AvisoSoloLectura } from '../../components/Estados'
+import { Cargando, MensajeError } from '../../components/Estados'
 
 interface Valores {
   diagnostico_id: string
@@ -43,7 +43,6 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   const queryClient = useQueryClient()
   const { data, isLoading } = useDiagnostico(pacienteId)
   const { data: opcionesDiagnostico } = useOpciones('DIAGNOSTICO')
-  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
@@ -74,7 +73,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
   if (isLoading) return <Cargando />
 
   async function onSubmit(valores: Valores) {
-    if (!perfil || !puedeEditar) return
+    if (!perfil) return
     setGuardadoEn(null)
     setErrorGuardado(null)
     setGuardando(true)
@@ -108,8 +107,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-      {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+      <fieldset className="space-y-5">
         <div className="space-y-5">
           <SeccionFormulario titulo="Diagnóstico">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -148,7 +146,7 @@ export function Modulo2Form({ pacienteId }: { pacienteId: string }) {
 
         {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
-        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 2" guardando={guardando} guardadoEn={guardadoEn} />}
+        <PieFormulario etiqueta="Guardar Módulo 2" guardando={guardando} guardadoEn={guardadoEn} />
       </fieldset>
     </form>
   )

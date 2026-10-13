@@ -18,7 +18,6 @@ const tablas = [
     email VARCHAR(255) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
     nombre_completo VARCHAR(255) NOT NULL,
-    rol ENUM('administrador','registrador','consulta') NOT NULL,
     activo BOOLEAN NOT NULL DEFAULT true,
     creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -329,6 +328,22 @@ const restricciones = [
   ['ck_cir_fecha3_posterior', 'cirugias', 'CHECK (fecha_procedimiento_3 IS NULL OR (fecha_procedimiento_2 IS NOT NULL AND fecha_procedimiento_3 > fecha_procedimiento_2))'],
 ]
 
+// Columnas que dejaron de usarse. `usuarios.rol` distinguía Administrador, Registrador y Consulta; ya no
+// hay roles (todo usuario es administrador), y como era NOT NULL sin valor por defecto hay que quitarla
+// de las bases que ya existían para poder crear usuarios.
+const columnasRetiradas = [
+  ['usuarios', 'rol'],
+]
+
+/** Quita una columna si todavía existe (errno 1091 = ER_CANT_DROP_FIELD_OR_KEY, ya se quitó antes). */
+async function quitarColumnaSiExiste(pool, tabla, columna) {
+  try {
+    await pool.query(`ALTER TABLE ${tabla} DROP COLUMN ${columna}`)
+  } catch (err) {
+    if (err?.errno !== 1091) throw err
+  }
+}
+
 /** Agrega una columna si no existe (errno 1060 = ER_DUP_FIELDNAME, ya fue creada antes). */
 async function agregarColumnaSiNoExiste(pool, tabla, columna, sentencia) {
   try {
@@ -353,6 +368,7 @@ export async function inicializarBase(pool, admin) {
   for (const sentencia of tablas) await pool.query(sentencia)
   for (const [tabla, columna, sentencia] of alteraciones) await agregarColumnaSiNoExiste(pool, tabla, columna, sentencia)
   for (const [nombre, tabla, definicion] of restricciones) await agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion)
+  for (const [tabla, columna] of columnasRetiradas) await quitarColumnaSiExiste(pool, tabla, columna)
 
   for (const [codigo, nombre] of categorias) {
     await pool.query('INSERT IGNORE INTO categorias_lista (id, codigo, nombre) VALUES (?, ?, ?)', [nuevoId(), codigo, nombre])
@@ -377,8 +393,8 @@ export async function inicializarBase(pool, admin) {
   if (usuarios === 0 && admin.email && admin.password) {
     const problema = validarClave(admin.password)
     if (problema) throw new Error(`INITIAL_ADMIN_PASSWORD no es segura: ${problema}`)
-    await pool.query('INSERT INTO usuarios (id, email, password_hash, nombre_completo, rol) VALUES (?, ?, ?, ?, ?)', [
-      nuevoId(), admin.email.toLowerCase(), await bcrypt.hash(admin.password, 12), admin.nombre, 'administrador',
+    await pool.query('INSERT INTO usuarios (id, email, password_hash, nombre_completo) VALUES (?, ?, ?, ?)', [
+      nuevoId(), admin.email.toLowerCase(), await bcrypt.hash(admin.password, 12), admin.nombre,
     ])
     console.log(`Primer administrador creado: ${admin.email}`)
   }

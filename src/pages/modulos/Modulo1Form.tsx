@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseBotonAgregar, claseInput } from '../../components/Campo'
-import { AvisoSoloLectura, MensajeError } from '../../components/Estados'
+import { MensajeError } from '../../components/Estados'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
@@ -71,7 +71,6 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
   const { data: opcionesProcedencia } = useOpciones('PROCEDENCIA')
-  const puedeEditar = perfil?.rol === 'administrador' || perfil?.rol === 'registrador'
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
@@ -111,7 +110,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   }, [procedenciaEsNarino, opcionesProcedencia, setValue])
 
   async function onSubmit(valores: Valores) {
-    if (!perfil || !puedeEditar) return
+    if (!perfil) return
     setErrorGuardado(null)
     setGuardadoEn(null)
     setGuardando(true)
@@ -167,8 +166,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
-      {!puedeEditar && <AvisoSoloLectura />}
-      <fieldset disabled={!puedeEditar} className="space-y-5 disabled:opacity-70">
+      <fieldset className="space-y-5">
         <div className="space-y-5">
           <SeccionFormulario titulo="Datos personales">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -256,14 +254,12 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
                     </div>
                   ))}
                 </div>
-                {puedeEditar && (
-                  <button type="button" onClick={() => setValue('telefonos', [...telefonos, ''])} className={claseBotonAgregar}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
-                      <path d="M12 5v14M5 12h14" strokeLinecap="round" />
-                    </svg>
-                    Agregar otro número
-                  </button>
-                )}
+                <button type="button" onClick={() => setValue('telefonos', [...telefonos, ''])} className={claseBotonAgregar}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-4 w-4">
+                    <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+                  </svg>
+                  Agregar otro número
+                </button>
               </div>
             )}
           </SeccionFormulario>
@@ -271,7 +267,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
 
         {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
-        {puedeEditar && <PieFormulario etiqueta="Guardar Módulo 1" guardando={guardando} guardadoEn={guardadoEn} />}
+        <PieFormulario etiqueta="Guardar Módulo 1" guardando={guardando} guardadoEn={guardadoEn} />
       </fieldset>
     </form>
   )

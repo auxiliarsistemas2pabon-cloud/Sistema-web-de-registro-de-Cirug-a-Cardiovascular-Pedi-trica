@@ -22,14 +22,11 @@ import {
 } from '../components/ui/dropdown-menu'
 import { useAlertas } from '../hooks/useAlertas'
 import { GrupoActivoProvider, useGrupoActivo } from '../lib/grupoActivo'
-import type { Rol } from '../types/db'
 
 interface Enlace {
   to: string
   etiqueta: string
   icono: ComponentType<SVGProps<SVGSVGElement>>
-  /** Si se indica, la pestaña solo aparece para estos roles (las rutas ya están protegidas aparte). */
-  roles?: Rol[]
 }
 
 const enlaces: Enlace[] = [
@@ -37,15 +34,12 @@ const enlaces: Enlace[] = [
   { to: '/adultos', etiqueta: 'Adultos', icono: IconoAdultos },
   { to: '/alertas', etiqueta: 'Alertas de seguimiento', icono: IconoCampana },
   { to: '/indicadores', etiqueta: 'Indicadores', icono: IconoGrafico },
-  { to: '/datos', etiqueta: 'Exportar datos', icono: IconoBajar, roles: ['administrador', 'registrador'] },
-  { to: '/administracion', etiqueta: 'Administración', icono: IconoEngranaje, roles: ['administrador'] },
+  { to: '/datos', etiqueta: 'Exportar datos', icono: IconoBajar },
+  { to: '/administracion', etiqueta: 'Administración', icono: IconoEngranaje },
 ]
 
-const rolEtiqueta: Record<string, string> = {
-  administrador: 'Administrador',
-  registrador: 'Registrador',
-  consulta: 'Consulta',
-}
+/** No hay roles: todos los usuarios son administradores, y así se lee bajo su nombre. */
+const ROL = 'Administrador'
 
 /** Iniciales para el avatar circular (primeras letras del primer y segundo nombre/apellido). */
 function iniciales(nombreCompleto: string | undefined) {
@@ -91,9 +85,6 @@ export function AppShell() {
     observador.observe(encabezado)
     return () => observador.disconnect()
   }, [])
-
-  const visibles = enlaces.filter((enlace) => !enlace.roles || (perfil && enlace.roles.includes(perfil.rol)))
-  const rol = perfil ? rolEtiqueta[perfil.rol] : ''
 
   return (
     <GrupoActivoProvider>
@@ -142,7 +133,7 @@ export function AppShell() {
               </span>
               <span className="hidden text-left leading-tight sm:block">
                 <span className="block text-sm font-semibold text-slate-900">{perfil?.nombre_completo}</span>
-                <span className="block text-xs text-slate-500">{rol}</span>
+                <span className="block text-xs text-slate-500">{ROL}</span>
               </span>
               <IconoChevronAbajo className="hidden h-4 w-4 text-[var(--pabon-azul-oscuro)] opacity-60 transition-transform group-data-[state=open]:rotate-180 sm:block" />
             </DropdownMenuTrigger>
@@ -155,7 +146,7 @@ export function AppShell() {
                   <span className="block truncate text-sm font-semibold text-slate-900">{perfil?.nombre_completo}</span>
                   {perfil?.email && <span className="block truncate text-xs font-normal text-slate-500">{perfil.email}</span>}
                   <span className="mt-1 inline-flex rounded-full bg-[var(--pabon-azul-oscuro)]/[0.08] px-2 py-0.5 text-[11px] font-medium text-[var(--pabon-azul-oscuro)]">
-                    {rol}
+                    {ROL}
                   </span>
                 </span>
               </DropdownMenuLabel>
@@ -172,7 +163,7 @@ export function AppShell() {
           aria-label="Secciones"
           className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-2 [scrollbar-width:none] sm:px-4 [&::-webkit-scrollbar]:hidden"
         >
-          {visibles.map(({ to, etiqueta, icono: Icono }) => (
+          {enlaces.map(({ to, etiqueta, icono: Icono }) => (
             <NavLink
               key={to}
               to={to}

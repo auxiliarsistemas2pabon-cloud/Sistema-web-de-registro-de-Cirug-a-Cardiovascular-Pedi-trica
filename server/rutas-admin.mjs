@@ -1,14 +1,12 @@
 import bcrypt from 'bcryptjs'
 import { Router } from 'express'
-import { puedeEscribir, requiereRol, validarClave } from './auth.mjs'
+import { validarClave } from './auth.mjs'
 import { aBooleanos, isoUtc, nuevoId, pool, todas, una } from './db.mjs'
 import { ErrorApi, asincrono, noEncontrado, reglaNegocio, validacion } from './errores.mjs'
 import { Validador, esFechaIso } from './validar.mjs'
 
-const ROLES = ['administrador', 'registrador', 'consulta']
-
 // ---------------------------------------------------------------------------------------------
-// Listas desplegables (lectura para todos los roles)
+// Listas desplegables
 // ---------------------------------------------------------------------------------------------
 
 export const rutasListas = Router()
@@ -29,13 +27,13 @@ rutasListas.get('/opciones', asincrono(async (req, res) => {
 /**
  * Crea (o reutiliza, si ya existe) una opción de una lista desde una pantalla que NO es de
  * Administración — hoy el combo de Diagnóstico, cuando se escribe un texto que no está en la
- * lista. A diferencia de `POST /admin/listas/opciones` (solo administrador, pensado para
- * gestionar listas a propósito), esta ruta la puede usar cualquiera que edite la ficha del
- * paciente (Administrador o Registrador): un registro clínico no debe quedar bloqueado
- * esperando que un administrador agregue el término primero. La opción creada queda disponible
- * de inmediato para todos los pacientes, no solo como texto suelto de este.
+ * lista. A diferencia de `POST /admin/listas/opciones` (pensado para gestionar listas a
+ * propósito, desde Administración), esta ruta se usa al editar la ficha del paciente: un registro
+ * clínico no debe quedar bloqueado hasta que alguien agregue el término en otra pantalla. La
+ * opción creada queda disponible de inmediato para todos los pacientes, no solo como texto suelto
+ * de este.
  */
-rutasListas.post('/opciones', puedeEscribir, asincrono(async (req, res) => {
+rutasListas.post('/opciones', asincrono(async (req, res) => {
   const v = new Validador(req.body)
   const categoriaCodigo = v.texto('categoria', { obligatorio: true })
   const valor = v.texto('valor', { obligatorio: true, max: 500 })
@@ -68,16 +66,15 @@ rutasListas.post('/opciones', puedeEscribir, asincrono(async (req, res) => {
 }))
 
 // ---------------------------------------------------------------------------------------------
-// Administración (solo administrador)
+// Administración. No hay roles: todos los usuarios son administradores.
 // ---------------------------------------------------------------------------------------------
 
 export const rutasAdmin = Router()
-rutasAdmin.use(requiereRol('administrador'))
 
-const usuarioApi = (f) => aBooleanos({ id: f.id, email: f.email, nombre_completo: f.nombre_completo, rol: f.rol, activo: f.activo }, ['activo'])
+const usuarioApi = (f) => aBooleanos({ id: f.id, email: f.email, nombre_completo: f.nombre_completo, activo: f.activo }, ['activo'])
 
 rutasAdmin.get('/usuarios', asincrono(async (_req, res) => {
-  const filas = await todas(pool, 'SELECT id, email, nombre_completo, rol, activo FROM usuarios ORDER BY nombre_completo')
+  const filas = await todas(pool, 'SELECT id, email, nombre_completo, activo FROM usuarios ORDER BY nombre_completo')
   res.json(filas.map(usuarioApi))
 }))
 
@@ -85,7 +82,6 @@ rutasAdmin.post('/usuarios', asincrono(async (req, res) => {
   const v = new Validador(req.body)
   const email = v.texto('email', { obligatorio: true })?.toLowerCase() ?? null
   const nombre = v.texto('nombre_completo', { obligatorio: true })
-  const rol = v.opcion('rol', ROLES, { obligatorio: true })
   const password = typeof req.body?.password === 'string' ? req.body.password : ''
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) v.error('email', 'Correo no válido.')
   const problema = validarClave(password)
@@ -94,8 +90,8 @@ rutasAdmin.post('/usuarios', asincrono(async (req, res) => {
 
   const id = nuevoId()
   try {
-    await pool.query('INSERT INTO usuarios (id, email, password_hash, nombre_completo, rol) VALUES (?, ?, ?, ?, ?)',
-      [id, email, await bcrypt.hash(password, 12), nombre, rol])
+    await pool.query('INSERT INTO usuarios (id, email, password_hash, nombre_completo) VALUES (?, ?, ?, ?)',
+      [id, email, await bcrypt.hash(password, 12), nombre])
   } catch (error) {
     if (error?.code === 'ER_DUP_ENTRY') throw new ErrorApi(409, 'EMAIL_DUPLICADO', 'Ya existe un usuario con ese correo.')
     throw error
@@ -105,7 +101,6 @@ rutasAdmin.post('/usuarios', asincrono(async (req, res) => {
 
 rutasAdmin.patch('/usuarios/:id', asincrono(async (req, res) => {
   const v = new Validador(req.body)
-  const rol = v.opcion('rol', ROLES)
   const tieneActivo = typeof req.body?.activo === 'boolean'
   if (req.body?.activo !== undefined && !tieneActivo) v.error('activo', 'Debe ser verdadero o falso.')
   v.finalizar()
@@ -113,16 +108,12 @@ rutasAdmin.patch('/usuarios/:id', asincrono(async (req, res) => {
   const usuario = await una(pool, 'SELECT * FROM usuarios WHERE id = ?', [req.params.id])
   if (!usuario) throw noEncontrado('No se encontró el usuario.')
 
-  const seraAdminActivo = (rol ?? usuario.rol) === 'administrador' && (tieneActivo ? req.body.activo : Boolean(usuario.activo))
-  if (usuario.rol === 'administrador' && usuario.activo && !seraAdminActivo) {
-    const otro = await una(pool, "SELECT COUNT(*) AS n FROM usuarios WHERE rol = 'administrador' AND activo = 1 AND id <> ?", [usuario.id])
+  // Si se desactiva al último usuario activo, nadie podría volver a entrar para reactivarlo.
+  if (usuario.activo && tieneActivo && !req.body.activo) {
+    const otro = await una(pool, 'SELECT COUNT(*) AS n FROM usuarios WHERE activo = 1 AND id <> ?', [usuario.id])
     if (otro.n === 0) throw reglaNegocio('Debe quedar al menos un Administrador activo.')
   }
-  const cambios = []
-  const valores = []
-  if (rol) { cambios.push('rol = ?'); valores.push(rol) }
-  if (tieneActivo) { cambios.push('activo = ?'); valores.push(req.body.activo) }
-  if (cambios.length) await pool.query(`UPDATE usuarios SET ${cambios.join(', ')} WHERE id = ?`, [...valores, usuario.id])
+  if (tieneActivo) await pool.query('UPDATE usuarios SET activo = ? WHERE id = ?', [req.body.activo, usuario.id])
   res.json({ id: usuario.id })
 }))
 

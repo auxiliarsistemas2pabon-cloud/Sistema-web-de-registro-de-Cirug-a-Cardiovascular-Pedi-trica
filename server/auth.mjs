@@ -4,7 +4,7 @@ import { rateLimit } from 'express-rate-limit'
 import jwt from 'jsonwebtoken'
 import { config } from './config.mjs'
 import { aBooleanos, pool, una } from './db.mjs'
-import { ErrorApi, asincrono, noAutenticado, sinPermiso, validacion } from './errores.mjs'
+import { ErrorApi, asincrono, noAutenticado, validacion } from './errores.mjs'
 
 const HASH_FALSO = bcrypt.hashSync('contraseña-inexistente', 12)
 
@@ -19,13 +19,14 @@ export function validarClave(clave) {
 }
 
 const firmarToken = (usuario) =>
-  jwt.sign({ sub: usuario.id, rol: usuario.rol }, config.jwtSecret, { expiresIn: `${config.minutosSesion}m` })
+  jwt.sign({ sub: usuario.id }, config.jwtSecret, { expiresIn: `${config.minutosSesion}m` })
 
 const perfilPublico = (fila) => aBooleanos({
-  id: fila.id, email: fila.email, nombre_completo: fila.nombre_completo, rol: fila.rol, activo: fila.activo,
+  id: fila.id, email: fila.email, nombre_completo: fila.nombre_completo, activo: fila.activo,
 }, ['activo'])
 
-/** Exige un JWT válido y un usuario activo; siempre relee el usuario para respetar cambios de rol/estado. */
+/** Exige un JWT válido y un usuario activo; siempre relee el usuario para que desactivarlo surta efecto de
+ * inmediato. No hay roles: todo usuario activo es administrador y puede usar toda la API. */
 export const autenticar = asincrono(async (req, res, next) => {
   const cabecera = req.headers.authorization ?? ''
   const token = cabecera.startsWith('Bearer ') ? cabecera.slice(7) : null
@@ -38,7 +39,7 @@ export const autenticar = asincrono(async (req, res, next) => {
     throw noAutenticado()
   }
 
-  const usuario = await una(pool, 'SELECT id, email, nombre_completo, rol, activo FROM usuarios WHERE id = ?', [carga.sub])
+  const usuario = await una(pool, 'SELECT id, email, nombre_completo, activo FROM usuarios WHERE id = ?', [carga.sub])
   if (!usuario || !usuario.activo) throw noAutenticado()
   req.usuario = perfilPublico(usuario)
 
@@ -46,13 +47,6 @@ export const autenticar = asincrono(async (req, res, next) => {
   if (Date.now() / 1000 - carga.iat > 300) res.setHeader('X-Token-Renovado', firmarToken(usuario))
   next()
 })
-
-export const requiereRol = (...roles) => (req, _res, next) => {
-  if (!roles.includes(req.usuario.rol)) return next(sinPermiso())
-  next()
-}
-
-export const puedeEscribir = requiereRol('administrador', 'registrador')
 
 const limitadorLogin = rateLimit({
   windowMs: 15 * 60 * 1000,

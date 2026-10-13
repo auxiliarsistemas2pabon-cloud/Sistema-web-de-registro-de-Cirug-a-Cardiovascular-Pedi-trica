@@ -6,9 +6,10 @@ Si el frontend necesita algo distinto, se cambia aquí primero y luego en códig
 ## Convenciones
 
 - Base `/api`, JSON UTF-8. Toda ruta excepto `POST /api/auth/login` exige `Authorization: Bearer <jwt>`.
-- JWT firmado con `JWT_SECRET`, expira en 8 h, payload `{ sub: usuario_id, rol }`. El servidor vuelve a leer
-  el usuario en cada petición, así que desactivar a alguien o cambiarle el rol surte efecto de inmediato.
+- JWT firmado con `JWT_SECRET`, expira en 8 h, payload `{ sub: usuario_id }`. El servidor vuelve a leer
+  el usuario en cada petición, así que desactivar a alguien surte efecto de inmediato.
   Cerrar sesión es solo borrar el token en el cliente.
+- No hay roles: todo usuario activo es administrador y puede usar todas las rutas.
 - Fechas `DATE` como `"YYYY-MM-DD"`. `DATETIME` como ISO 8601 UTC. Booleanos `true/false` (nunca 0/1).
   `DECIMAL` y `BIGINT` como número JSON. `telefonos` como `string[]`. Los ids son UUID en texto.
 - Los campos vacíos se envían como `null`, no como `""`.
@@ -24,8 +25,7 @@ Cuerpo siempre `{ "error": { "codigo": string, "mensaje": string, "campos"?: { [
 | 400 | `VALIDACION` | cuerpo o query mal formados (`campos` indica cuáles) |
 | 401 | `NO_AUTENTICADO` | falta el token, es inválido, expiró o el usuario está inactivo |
 | 401 | `CREDENCIALES_INVALIDAS` | login fallido (mismo mensaje para email inexistente y clave incorrecta) |
-| 403 | `SIN_PERMISO` | el rol no puede hacer esto |
-| 404 | `NO_ENCONTRADO` | no existe, o el paciente está eliminado y el rol no es administrador |
+| 404 | `NO_ENCONTRADO` | no existe |
 | 409 | `IDENTIFICACION_DUPLICADA` | `pacientes.identificacion` repetida (sustituye a buscar `pacientes_identificacion_key`) |
 | 409 | `POSTOPERATORIO_REQUERIDO` | se intenta guardar Módulo 5 sin Módulo 4 guardado |
 | 422 | `REGLA_NEGOCIO` | regla clínica incumplida (lista abajo); `mensaje` es el texto exacto de la regla |
@@ -35,15 +35,6 @@ Reglas que responden 422 (portadas de los triggers 0003):
 fecha de cirugía anterior al nacimiento · traslado o salida anteriores a la cirugía · "Ninguno" combinado con otro
 factor de riesgo · Módulo 5 editado con `no_aplica = true` · reingreso fuera de los 30 días posteriores a la salida ·
 modificar `codigo` de una opción de lista · más de 3 procedimientos.
-
-### Permisos por rol
-
-| Recurso | administrador | registrador | consulta |
-| --- | --- | --- | --- |
-| GET pacientes, módulos, alertas, indicadores, exportación, listas | sí (incluye eliminados) | sí (no eliminados) | sí (no eliminados) |
-| POST/PUT pacientes y módulos, importación | sí | sí (solo pacientes no eliminados) | no |
-| Marcar paciente eliminado | sí | no | no |
-| `/api/admin/*` | sí | no | no |
 
 ## Reglas que el servidor aplica en silencio (el cliente no las repite)
 
@@ -62,8 +53,8 @@ modificar `codigo` de una opción de lista · más de 3 procedimientos.
 
 - `POST /api/auth/login` `{ email, password }` → `200 { token, perfil }`. Errores: 401 `CREDENCIALES_INVALIDAS`,
   403 `USUARIO_INACTIVO`.
-- `GET /api/auth/me` → `200 perfil`. `perfil = { id, email, nombre_completo, rol, activo }`
-  (`rol`: `administrador | registrador | consulta`). Sustituye a `cargarPerfil` de `AuthProvider`.
+- `GET /api/auth/me` → `200 perfil`. `perfil = { id, email, nombre_completo, activo }`.
+  Sustituye a `cargarPerfil` de `AuthProvider`.
 
 ### Listas
 
@@ -87,7 +78,7 @@ modificar `codigo` de una opción de lista · más de 3 procedimientos.
 - `POST /api/pacientes` con los campos editables de `PacienteDetalle` (todo menos `id`, `numero_paciente`,
   `eliminado`) → `201 { id }`. Puede dar 409 `IDENTIFICACION_DUPLICADA`.
 - `PUT /api/pacientes/:id` mismo cuerpo → `200 { id }`.
-- `PUT /api/pacientes/:id/eliminado` `{ eliminado: boolean }` → `200`. Solo administrador. (La UI actual no lo usa.)
+- `PUT /api/pacientes/:id/eliminado` `{ eliminado: boolean }` → `200`. (La UI actual no lo usa.)
 
 ### Módulos 2 a 5
 
@@ -131,13 +122,12 @@ Los riesgos y procedimientos se reemplazan de forma atómica dentro de la misma 
 - `POST /api/importaciones/filas/:id/aplicar` → `200 { paciente_id }`. Una transacción por fila. Si falla,
   el servidor deja la fila en `con_errores` con el mensaje en `errores` y responde 409 o 422; el cliente
   **no** necesita hacer el `update` de la línea 292. Cuando ya no quedan filas `valido`, el lote pasa a `aplicado`.
-  Solo el administrador o quien cargó el lote pueden aplicarlo.
 
-### Administración (solo administrador)
+### Administración
 
-- `GET /api/admin/usuarios` → `[{ id, email, nombre_completo, rol, activo }]`.
-- `POST /api/admin/usuarios` `{ email, nombre_completo, rol, password }` → `201 { id }`. **Nuevo**: hoy no existe en la UI.
-- `PATCH /api/admin/usuarios/:id` `{ rol?, activo? }` → `200`.
+- `GET /api/admin/usuarios` → `[{ id, email, nombre_completo, activo }]`.
+- `POST /api/admin/usuarios` `{ email, nombre_completo, password }` → `201 { id }`. **Nuevo**: hoy no existe en la UI.
+- `PATCH /api/admin/usuarios/:id` `{ activo }` → `200`. Desactivar al último usuario activo da 422.
 - `GET /api/admin/listas/categorias` → `[{ id, codigo, nombre }]`.
 - `GET /api/admin/listas/categorias/:id/opciones` → todas las opciones (activas e inactivas), por `orden`.
 - `POST /api/admin/listas/opciones` `{ categoria_id, valor, orden, codigo? }` → `201 { id }`.
