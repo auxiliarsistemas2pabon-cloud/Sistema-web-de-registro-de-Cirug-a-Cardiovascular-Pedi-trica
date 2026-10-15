@@ -109,7 +109,6 @@ const tablas = [
     uso_cec ENUM('SI','NO') NULL,
     tiempo_cec_min INT NULL,
     tiempo_clamp_min INT NULL,
-    complicacion_intraqx_id CHAR(36) NULL,
     cierre_esternal_diferido ENUM('SI','NO') NULL,
     extubacion_quirofano ENUM('SI','NO') NULL,
     estado_modulo ${ESTADO},${AUDITORIA_COLS},
@@ -120,7 +119,7 @@ const tablas = [
     CONSTRAINT ck_cir_fecha2_posterior CHECK (fecha_procedimiento_2 IS NULL OR (fecha_cirugia IS NOT NULL AND fecha_procedimiento_2 > fecha_cirugia)),
     CONSTRAINT ck_cir_fecha3_posterior CHECK (fecha_procedimiento_3 IS NULL OR (fecha_procedimiento_2 IS NOT NULL AND fecha_procedimiento_3 > fecha_procedimiento_2)),
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
-    ${opcion('implante_id')}, ${opcion('complicacion_intraqx_id')}
+    ${opcion('implante_id')}
   )`,
   `CREATE TABLE IF NOT EXISTS cirugias_procedimientos (
     id CHAR(36) PRIMARY KEY,
@@ -133,12 +132,23 @@ const tablas = [
     FOREIGN KEY (cirugia_id) REFERENCES cirugias(id),
     ${opcion('procedimiento_id')}
   )`,
+  // Complicación intraquirúrgica/postoperatoria dejaron de ser una sola opción (complicacion_*_id en
+  // cirugias/postoperatorio, más abajo en `columnasRetiradas`) para permitir una o varias, igual que
+  // ya funcionaba `diagnosticos_riesgos`. Mismo patrón: tabla puente sin `orden` (no hay un "primer"
+  // o "segundo" complicación clínicamente, a diferencia de los procedimientos quirúrgicos).
+  `CREATE TABLE IF NOT EXISTS cirugias_complicaciones_intraqx (
+    id CHAR(36) PRIMARY KEY,
+    cirugia_id CHAR(36) NOT NULL,
+    complicacion_id CHAR(36) NOT NULL,
+    UNIQUE KEY uq_cir_complicacion (cirugia_id, complicacion_id),
+    FOREIGN KEY (cirugia_id) REFERENCES cirugias(id),
+    ${opcion('complicacion_id')}
+  )`,
   `CREATE TABLE IF NOT EXISTS postoperatorio (
     id CHAR(36) PRIMARY KEY,
     paciente_id CHAR(36) NOT NULL UNIQUE,
     unidad_pop_id CHAR(36) NULL,
     horas_ventilacion_mecanica INT NULL,
-    complicacion_pop_id CHAR(36) NULL,
     fecha_traslado_intermedio DATE NULL,
     fecha_salida DATE NULL,
     condicion_salida_id CHAR(36) NULL,
@@ -146,7 +156,15 @@ const tablas = [
     CONSTRAINT ck_pop_horas CHECK (horas_ventilacion_mecanica IS NULL OR horas_ventilacion_mecanica >= 0),
     CONSTRAINT ck_pop_fechas CHECK (fecha_traslado_intermedio IS NULL OR fecha_salida IS NULL OR fecha_salida >= fecha_traslado_intermedio),
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
-    ${opcion('unidad_pop_id')}, ${opcion('complicacion_pop_id')}, ${opcion('condicion_salida_id')}
+    ${opcion('unidad_pop_id')}, ${opcion('condicion_salida_id')}
+  )`,
+  `CREATE TABLE IF NOT EXISTS postoperatorio_complicaciones_pop (
+    id CHAR(36) PRIMARY KEY,
+    postoperatorio_id CHAR(36) NOT NULL,
+    complicacion_id CHAR(36) NOT NULL,
+    UNIQUE KEY uq_pop_complicacion (postoperatorio_id, complicacion_id),
+    FOREIGN KEY (postoperatorio_id) REFERENCES postoperatorio(id),
+    ${opcion('complicacion_id')}
   )`,
   `CREATE TABLE IF NOT EXISTS seguimientos (
     id CHAR(36) PRIMARY KEY,
@@ -253,14 +271,13 @@ const tablas = [
     uso_cec ENUM('SI','NO') NULL,
     tiempo_cec_min INT NULL,
     tiempo_clamp_min INT NULL,
-    complicacion_intraqx_id CHAR(36) NULL,
     cierre_esternal_diferido ENUM('SI','NO') NULL,
     extubacion_quirofano ENUM('SI','NO') NULL,
     estado_modulo ${ESTADO},${AUDITORIA_COLS},
     CONSTRAINT ck_cirad_tiempos CHECK (tiempo_cec_min IS NULL OR tiempo_cec_min >= 0),
     CONSTRAINT ck_cirad_clamp CHECK (tiempo_clamp_min IS NULL OR (tiempo_cec_min IS NOT NULL AND tiempo_clamp_min >= 0 AND tiempo_clamp_min <= tiempo_cec_min)),
     FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id),
-    ${opcion('implante_id')}, ${opcion('complicacion_intraqx_id')}
+    ${opcion('implante_id')}
   )`,
   `CREATE TABLE IF NOT EXISTS cirugias_adultos_procedimientos (
     id CHAR(36) PRIMARY KEY,
@@ -273,12 +290,19 @@ const tablas = [
     FOREIGN KEY (cirugia_id) REFERENCES cirugias_adultos(id),
     ${opcion('procedimiento_id')}
   )`,
+  `CREATE TABLE IF NOT EXISTS cirugias_adultos_complicaciones_intraqx (
+    id CHAR(36) PRIMARY KEY,
+    cirugia_id CHAR(36) NOT NULL,
+    complicacion_id CHAR(36) NOT NULL,
+    UNIQUE KEY uq_cirad_complicacion (cirugia_id, complicacion_id),
+    FOREIGN KEY (cirugia_id) REFERENCES cirugias_adultos(id),
+    ${opcion('complicacion_id')}
+  )`,
   `CREATE TABLE IF NOT EXISTS postoperatorio_adultos (
     id CHAR(36) PRIMARY KEY,
     paciente_id CHAR(36) NOT NULL UNIQUE,
     unidad_pop_id CHAR(36) NULL,
     horas_ventilacion_mecanica INT NULL,
-    complicacion_pop_id CHAR(36) NULL,
     fecha_traslado_intermedio DATE NULL,
     dias_estancia_uci INT NULL,
     fecha_salida DATE NULL,
@@ -290,7 +314,15 @@ const tablas = [
     CONSTRAINT ck_popad_dias_hosp CHECK (dias_hospitalizacion_total IS NULL OR dias_hospitalizacion_total >= 0),
     CONSTRAINT ck_popad_fechas CHECK (fecha_traslado_intermedio IS NULL OR fecha_salida IS NULL OR fecha_salida >= fecha_traslado_intermedio),
     FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id),
-    ${opcion('unidad_pop_id')}, ${opcion('complicacion_pop_id')}, ${opcion('condicion_salida_id')}
+    ${opcion('unidad_pop_id')}, ${opcion('condicion_salida_id')}
+  )`,
+  `CREATE TABLE IF NOT EXISTS postoperatorio_adultos_complicaciones_pop (
+    id CHAR(36) PRIMARY KEY,
+    postoperatorio_id CHAR(36) NOT NULL,
+    complicacion_id CHAR(36) NOT NULL,
+    UNIQUE KEY uq_popad_complicacion (postoperatorio_id, complicacion_id),
+    FOREIGN KEY (postoperatorio_id) REFERENCES postoperatorio_adultos(id),
+    ${opcion('complicacion_id')}
   )`,
   `CREATE TABLE IF NOT EXISTS seguimientos_adultos (
     id CHAR(36) PRIMARY KEY,
@@ -330,13 +362,44 @@ const restricciones = [
 
 // Columnas que dejaron de usarse. `usuarios.rol` distinguía Administrador, Registrador y Consulta; ya no
 // hay roles (todo usuario es administrador), y como era NOT NULL sin valor por defecto hay que quitarla
-// de las bases que ya existían para poder crear usuarios.
+// de las bases que ya existían para poder crear usuarios. Las 4 de complicaciones se retiran porque esa
+// relación pasó de "una sola opción" a la tabla puente correspondiente (ver `tablas` arriba) — antes de
+// quitarlas, `migrarComplicaciones` copia cualquier valor existente a la tabla puente para no perderlo.
 const columnasRetiradas = [
   ['usuarios', 'rol'],
+  ['cirugias', 'complicacion_intraqx_id'],
+  ['postoperatorio', 'complicacion_pop_id'],
+  ['cirugias_adultos', 'complicacion_intraqx_id'],
+  ['postoperatorio_adultos', 'complicacion_pop_id'],
 ]
 
-/** Quita una columna si todavía existe (errno 1091 = ER_CANT_DROP_FIELD_OR_KEY, ya se quitó antes). */
+// Migra el valor único de complicación (si la columna todavía existe) a la tabla puente, una sola vez
+// por fila: INSERT IGNORE + la UNIQUE KEY de la tabla puente evitan duplicar si se ejecuta de nuevo antes
+// de que la columna vieja se haya quitado. Errno 1054 (ER_BAD_FIELD_ERROR) = la columna ya no existe
+// (se quitó en un arranque anterior), así que no hay nada que migrar.
+async function migrarComplicacionesSiExisteColumna(pool, tablaOrigen, columnaOrigen, tablaPuente, columnaFk) {
+  try {
+    await pool.query(`
+      INSERT IGNORE INTO ${tablaPuente} (id, ${columnaFk}, complicacion_id)
+      SELECT UUID(), id, ${columnaOrigen} FROM ${tablaOrigen} WHERE ${columnaOrigen} IS NOT NULL`)
+  } catch (err) {
+    if (err?.errno !== 1054) throw err
+  }
+}
+
+/** Quita una columna si todavía existe (errno 1091 = ER_CANT_DROP_FIELD_OR_KEY, ya se quitó antes).
+ * Si la columna tiene su propia FOREIGN KEY (como complicacion_intraqx_id/complicacion_pop_id, que la
+ * tenían hacia opciones_lista), MySQL no deja quitarla sin antes quitar esa restricción — su nombre es
+ * autogenerado (`tabla_ibfkN`) y no es predecible, así que se busca en information_schema en vez de
+ * asumirlo. */
 async function quitarColumnaSiExiste(pool, tabla, columna) {
+  const restricciones = await pool.query(`
+    SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL`,
+    [tabla, columna])
+  for (const { CONSTRAINT_NAME } of restricciones[0]) {
+    await pool.query(`ALTER TABLE ${tabla} DROP FOREIGN KEY ${CONSTRAINT_NAME}`)
+  }
   try {
     await pool.query(`ALTER TABLE ${tabla} DROP COLUMN ${columna}`)
   } catch (err) {
@@ -368,6 +431,10 @@ export async function inicializarBase(pool, admin) {
   for (const sentencia of tablas) await pool.query(sentencia)
   for (const [tabla, columna, sentencia] of alteraciones) await agregarColumnaSiNoExiste(pool, tabla, columna, sentencia)
   for (const [nombre, tabla, definicion] of restricciones) await agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion)
+  await migrarComplicacionesSiExisteColumna(pool, 'cirugias', 'complicacion_intraqx_id', 'cirugias_complicaciones_intraqx', 'cirugia_id')
+  await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio', 'complicacion_pop_id', 'postoperatorio_complicaciones_pop', 'postoperatorio_id')
+  await migrarComplicacionesSiExisteColumna(pool, 'cirugias_adultos', 'complicacion_intraqx_id', 'cirugias_adultos_complicaciones_intraqx', 'cirugia_id')
+  await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio_adultos', 'complicacion_pop_id', 'postoperatorio_adultos_complicaciones_pop', 'postoperatorio_id')
   for (const [tabla, columna] of columnasRetiradas) await quitarColumnaSiExiste(pool, tabla, columna)
 
   for (const [codigo, nombre] of categorias) {

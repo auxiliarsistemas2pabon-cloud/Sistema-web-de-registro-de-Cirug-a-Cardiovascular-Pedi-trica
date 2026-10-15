@@ -6,6 +6,7 @@ import { Campo, claseAccionCampo, claseBotonAgregar, claseInput } from '../../co
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { IconoCerrar, IconoMas } from '../../components/iconos'
 import { SelectOpciones } from '../../components/SelectOpciones'
+import { SeleccionMultiple } from '../../components/SeleccionMultiple'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo3 } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
@@ -22,7 +23,6 @@ interface CirugiaDetalle {
   uso_cec: 'SI' | 'NO' | null
   tiempo_cec_min: number | null
   tiempo_clamp_min: number | null
-  complicacion_intraqx_id: string | null
   cierre_esternal_diferido: 'SI' | 'NO' | null
   extubacion_quirofano: 'SI' | 'NO' | null
   estado_modulo: string
@@ -40,7 +40,7 @@ interface Valores {
   uso_cec: 'SI' | 'NO' | ''
   tiempo_cec_min: string
   tiempo_clamp_min: string
-  complicacion_intraqx_id: string
+  complicacion_intraqx_ids: string[]
   cierre_esternal_diferido: 'SI' | 'NO' | ''
   extubacion_quirofano: 'SI' | 'NO' | ''
 }
@@ -56,21 +56,22 @@ function diaSiguiente(fechaIso: string): string {
 function useCirugia(pacienteId: string) {
   return useQuery({
     queryKey: ['cirugia', pacienteId],
-    queryFn: async (): Promise<{ cirugia: CirugiaDetalle | null; procedimientoIds: string[]; fechaNacimiento: string | null }> => {
+    queryFn: async (): Promise<{ cirugia: CirugiaDetalle | null; procedimientoIds: string[]; complicacionIntraqxIds: string[]; fechaNacimiento: string | null }> => {
       const [cirugia, paciente] = await Promise.all([
-        api.get<(CirugiaDetalle & { procedimiento_ids: string[] }) | null>(`/pacientes/${pacienteId}/cirugia`),
+        api.get<(CirugiaDetalle & { procedimiento_ids: string[]; complicacion_intraqx_ids: string[] }) | null>(`/pacientes/${pacienteId}/cirugia`),
         api.get<PacienteDetalle>(`/pacientes/${pacienteId}`),
       ])
       return {
         cirugia,
         procedimientoIds: cirugia?.procedimiento_ids ?? [],
+        complicacionIntraqxIds: cirugia?.complicacion_intraqx_ids ?? [],
         fechaNacimiento: paciente.fecha_nacimiento,
       }
     },
   })
 }
 
-function valoresIniciales(cirugia: CirugiaDetalle | null, procedimientoIds: string[]): Valores {
+function valoresIniciales(cirugia: CirugiaDetalle | null, procedimientoIds: string[], complicacionIntraqxIds: string[]): Valores {
   return {
     fecha_cirugia: cirugia?.fecha_cirugia ?? '',
     procedimiento_1_id: procedimientoIds[0] ?? '',
@@ -83,7 +84,7 @@ function valoresIniciales(cirugia: CirugiaDetalle | null, procedimientoIds: stri
     uso_cec: cirugia?.uso_cec ?? '',
     tiempo_cec_min: cirugia?.tiempo_cec_min?.toString() ?? '',
     tiempo_clamp_min: cirugia?.tiempo_clamp_min?.toString() ?? '',
-    complicacion_intraqx_id: cirugia?.complicacion_intraqx_id ?? '',
+    complicacion_intraqx_ids: complicacionIntraqxIds,
     cierre_esternal_diferido: cirugia?.cierre_esternal_diferido ?? '',
     extubacion_quirofano: cirugia?.extubacion_quirofano ?? '',
   }
@@ -97,9 +98,10 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
+  const [camposFaltantes, setCamposFaltantes] = useState<string[]>([])
 
   const { register, handleSubmit, watch, reset, setValue, control } = useForm<Valores>({
-    defaultValues: valoresIniciales(data?.cirugia ?? null, data?.procedimientoIds ?? []),
+    defaultValues: valoresIniciales(data?.cirugia ?? null, data?.procedimientoIds ?? [], data?.complicacionIntraqxIds ?? []),
   })
 
   // El procedimiento 2 y el 3 quedan ocultos hasta que se agregan: cada uno es una intervención
@@ -109,13 +111,14 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
 
   useEffect(() => {
     if (data) {
-      reset(valoresIniciales(data.cirugia, data.procedimientoIds))
+      reset(valoresIniciales(data.cirugia, data.procedimientoIds, data.complicacionIntraqxIds))
       setMostrarP2(!!data.procedimientoIds[1])
       setMostrarP3(!!data.procedimientoIds[2])
     }
   }, [data, reset])
 
   const usoCec = watch('uso_cec')
+  const complicacionIntraqxIds = watch('complicacion_intraqx_ids')
   const implanteId = watch('implante_id')
   // Al igual que el N/A de VALVULOPATIA, aquí se detecta por texto: el N/A de IMPLANTE nunca tuvo
   // un `codigo` estable (ver catalogos.mjs), así que no se puede usar codigoDe/el patrón habitual.
@@ -151,6 +154,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
   async function onSubmit(valores: Valores) {
     if (!perfil) return
     setGuardadoEn(null)
+    setCamposFaltantes([])
     if (data?.fechaNacimiento && valores.fecha_cirugia && valores.fecha_cirugia < data.fechaNacimiento) {
       setError('La fecha de cirugía no puede ser anterior a la fecha de nacimiento.')
       return
@@ -195,12 +199,13 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
     const procedimientoIds = [valores.procedimiento_1_id, valores.procedimiento_2_id, valores.procedimiento_3_id]
       .filter(Boolean)
 
-    const estado_modulo = calcularEstadoModulo3({
+    const { estado: estado_modulo, faltantes } = calcularEstadoModulo3({
       fechaCirugia: valores.fecha_cirugia,
       procedimiento1Id: valores.procedimiento_1_id,
       usoCec: valores.uso_cec,
       tiempoCecMin: valores.tiempo_cec_min,
     })
+    setCamposFaltantes(faltantes)
 
     try {
       await api.put(`/pacientes/${pacienteId}/cirugia`, {
@@ -212,7 +217,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
         uso_cec: valores.uso_cec || null,
         tiempo_cec_min: valores.uso_cec === 'SI' && valores.tiempo_cec_min ? Number(valores.tiempo_cec_min) : null,
         tiempo_clamp_min: valores.uso_cec === 'SI' && valores.tiempo_clamp_min ? Number(valores.tiempo_clamp_min) : null,
-        complicacion_intraqx_id: valores.complicacion_intraqx_id || null,
+        complicacion_intraqx_ids: valores.complicacion_intraqx_ids,
         cierre_esternal_diferido: valores.cierre_esternal_diferido || null,
         extubacion_quirofano: valores.extubacion_quirofano || null,
         procedimiento_ids: procedimientoIds,
@@ -353,9 +358,15 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
 
           <SeccionFormulario titulo="Eventos en quirófano">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Campo etiqueta="Complicación intraquirúrgica" className="sm:col-span-2">
-                <SelectOpciones categoria="COMPLICACION_INTRAQX" control={control} name="complicacion_intraqx_id" />
-              </Campo>
+              <div className="sm:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-700">Complicación intraquirúrgica</label>
+                <SeleccionMultiple
+                  categoria="COMPLICACION_INTRAQX"
+                  codigoExcluyente="NINGUNA"
+                  value={complicacionIntraqxIds}
+                  onChange={(v) => setValue('complicacion_intraqx_ids', v)}
+                />
+              </div>
               <Campo etiqueta="Cierre esternal diferido">
                 <select {...register('cierre_esternal_diferido')} className={claseInput}>
                   <option value="">Seleccione…</option>
@@ -376,7 +387,7 @@ export function Modulo3Form({ pacienteId }: { pacienteId: string }) {
 
         {error && <MensajeError>{error}</MensajeError>}
 
-        <PieFormulario etiqueta="Guardar Módulo 3" guardando={guardando} guardadoEn={guardadoEn} />
+        <PieFormulario etiqueta="Guardar Módulo 3" guardando={guardando} guardadoEn={guardadoEn} faltantes={camposFaltantes} />
       </fieldset>
     </form>
   )

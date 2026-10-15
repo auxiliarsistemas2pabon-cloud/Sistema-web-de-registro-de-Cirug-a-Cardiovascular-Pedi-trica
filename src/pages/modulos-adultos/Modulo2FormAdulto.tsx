@@ -5,7 +5,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
-import { SeleccionRiesgos } from '../../components/SeleccionRiesgos'
+import { SeleccionMultiple } from '../../components/SeleccionMultiple'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo2Adulto } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
@@ -46,6 +46,7 @@ export function Modulo2FormAdulto({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
+  const [camposFaltantes, setCamposFaltantes] = useState<string[]>([])
 
   const { register, handleSubmit, watch, setValue, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(data?.diagnostico ?? null, data?.riesgoIds ?? []),
@@ -77,13 +78,14 @@ export function Modulo2FormAdulto({ pacienteId }: { pacienteId: string }) {
     setErrorGuardado(null)
     setGuardando(true)
 
-    const estado_modulo = calcularEstadoModulo2Adulto({
+    const { estado: estado_modulo, faltantes } = calcularEstadoModulo2Adulto({
       diagnosticoId: valores.diagnostico_id,
       euroscore: valores.euroscore,
       diagnosticoEsValvulopatia: esValvulopatia,
       valvulopatiaId: valores.valvulopatia_id,
       riesgoIds: valores.riesgo_ids,
     })
+    setCamposFaltantes(faltantes)
 
     try {
       await api.put(`/pacientes-adultos/${pacienteId}/diagnostico`, {
@@ -137,7 +139,7 @@ export function Modulo2FormAdulto({ pacienteId }: { pacienteId: string }) {
                 <p id="etiqueta-riesgos" className="mb-2 text-sm font-medium text-slate-700">
                   Factores de riesgo *
                 </p>
-                <SeleccionRiesgos categoria="RIESGOS_ADULTO" value={riesgoIds} onChange={(v) => setValue('riesgo_ids', v)} />
+                <SeleccionMultiple categoria="RIESGOS_ADULTO" codigoExcluyente="NINGUNO" value={riesgoIds} onChange={(v) => setValue('riesgo_ids', v)} />
               </div>
             </div>
           </SeccionFormulario>
@@ -145,7 +147,7 @@ export function Modulo2FormAdulto({ pacienteId }: { pacienteId: string }) {
 
         {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
-        <PieFormulario etiqueta="Guardar Módulo 2" guardando={guardando} guardadoEn={guardadoEn} />
+        <PieFormulario etiqueta="Guardar Módulo 2" guardando={guardando} guardadoEn={guardadoEn} faltantes={camposFaltantes} />
       </fieldset>
     </form>
   )

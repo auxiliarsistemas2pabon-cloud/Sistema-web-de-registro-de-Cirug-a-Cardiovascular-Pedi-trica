@@ -11,6 +11,7 @@ import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1Adulto } from '../../lib/completitud'
 import { edadMinimaIso, hoyIso } from '../../lib/fechas'
+import { formatearNumero, superficieCorporal } from '../../lib/estadisticas'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteAdultoDetalle } from '../../types/db'
 
@@ -73,6 +74,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
+  const [camposFaltantes, setCamposFaltantes] = useState<string[]>([])
 
   const {
     register,
@@ -92,6 +94,8 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
   }, [paciente, reset])
 
   const procedenciaId = watch('procedencia_id')
+  const pesoKg = watch('peso_kg')
+  const asc = superficieCorporal(pesoKg ? Number(pesoKg) : null)
 
   const narinioId = opcionesProcedencia?.find((o) => o.codigo === 'NARINO')?.id
   const procedenciaEsNarino = !!narinioId && procedenciaId === narinioId
@@ -109,13 +113,14 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
     setGuardadoEn(null)
     setGuardando(true)
 
-    const estado_modulo = calcularEstadoModulo1Adulto({
+    const { estado: estado_modulo, faltantes } = calcularEstadoModulo1Adulto({
       nombreCompleto: valores.nombre_completo,
       identificacion: valores.identificacion,
       fechaNacimiento: valores.fecha_nacimiento,
       procedenciaEsNarino,
       municipioNarinoId: valores.municipio_narino_id,
     })
+    setCamposFaltantes(faltantes)
 
     const payload = {
       nombre_completo: valores.nombre_completo.trim(),
@@ -188,6 +193,15 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
               <Campo etiqueta="Talla (cm)" error={errors.talla_cm?.message}>
                 <input type="number" min="120" max="230" step="1" {...register('talla_cm')} className={claseInput} />
               </Campo>
+
+              <Campo etiqueta="Superficie corporal (ASC)">
+                <input
+                  disabled
+                  value={asc === null ? '' : `${formatearNumero(asc, 2)} m²`}
+                  placeholder="Se calcula con el peso"
+                  className={claseInput}
+                />
+              </Campo>
             </div>
           </SeccionFormulario>
 
@@ -215,7 +229,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
 
         {errorGuardado && <MensajeError>{errorGuardado}</MensajeError>}
 
-        <PieFormulario etiqueta="Guardar Módulo 1" guardando={guardando} guardadoEn={guardadoEn} />
+        <PieFormulario etiqueta="Guardar Módulo 1" guardando={guardando} guardadoEn={guardadoEn} faltantes={camposFaltantes} />
       </fieldset>
     </form>
   )

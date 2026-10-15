@@ -151,6 +151,8 @@ export const opciones = {
     { codigo: null, valor: "Salud Total", orden: 80 },
     { codigo: null, valor: "Sanitas", orden: 90 },
     { codigo: null, valor: "SURA", orden: 100 },
+    { codigo: null, valor: "FOMAG", orden: 101 },
+    { codigo: null, valor: "Policía", orden: 102 },
     { codigo: null, valor: "Otra", orden: 110 },
   ],
   DIAGNOSTICO: [

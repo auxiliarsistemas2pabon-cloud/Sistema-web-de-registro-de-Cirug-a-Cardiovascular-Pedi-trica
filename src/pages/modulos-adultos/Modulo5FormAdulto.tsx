@@ -74,6 +74,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
+  const [camposFaltantes, setCamposFaltantes] = useState<string[]>([])
 
   const { register, handleSubmit, watch, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(null),
@@ -120,6 +121,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
   async function onSubmit(valores: Valores) {
     if (!perfil) return
     setGuardadoEn(null)
+    setCamposFaltantes([])
     if (valores.reingreso_30_dias === 'SI' && (!valores.fecha_reingreso || !valores.causa_reingreso_id)) {
       setError('Si hubo reingreso, la fecha y la causa son obligatorias.')
       return
@@ -136,7 +138,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
     setError(null)
     setGuardando(true)
 
-    const estado_modulo = calcularEstadoModulo5Adulto({
+    const { estado: estado_modulo, faltantes } = calcularEstadoModulo5Adulto({
       fechaControl: valores.fecha_control_cirugia,
       rehabilitacionCardiaca: valores.rehabilitacion_cardiaca,
       estadoHeridaId: valores.estado_herida_id,
@@ -146,6 +148,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
       fechaReingreso: valores.fecha_reingreso,
       causaReingresoId: valores.causa_reingreso_id,
     })
+    setCamposFaltantes(faltantes)
 
     try {
       await api.put(`/pacientes-adultos/${pacienteId}/seguimiento`, {
@@ -254,7 +257,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
 
         {error && <MensajeError>{error}</MensajeError>}
 
-        <PieFormulario etiqueta="Guardar Módulo 5" guardando={guardando} guardadoEn={guardadoEn} />
+        <PieFormulario etiqueta="Guardar Módulo 5" guardando={guardando} guardadoEn={guardadoEn} faltantes={camposFaltantes} />
       </fieldset>
     </form>
   )
