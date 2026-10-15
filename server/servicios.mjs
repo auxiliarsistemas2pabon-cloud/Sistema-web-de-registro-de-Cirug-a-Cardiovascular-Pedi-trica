@@ -226,7 +226,12 @@ export async function obtenerCirugia(conexion, pacienteId) {
   const fila = await una(conexion, 'SELECT * FROM cirugias WHERE paciente_id = ?', [pacienteId])
   if (!fila) return null
   const procedimientos = await todas(conexion, 'SELECT procedimiento_id FROM cirugias_procedimientos WHERE cirugia_id = ? ORDER BY orden', [fila.id])
-  return { ...filaApi('cirugias', fila), procedimiento_ids: procedimientos.map((p) => p.procedimiento_id) }
+  const complicaciones = await todas(conexion, 'SELECT complicacion_id FROM cirugias_complicaciones_intraqx WHERE cirugia_id = ? ORDER BY id', [fila.id])
+  return {
+    ...filaApi('cirugias', fila),
+    procedimiento_ids: procedimientos.map((p) => p.procedimiento_id),
+    complicacion_intraqx_ids: complicaciones.map((c) => c.complicacion_id),
+  }
 }
 
 export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
@@ -240,13 +245,13 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
     uso_cec: v.opcion('uso_cec', ['SI', 'NO']),
     tiempo_cec_min: v.entero('tiempo_cec_min', { min: 0 }),
     tiempo_clamp_min: v.entero('tiempo_clamp_min', { min: 0 }),
-    complicacion_intraqx_id: v.id('complicacion_intraqx_id'),
     cierre_esternal_diferido: v.opcion('cierre_esternal_diferido', ['SI', 'NO']),
     extubacion_quirofano: v.opcion('extubacion_quirofano', ['SI', 'NO']),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   const procedimientoIds = v.ids('procedimiento_ids')
   if (procedimientoIds.length > 3) v.error('procedimiento_ids', 'Solo se permiten hasta tres procedimientos.')
+  const complicacionIntraqxIds = [...new Set(v.ids('complicacion_intraqx_ids'))]
   v.finalizar()
 
   if (new Set(procedimientoIds).size !== procedimientoIds.length) throw reglaNegocio('Los procedimientos 1, 2 y 3 no pueden repetirse.')
@@ -308,6 +313,18 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
       await insertar(conexion, usuario, 'cirugias_procedimientos', { cirugia_id: cirugiaId, procedimiento_id: procedimientoId, orden: i + 1 }, { conAuditoriaUsuario: false })
     }
   }
+
+  // Reemplazo de la selección, igual que diagnosticos_riesgos: se quita lo que sobra y se agrega lo nuevo.
+  const complicacionesActuales = await todas(conexion, 'SELECT id, complicacion_id FROM cirugias_complicaciones_intraqx WHERE cirugia_id = ?', [cirugiaId])
+  for (const fila of complicacionesActuales) {
+    if (!complicacionIntraqxIds.includes(fila.complicacion_id)) await eliminarFila(conexion, usuario, 'cirugias_complicaciones_intraqx', fila.id)
+  }
+  const complicacionesPresentes = new Set(complicacionesActuales.map((f) => f.complicacion_id))
+  for (const complicacionId of complicacionIntraqxIds) {
+    if (!complicacionesPresentes.has(complicacionId)) {
+      await insertar(conexion, usuario, 'cirugias_complicaciones_intraqx', { cirugia_id: cirugiaId, complicacion_id: complicacionId }, { conAuditoriaUsuario: false })
+    }
+  }
   return cirugiaId
 }
 
@@ -316,7 +333,10 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
 // ---------------------------------------------------------------------------------------------
 
 export async function obtenerPostoperatorio(conexion, pacienteId) {
-  return filaApi('postoperatorio', await una(conexion, 'SELECT * FROM postoperatorio WHERE paciente_id = ?', [pacienteId]))
+  const fila = await una(conexion, 'SELECT * FROM postoperatorio WHERE paciente_id = ?', [pacienteId])
+  if (!fila) return null
+  const complicaciones = await todas(conexion, 'SELECT complicacion_id FROM postoperatorio_complicaciones_pop WHERE postoperatorio_id = ? ORDER BY id', [fila.id])
+  return { ...filaApi('postoperatorio', fila), complicacion_pop_ids: complicaciones.map((c) => c.complicacion_id) }
 }
 
 /** Condición de salida = Muerte => Módulo 5 "no aplica"; si se corrige, vuelve a pendiente. */
@@ -336,12 +356,12 @@ export async function guardarPostoperatorio(conexion, usuario, pacienteId, cuerp
   const datos = {
     unidad_pop_id: v.id('unidad_pop_id'),
     horas_ventilacion_mecanica: v.entero('horas_ventilacion_mecanica', { min: 0 }),
-    complicacion_pop_id: v.id('complicacion_pop_id'),
     fecha_traslado_intermedio: v.fecha('fecha_traslado_intermedio'),
     fecha_salida: v.fecha('fecha_salida'),
     condicion_salida_id: v.id('condicion_salida_id'),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
+  const complicacionPopIds = [...new Set(v.ids('complicacion_pop_ids'))]
   v.finalizar()
 
   const cirugia = await una(conexion, 'SELECT fecha_cirugia FROM cirugias WHERE paciente_id = ?', [pacienteId])
@@ -365,6 +385,18 @@ export async function guardarPostoperatorio(conexion, usuario, pacienteId, cuerp
   } else {
     id = await insertar(conexion, usuario, 'postoperatorio', { paciente_id: pacienteId, ...datos, actualizado_por: usuario.id })
   }
+
+  const complicacionesActuales = await todas(conexion, 'SELECT id, complicacion_id FROM postoperatorio_complicaciones_pop WHERE postoperatorio_id = ?', [id])
+  for (const fila of complicacionesActuales) {
+    if (!complicacionPopIds.includes(fila.complicacion_id)) await eliminarFila(conexion, usuario, 'postoperatorio_complicaciones_pop', fila.id)
+  }
+  const complicacionesPresentes = new Set(complicacionesActuales.map((f) => f.complicacion_id))
+  for (const complicacionId of complicacionPopIds) {
+    if (!complicacionesPresentes.has(complicacionId)) {
+      await insertar(conexion, usuario, 'postoperatorio_complicaciones_pop', { postoperatorio_id: id, complicacion_id: complicacionId }, { conAuditoriaUsuario: false })
+    }
+  }
+
   await sincronizarSeguimiento(conexion, usuario, pacienteId, datos.condicion_salida_id)
   return id
 }

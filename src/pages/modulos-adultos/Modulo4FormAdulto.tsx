@@ -5,6 +5,7 @@ import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
+import { SeleccionMultiple } from '../../components/SeleccionMultiple'
 import { calcularEstadoModulo4Adulto } from '../../lib/completitud'
 import { api, mensajeDe } from '../../lib/api'
 import { Cargando, MensajeError } from '../../components/Estados'
@@ -13,7 +14,7 @@ interface PostoperatorioAdultoDetalle {
   id: string
   unidad_pop_id: string | null
   horas_ventilacion_mecanica: number | null
-  complicacion_pop_id: string | null
+  complicacion_pop_ids: string[]
   fecha_traslado_intermedio: string | null
   dias_estancia_uci: number | null
   fecha_salida: string | null
@@ -24,7 +25,7 @@ interface PostoperatorioAdultoDetalle {
 interface Valores {
   unidad_pop_id: string
   horas_ventilacion_mecanica: string
-  complicacion_pop_id: string
+  complicacion_pop_ids: string[]
   fecha_traslado_intermedio: string
   dias_estancia_uci: string
   fecha_salida: string
@@ -53,7 +54,7 @@ function valoresIniciales(po: PostoperatorioAdultoDetalle | null, sugerirCero: b
   return {
     unidad_pop_id: po?.unidad_pop_id ?? '',
     horas_ventilacion_mecanica: po?.horas_ventilacion_mecanica?.toString() ?? (sugerirCero ? '0' : ''),
-    complicacion_pop_id: po?.complicacion_pop_id ?? '',
+    complicacion_pop_ids: po?.complicacion_pop_ids ?? [],
     fecha_traslado_intermedio: po?.fecha_traslado_intermedio ?? '',
     dias_estancia_uci: po?.dias_estancia_uci?.toString() ?? '',
     fecha_salida: po?.fecha_salida ?? '',
@@ -69,8 +70,9 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
+  const [camposFaltantes, setCamposFaltantes] = useState<string[]>([])
 
-  const { register, handleSubmit, reset, control } = useForm<Valores>({
+  const { register, handleSubmit, watch, setValue, reset, control } = useForm<Valores>({
     defaultValues: valoresIniciales(null, false),
   })
 
@@ -80,11 +82,14 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
     }
   }, [data, reset])
 
+  const complicacionPopIds = watch('complicacion_pop_ids')
+
   if (isLoading) return <Cargando />
 
   async function onSubmit(valores: Valores) {
     if (!perfil) return
     setGuardadoEn(null)
+    setCamposFaltantes([])
     if (data?.fechaCirugia && valores.fecha_traslado_intermedio && valores.fecha_traslado_intermedio < data.fechaCirugia) {
       setError('La fecha de traslado a intermedio no puede ser anterior a la fecha de cirugía.')
       return
@@ -104,21 +109,22 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
     setError(null)
     setGuardando(true)
 
-    const estado_modulo = calcularEstadoModulo4Adulto({
+    const { estado: estado_modulo, faltantes } = calcularEstadoModulo4Adulto({
       unidadPopId: valores.unidad_pop_id,
       horasVentilacion: valores.horas_ventilacion_mecanica,
-      complicacionPopId: valores.complicacion_pop_id,
+      complicacionPopIds: valores.complicacion_pop_ids,
       diasEstanciaUci: valores.dias_estancia_uci,
       diasHospitalizacionTotal: valores.dias_hospitalizacion_total,
       condicionSalidaId: valores.condicion_salida_id,
     })
+    setCamposFaltantes(faltantes)
 
     try {
       await api.put(`/pacientes-adultos/${pacienteId}/postoperatorio`, {
         unidad_pop_id: valores.unidad_pop_id || null,
         horas_ventilacion_mecanica:
           valores.horas_ventilacion_mecanica !== '' ? Number(valores.horas_ventilacion_mecanica) : null,
-        complicacion_pop_id: valores.complicacion_pop_id || null,
+        complicacion_pop_ids: valores.complicacion_pop_ids,
         fecha_traslado_intermedio: valores.fecha_traslado_intermedio || null,
         dias_estancia_uci: valores.dias_estancia_uci !== '' ? Number(valores.dias_estancia_uci) : null,
         fecha_salida: valores.fecha_salida || null,
@@ -157,9 +163,15 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
                 <input type="number" min="0" step="1" {...register('dias_estancia_uci')} className={claseInput} />
               </Campo>
 
-              <Campo etiqueta="Complicación postoperatoria *" className="lg:col-span-2">
-                <SelectOpciones categoria="COMPLICACION_POP" control={control} name="complicacion_pop_id" />
-              </Campo>
+              <div className="lg:col-span-2">
+                <label className="mb-2 block text-sm font-medium text-slate-700">Complicación postoperatoria *</label>
+                <SeleccionMultiple
+                  categoria="COMPLICACION_POP"
+                  codigoExcluyente="NO"
+                  value={complicacionPopIds}
+                  onChange={(v) => setValue('complicacion_pop_ids', v)}
+                />
+              </div>
 
               <Campo etiqueta="Fecha de traslado a intermedio">
                 <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_traslado_intermedio')} className={claseInput} />
@@ -186,7 +198,7 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
 
         {error && <MensajeError>{error}</MensajeError>}
 
-        <PieFormulario etiqueta="Guardar Módulo 4" guardando={guardando} guardadoEn={guardadoEn} />
+        <PieFormulario etiqueta="Guardar Módulo 4" guardando={guardando} guardadoEn={guardadoEn} faltantes={camposFaltantes} />
       </fieldset>
     </form>
   )

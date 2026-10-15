@@ -413,8 +413,14 @@ async function cargarPediatricos(desde, hasta) {
       CASE WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_hosp,
       po.horas_ventilacion_mecanica AS horas_vm,
       (cs.codigo = 'MUERTE') AS muerte,
-      (c.complicacion_intraqx_id IS NOT NULL AND (ci.codigo IS NULL OR ci.codigo <> 'NINGUNA')) AS comp_intraqx,
-      (po.complicacion_pop_id IS NOT NULL AND (cp.codigo IS NULL OR cp.codigo <> 'NO')) AS comp_pop,
+      EXISTS (
+        SELECT 1 FROM cirugias_complicaciones_intraqx cci JOIN opciones_lista o ON o.id = cci.complicacion_id
+        WHERE cci.cirugia_id = c.id AND (o.codigo IS NULL OR o.codigo <> 'NINGUNA')
+      ) AS comp_intraqx,
+      EXISTS (
+        SELECT 1 FROM postoperatorio_complicaciones_pop cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id
+        WHERE cpp.postoperatorio_id = po.id AND (o.codigo IS NULL OR o.codigo <> 'NO')
+      ) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
       dg.valor AS diagnostico, rc.valor AS rachs, eps.valor AS eps, pr.valor AS procedencia,
       p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica
@@ -424,8 +430,6 @@ async function cargarPediatricos(desde, hasta) {
     LEFT JOIN postoperatorio po ON po.paciente_id = p.id
     LEFT JOIN seguimientos s ON s.paciente_id = p.id
     LEFT JOIN opciones_lista cs ON cs.id = po.condicion_salida_id
-    LEFT JOIN opciones_lista ci ON ci.id = c.complicacion_intraqx_id
-    LEFT JOIN opciones_lista cp ON cp.id = po.complicacion_pop_id
     LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
     LEFT JOIN opciones_lista rc ON rc.id = d.rachs_id
     LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
@@ -484,8 +488,14 @@ async function cargarAdultos(desde, hasta) {
       po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hosp,
       po.horas_ventilacion_mecanica AS horas_vm,
       (cs.codigo = 'MUERTE') AS muerte,
-      (c.complicacion_intraqx_id IS NOT NULL AND (ci.codigo IS NULL OR ci.codigo <> 'NINGUNA')) AS comp_intraqx,
-      (po.complicacion_pop_id IS NOT NULL AND (cp.codigo IS NULL OR cp.codigo <> 'NO')) AS comp_pop,
+      EXISTS (
+        SELECT 1 FROM cirugias_adultos_complicaciones_intraqx cci JOIN opciones_lista o ON o.id = cci.complicacion_id
+        WHERE cci.cirugia_id = c.id AND (o.codigo IS NULL OR o.codigo <> 'NINGUNA')
+      ) AS comp_intraqx,
+      EXISTS (
+        SELECT 1 FROM postoperatorio_adultos_complicaciones_pop cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id
+        WHERE cpp.postoperatorio_id = po.id AND (o.codigo IS NULL OR o.codigo <> 'NO')
+      ) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
       dg.valor AS diagnostico, d.euroscore, eps.valor AS eps, pr.valor AS procedencia,
       p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica
@@ -495,8 +505,6 @@ async function cargarAdultos(desde, hasta) {
     LEFT JOIN postoperatorio_adultos po ON po.paciente_id = p.id
     LEFT JOIN seguimientos_adultos s ON s.paciente_id = p.id
     LEFT JOIN opciones_lista cs ON cs.id = po.condicion_salida_id
-    LEFT JOIN opciones_lista ci ON ci.id = c.complicacion_intraqx_id
-    LEFT JOIN opciones_lista cp ON cp.id = po.complicacion_pop_id
     LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
     LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
     LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
@@ -543,6 +551,7 @@ const DETALLE_PEDIATRICO = {
   tablas: {
     pacientes: 'pacientes', diagnosticos: 'diagnosticos', riesgos: 'diagnosticos_riesgos', cirugias: 'cirugias',
     procedimientos: 'cirugias_procedimientos', postoperatorio: 'postoperatorio', seguimientos: 'seguimientos',
+    complicacionesIntraqx: 'cirugias_complicaciones_intraqx', complicacionesPop: 'postoperatorio_complicaciones_pop',
   },
   // Los días de UCI y de hospitalización se calculan de las fechas, igual que en los indicadores.
   columnas: `rc.valor AS rachs, s.fecha_llamada_15_dias,
@@ -558,6 +567,7 @@ const DETALLE_ADULTO = {
     pacientes: 'pacientes_adultos', diagnosticos: 'diagnosticos_adultos', riesgos: 'diagnosticos_adultos_riesgos',
     cirugias: 'cirugias_adultos', procedimientos: 'cirugias_adultos_procedimientos', postoperatorio: 'postoperatorio_adultos',
     seguimientos: 'seguimientos_adultos',
+    complicacionesIntraqx: 'cirugias_adultos_complicaciones_intraqx', complicacionesPop: 'postoperatorio_adultos_complicaciones_pop',
   },
   columnas: 'd.euroscore, s.llamado_15_dias, po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hospitalizacion',
   uniones: '',
@@ -572,8 +582,11 @@ async function detallePaciente({ tablas, columnas, uniones, fechaProcedimiento }
       pr.valor AS procedencia, mu.valor AS municipio_narino, eps.valor AS eps,
       dg.valor AS diagnostico, va.valor AS valvulopatia,
       c.fecha_cirugia, im.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
-      ci.valor AS complicacion_intraqx, c.cierre_esternal_diferido, c.extubacion_quirofano,
-      up.valor AS unidad_pop, po.horas_ventilacion_mecanica, cpo.valor AS complicacion_pop, po.fecha_traslado_intermedio,
+      (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM ${tablas.complicacionesIntraqx} cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
+      c.cierre_esternal_diferido, c.extubacion_quirofano,
+      up.valor AS unidad_pop, po.horas_ventilacion_mecanica,
+      (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM ${tablas.complicacionesPop} cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id WHERE cpp.postoperatorio_id = po.id) AS complicacion_pop,
+      po.fecha_traslado_intermedio,
       po.fecha_salida, cs.valor AS condicion_salida,
       (s.no_aplica = 1) AS seguimiento_no_aplica, s.fecha_control_cirugia, s.rehabilitacion_cardiaca, eh.valor AS estado_herida,
       s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, cr.valor AS causa_reingreso, s.observaciones,
@@ -590,9 +603,7 @@ async function detallePaciente({ tablas, columnas, uniones, fechaProcedimiento }
     LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
     LEFT JOIN opciones_lista va ON va.id = d.valvulopatia_id
     LEFT JOIN opciones_lista im ON im.id = c.implante_id
-    LEFT JOIN opciones_lista ci ON ci.id = c.complicacion_intraqx_id
     LEFT JOIN opciones_lista up ON up.id = po.unidad_pop_id
-    LEFT JOIN opciones_lista cpo ON cpo.id = po.complicacion_pop_id
     LEFT JOIN opciones_lista cs ON cs.id = po.condicion_salida_id
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     LEFT JOIN opciones_lista cr ON cr.id = s.causa_reingreso_id
@@ -650,9 +661,11 @@ rutasExportacion.get('/pacientes', asincrono(async (_req, res) => {
         (SELECT GROUP_CONCAT(o.valor ORDER BY dr.id SEPARATOR ' | ') FROM diagnosticos_riesgos dr JOIN opciones_lista o ON o.id = dr.riesgo_id WHERE dr.diagnostico_id = d.id) AS riesgos,
         rachs.valor AS rachs, c.fecha_cirugia,
         (SELECT GROUP_CONCAT(o.valor ORDER BY cp.orden SEPARATOR ' | ') FROM cirugias_procedimientos cp JOIN opciones_lista o ON o.id = cp.procedimiento_id WHERE cp.cirugia_id = c.id) AS procedimientos,
-        implante.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min, complicacion_intraqx.valor AS complicacion_intraqx,
+        implante.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
+        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM cirugias_complicaciones_intraqx cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
         c.cierre_esternal_diferido, c.extubacion_quirofano, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
-        complicacion_pop.valor AS complicacion_pop, po.fecha_traslado_intermedio, po.fecha_salida, condicion_salida.valor AS condicion_salida,
+        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM postoperatorio_complicaciones_pop cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id WHERE cpp.postoperatorio_id = po.id) AS complicacion_pop,
+        po.fecha_traslado_intermedio, po.fecha_salida, condicion_salida.valor AS condicion_salida,
         s.fecha_control_cirugia, s.rehabilitacion_cardiaca, estado_herida.valor AS estado_herida, s.fecha_llamada_15_dias,
         s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, causa_reingreso.valor AS causa_reingreso, s.observaciones
       FROM pacientes p
@@ -668,9 +681,7 @@ rutasExportacion.get('/pacientes', asincrono(async (_req, res) => {
       LEFT JOIN opciones_lista valvulopatia ON valvulopatia.id = d.valvulopatia_id
       LEFT JOIN opciones_lista rachs ON rachs.id = d.rachs_id
       LEFT JOIN opciones_lista implante ON implante.id = c.implante_id
-      LEFT JOIN opciones_lista complicacion_intraqx ON complicacion_intraqx.id = c.complicacion_intraqx_id
       LEFT JOIN opciones_lista unidad_pop ON unidad_pop.id = po.unidad_pop_id
-      LEFT JOIN opciones_lista complicacion_pop ON complicacion_pop.id = po.complicacion_pop_id
       LEFT JOIN opciones_lista condicion_salida ON condicion_salida.id = po.condicion_salida_id
       LEFT JOIN opciones_lista estado_herida ON estado_herida.id = s.estado_herida_id
       LEFT JOIN opciones_lista causa_reingreso ON causa_reingreso.id = s.causa_reingreso_id
@@ -697,9 +708,11 @@ rutasExportacion.get('/pacientes-adultos', asincrono(async (_req, res) => {
         (SELECT GROUP_CONCAT(o.valor ORDER BY dr.id SEPARATOR ' | ') FROM diagnosticos_adultos_riesgos dr JOIN opciones_lista o ON o.id = dr.riesgo_id WHERE dr.diagnostico_id = d.id) AS riesgos,
         c.fecha_cirugia,
         (SELECT GROUP_CONCAT(o.valor ORDER BY cp.orden SEPARATOR ' | ') FROM cirugias_adultos_procedimientos cp JOIN opciones_lista o ON o.id = cp.procedimiento_id WHERE cp.cirugia_id = c.id) AS procedimientos,
-        implante.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min, complicacion_intraqx.valor AS complicacion_intraqx,
+        implante.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
+        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM cirugias_adultos_complicaciones_intraqx cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
         c.cierre_esternal_diferido, c.extubacion_quirofano, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
-        complicacion_pop.valor AS complicacion_pop, po.fecha_traslado_intermedio, po.dias_estancia_uci, po.fecha_salida,
+        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM postoperatorio_adultos_complicaciones_pop cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id WHERE cpp.postoperatorio_id = po.id) AS complicacion_pop,
+        po.fecha_traslado_intermedio, po.dias_estancia_uci, po.fecha_salida,
         po.dias_hospitalizacion_total, condicion_salida.valor AS condicion_salida,
         s.fecha_control_cirugia, s.rehabilitacion_cardiaca, estado_herida.valor AS estado_herida, s.llamado_15_dias,
         s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, causa_reingreso.valor AS causa_reingreso, s.observaciones
@@ -715,9 +728,7 @@ rutasExportacion.get('/pacientes-adultos', asincrono(async (_req, res) => {
       LEFT JOIN opciones_lista diagnostico ON diagnostico.id = d.diagnostico_id
       LEFT JOIN opciones_lista valvulopatia ON valvulopatia.id = d.valvulopatia_id
       LEFT JOIN opciones_lista implante ON implante.id = c.implante_id
-      LEFT JOIN opciones_lista complicacion_intraqx ON complicacion_intraqx.id = c.complicacion_intraqx_id
       LEFT JOIN opciones_lista unidad_pop ON unidad_pop.id = po.unidad_pop_id
-      LEFT JOIN opciones_lista complicacion_pop ON complicacion_pop.id = po.complicacion_pop_id
       LEFT JOIN opciones_lista condicion_salida ON condicion_salida.id = po.condicion_salida_id
       LEFT JOIN opciones_lista estado_herida ON estado_herida.id = s.estado_herida_id
       LEFT JOIN opciones_lista causa_reingreso ON causa_reingreso.id = s.causa_reingreso_id

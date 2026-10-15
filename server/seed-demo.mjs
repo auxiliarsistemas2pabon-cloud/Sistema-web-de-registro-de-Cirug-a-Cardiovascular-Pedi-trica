@@ -54,7 +54,7 @@ async function paciente({ nombre, nac, sexo, peso, talla, procedencia, municipio
       await guardarCirugia(conexion, admin, id, {
         fecha_cirugia: cirugia.fecha, implante_id: cirugia.implante ? op('IMPLANTE', cirugia.implante) : null,
         uso_cec: cirugia.cec ? 'SI' : 'NO', tiempo_cec_min: cirugia.cec ?? null, tiempo_clamp_min: cirugia.clamp ?? null,
-        complicacion_intraqx_id: op('COMPLICACION_INTRAQX', cirugia.complicacion ?? 'NINGUNA'),
+        complicacion_intraqx_ids: [op('COMPLICACION_INTRAQX', cirugia.complicacion ?? 'NINGUNA')],
         cierre_esternal_diferido: cirugia.cierreDiferido ? 'SI' : 'NO', extubacion_quirofano: cirugia.extubado ? 'SI' : 'NO',
         procedimiento_ids: cirugia.procedimientos.map((p) => op('PROCEDIMIENTOS', p)), estado_modulo: 'completo',
       })
@@ -62,7 +62,7 @@ async function paciente({ nombre, nac, sexo, peso, talla, procedencia, municipio
     if (postop) {
       await guardarPostoperatorio(conexion, admin, id, {
         unidad_pop_id: op('UNIDAD_POP', postop.unidad ?? 'UCI Pediátrica'), horas_ventilacion_mecanica: postop.horasVM,
-        complicacion_pop_id: op('COMPLICACION_POP', postop.complicacion ?? 'NO'),
+        complicacion_pop_ids: [op('COMPLICACION_POP', postop.complicacion ?? 'NO')],
         fecha_traslado_intermedio: postop.traslado ?? null, fecha_salida: postop.salida ?? null,
         condicion_salida_id: op('CONDICION_SALIDA', postop.condicion), estado_modulo: 'completo',
       })

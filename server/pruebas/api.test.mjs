@@ -143,7 +143,7 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.equal(antes.estado, 409)
       assert.equal(antes.datos.error.codigo, 'POSTOPERATORIO_REQUERIDO')
 
-      const pop = { unidad_pop_id: porValor('UNIDAD_POP', 'UCI Pediátrica'), horas_ventilacion_mecanica: 5, complicacion_pop_id: porCodigo('COMPLICACION_POP', 'NO'), fecha_salida: '2023-06-08', estado_modulo: 'completo' }
+      const pop = { unidad_pop_id: porValor('UNIDAD_POP', 'UCI Pediátrica'), horas_ventilacion_mecanica: 5, complicacion_pop_ids: [porCodigo('COMPLICACION_POP', 'NO')], fecha_salida: '2023-06-08', estado_modulo: 'completo' }
       assert.equal((await api('PUT', `/pacientes/${id}/postoperatorio`, { token: admin, cuerpo: { ...pop, fecha_salida: '2023-05-01' } })).estado, 422)
       const muerte = await api('PUT', `/pacientes/${id}/postoperatorio`, { token: admin, cuerpo: { ...pop, condicion_salida_id: porCodigo('CONDICION_SALIDA', 'MUERTE') } })
       assert.equal(muerte.estado, 200, JSON.stringify(muerte.datos))

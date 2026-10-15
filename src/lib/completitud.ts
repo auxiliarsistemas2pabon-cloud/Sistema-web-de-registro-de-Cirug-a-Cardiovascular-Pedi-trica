@@ -1,5 +1,16 @@
 import type { EstadoModulo } from '../types/db'
 
+export interface ResultadoCompletitud {
+  estado: EstadoModulo
+  /** Etiquetas (tal como las ve el usuario en el formulario) de los campos obligatorios que
+   * quedaron vacíos — alimenta el aviso no bloqueante de PieFormulario al guardar. */
+  faltantes: string[]
+}
+
+function resultado(faltantes: string[]): ResultadoCompletitud {
+  return { estado: faltantes.length === 0 ? 'completo' : 'pendiente', faltantes }
+}
+
 /** Módulo 1: nombre, identificación y fecha de nacimiento son siempre obligatorios (ya
  * los exige la BD con NOT NULL); municipio es obligatorio solo si procedencia = Nariño;
  * debe haber al menos un teléfono o "sin_telefono" marcado. */
@@ -11,16 +22,15 @@ export function calcularEstadoModulo1(v: {
   municipioNarinoId: string
   sinTelefono: boolean
   telefonos: string[]
-}): EstadoModulo {
+}): ResultadoCompletitud {
   const tieneTelefono = v.sinTelefono || v.telefonos.some((t) => t.trim() !== '')
-  const municipioOk = !v.procedenciaEsNarino || !!v.municipioNarinoId
-  const completo =
-    v.nombreCompleto.trim() !== '' &&
-    v.identificacion.trim() !== '' &&
-    v.fechaNacimiento !== '' &&
-    municipioOk &&
-    tieneTelefono
-  return completo ? 'completo' : 'pendiente'
+  const faltantes: string[] = []
+  if (v.nombreCompleto.trim() === '') faltantes.push('Nombre completo')
+  if (v.identificacion.trim() === '') faltantes.push('Identificación')
+  if (v.fechaNacimiento === '') faltantes.push('Fecha de nacimiento')
+  if (v.procedenciaEsNarino && !v.municipioNarinoId) faltantes.push('Municipio de Nariño')
+  if (!tieneTelefono) faltantes.push('Teléfono')
+  return resultado(faltantes)
 }
 
 /** Módulo 2: diagnóstico y RACHS-1 obligatorios; valvulopatía obligatoria solo si el
@@ -31,10 +41,13 @@ export function calcularEstadoModulo2(v: {
   diagnosticoEsValvulopatias: boolean
   valvulopatiaId: string
   riesgoIds: string[]
-}): EstadoModulo {
-  const valvulopatiaOk = !v.diagnosticoEsValvulopatias || !!v.valvulopatiaId
-  const completo = !!v.diagnosticoId && !!v.rachsId && valvulopatiaOk && v.riesgoIds.length > 0
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.diagnosticoId) faltantes.push('Diagnóstico')
+  if (!v.rachsId) faltantes.push('Escala RACHS-1')
+  if (v.diagnosticoEsValvulopatias && !v.valvulopatiaId) faltantes.push('Tipo de valvulopatía')
+  if (v.riesgoIds.length === 0) faltantes.push('Factores de riesgo')
+  return resultado(faltantes)
 }
 
 /** Módulo 3: fecha de cirugía y procedimiento 1 obligatorios; tiempo de CEC obligatorio
@@ -44,10 +57,12 @@ export function calcularEstadoModulo3(v: {
   procedimiento1Id: string
   usoCec: 'SI' | 'NO' | ''
   tiempoCecMin: string
-}): EstadoModulo {
-  const cecOk = v.usoCec !== 'SI' || !!v.tiempoCecMin
-  const completo = !!v.fechaCirugia && !!v.procedimiento1Id && cecOk
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.fechaCirugia) faltantes.push('Fecha de cirugía')
+  if (!v.procedimiento1Id) faltantes.push('Procedimiento quirúrgico 1')
+  if (v.usoCec === 'SI' && !v.tiempoCecMin) faltantes.push('Tiempo de CEC (min)')
+  return resultado(faltantes)
 }
 
 /** Módulo 4: unidad postoperatoria, horas de ventilación, complicación POP y condición
@@ -55,12 +70,15 @@ export function calcularEstadoModulo3(v: {
 export function calcularEstadoModulo4(v: {
   unidadPopId: string
   horasVentilacion: string
-  complicacionPopId: string
+  complicacionPopIds: string[]
   condicionSalidaId: string
-}): EstadoModulo {
-  const completo =
-    !!v.unidadPopId && v.horasVentilacion !== '' && !!v.complicacionPopId && !!v.condicionSalidaId
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.unidadPopId) faltantes.push('Unidad postoperatoria')
+  if (v.horasVentilacion === '') faltantes.push('Horas de ventilación mecánica')
+  if (v.complicacionPopIds.length === 0) faltantes.push('Complicación postoperatoria')
+  if (!v.condicionSalidaId) faltantes.push('Condición en que sale el paciente')
+  return resultado(faltantes)
 }
 
 /** Módulo 5: todos los campos son obligatorios salvo que Reingreso≠SI (ahí fecha/causa
@@ -74,17 +92,17 @@ export function calcularEstadoModulo5(v: {
   reingreso: string
   fechaReingreso: string
   causaReingresoId: string
-}): EstadoModulo {
-  const reingresoOk = v.reingreso !== 'SI' || (!!v.fechaReingreso && !!v.causaReingresoId)
-  const completo =
-    !!v.fechaControl &&
-    !!v.rehabilitacionCardiaca &&
-    !!v.estadoHeridaId &&
-    !!v.fechaLlamada15Dias &&
-    v.personaRecibeLlamada.trim() !== '' &&
-    !!v.reingreso &&
-    reingresoOk
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.fechaControl) faltantes.push('Fecha de control por cirugía cardiovascular')
+  if (!v.rehabilitacionCardiaca) faltantes.push('Terapia de rehabilitación cardíaca')
+  if (!v.estadoHeridaId) faltantes.push('Estado de la herida quirúrgica')
+  if (!v.fechaLlamada15Dias) faltantes.push('Fecha de la llamada')
+  if (v.personaRecibeLlamada.trim() === '') faltantes.push('Persona que recibe la llamada')
+  if (!v.reingreso) faltantes.push('¿Hubo reingreso?')
+  if (v.reingreso === 'SI' && !v.fechaReingreso) faltantes.push('Fecha de reingreso')
+  if (v.reingreso === 'SI' && !v.causaReingresoId) faltantes.push('Causa de reingreso')
+  return resultado(faltantes)
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -100,11 +118,13 @@ export function calcularEstadoModulo1Adulto(v: {
   fechaNacimiento: string
   procedenciaEsNarino: boolean
   municipioNarinoId: string
-}): EstadoModulo {
-  const municipioOk = !v.procedenciaEsNarino || !!v.municipioNarinoId
-  const completo =
-    v.nombreCompleto.trim() !== '' && v.identificacion.trim() !== '' && v.fechaNacimiento !== '' && municipioOk
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (v.nombreCompleto.trim() === '') faltantes.push('Nombre completo')
+  if (v.identificacion.trim() === '') faltantes.push('Identificación')
+  if (v.fechaNacimiento === '') faltantes.push('Fecha de nacimiento')
+  if (v.procedenciaEsNarino && !v.municipioNarinoId) faltantes.push('Municipio de Nariño')
+  return resultado(faltantes)
 }
 
 /** Módulo 2 (adultos): diagnóstico y EuroSCORE obligatorios (EuroSCORE hace las veces del
@@ -116,10 +136,13 @@ export function calcularEstadoModulo2Adulto(v: {
   diagnosticoEsValvulopatia: boolean
   valvulopatiaId: string
   riesgoIds: string[]
-}): EstadoModulo {
-  const valvulopatiaOk = !v.diagnosticoEsValvulopatia || !!v.valvulopatiaId
-  const completo = !!v.diagnosticoId && v.euroscore !== '' && valvulopatiaOk && v.riesgoIds.length > 0
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.diagnosticoId) faltantes.push('Diagnóstico')
+  if (v.euroscore === '') faltantes.push('Escala EuroSCORE (%)')
+  if (v.diagnosticoEsValvulopatia && !v.valvulopatiaId) faltantes.push('Tipo de valvulopatía')
+  if (v.riesgoIds.length === 0) faltantes.push('Factores de riesgo')
+  return resultado(faltantes)
 }
 
 /** Módulo 3 (adultos): igual regla que el pediátrico (fecha de cirugía, procedimiento 1 y,
@@ -130,10 +153,12 @@ export function calcularEstadoModulo3Adulto(v: {
   procedimiento1Id: string
   usoCec: 'SI' | 'NO' | ''
   tiempoCecMin: string
-}): EstadoModulo {
-  const cecOk = v.usoCec !== 'SI' || !!v.tiempoCecMin
-  const completo = !!v.fechaCirugia && !!v.procedimiento1Id && cecOk
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.fechaCirugia) faltantes.push('Fecha de cirugía')
+  if (!v.procedimiento1Id) faltantes.push('Procedimiento quirúrgico 1')
+  if (v.usoCec === 'SI' && !v.tiempoCecMin) faltantes.push('Tiempo de CEC (min)')
+  return resultado(faltantes)
 }
 
 /** Módulo 4 (adultos): igual que el pediátrico más los días de estancia en UCI y de
@@ -141,19 +166,19 @@ export function calcularEstadoModulo3Adulto(v: {
 export function calcularEstadoModulo4Adulto(v: {
   unidadPopId: string
   horasVentilacion: string
-  complicacionPopId: string
+  complicacionPopIds: string[]
   diasEstanciaUci: string
   diasHospitalizacionTotal: string
   condicionSalidaId: string
-}): EstadoModulo {
-  const completo =
-    !!v.unidadPopId &&
-    v.horasVentilacion !== '' &&
-    !!v.complicacionPopId &&
-    v.diasEstanciaUci !== '' &&
-    v.diasHospitalizacionTotal !== '' &&
-    !!v.condicionSalidaId
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.unidadPopId) faltantes.push('Unidad postoperatoria')
+  if (v.horasVentilacion === '') faltantes.push('Horas de ventilación mecánica')
+  if (v.complicacionPopIds.length === 0) faltantes.push('Complicación postoperatoria')
+  if (v.diasEstanciaUci === '') faltantes.push('Días de estancia en UCI')
+  if (v.diasHospitalizacionTotal === '') faltantes.push('Días totales de hospitalización posterior a la cirugía')
+  if (!v.condicionSalidaId) faltantes.push('Condición en que sale el paciente')
+  return resultado(faltantes)
 }
 
 /** Módulo 5 (adultos): "Llamado 15 días" (Sí/No) reemplaza la fecha de llamada del módulo
@@ -169,16 +194,15 @@ export function calcularEstadoModulo5Adulto(v: {
   reingreso: string
   fechaReingreso: string
   causaReingresoId: string
-}): EstadoModulo {
-  const personaOk = v.llamado15Dias !== 'SI' || v.personaRecibeLlamada.trim() !== ''
-  const reingresoOk = v.reingreso !== 'SI' || (!!v.fechaReingreso && !!v.causaReingresoId)
-  const completo =
-    !!v.fechaControl &&
-    !!v.rehabilitacionCardiaca &&
-    !!v.estadoHeridaId &&
-    !!v.llamado15Dias &&
-    personaOk &&
-    !!v.reingreso &&
-    reingresoOk
-  return completo ? 'completo' : 'pendiente'
+}): ResultadoCompletitud {
+  const faltantes: string[] = []
+  if (!v.fechaControl) faltantes.push('Fecha de control por cirugía cardiovascular')
+  if (!v.rehabilitacionCardiaca) faltantes.push('Terapia de rehabilitación cardíaca')
+  if (!v.estadoHeridaId) faltantes.push('Estado de la herida quirúrgica')
+  if (!v.llamado15Dias) faltantes.push('Llamado 15 días')
+  if (v.llamado15Dias === 'SI' && v.personaRecibeLlamada.trim() === '') faltantes.push('Persona que recibe la llamada')
+  if (!v.reingreso) faltantes.push('¿Hubo reingreso?')
+  if (v.reingreso === 'SI' && !v.fechaReingreso) faltantes.push('Fecha de reingreso')
+  if (v.reingreso === 'SI' && !v.causaReingresoId) faltantes.push('Causa de reingreso')
+  return resultado(faltantes)
 }

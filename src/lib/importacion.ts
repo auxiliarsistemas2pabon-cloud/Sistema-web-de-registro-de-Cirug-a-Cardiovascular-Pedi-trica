@@ -207,6 +207,12 @@ function opcionesPorCategoria(opciones: OpcionImportacion[]): OpcionesPorCategor
   return resultado
 }
 
+/** Envuelve el resultado de `opcionId` en una lista de 0 o 1 elementos, para los campos que
+ * dejaron de ser una sola opción (ver `complicacion_intraqx_ids`/`complicacion_pop_ids` abajo). */
+function aLista(id: string | null): string[] {
+  return id ? [id] : []
+}
+
 function opcionId(
   opciones: OpcionesPorCategoria,
   categoria: string,
@@ -318,7 +324,7 @@ export function normalizarFilaImportacion(
     municipioNarinoId: municipioId ?? '',
     sinTelefono,
     telefonos,
-  })
+  }).estado
 
   const diagnosticoId = opcionId(opciones, 'DIAGNOSTICO', valorDe(datosOriginales, 'diagnostico'), 'Diagnóstico', errores)
   const valvulopatiaId = opcionId(opciones, 'VALVULOPATIA', valorDe(datosOriginales, 'valvulopatia'), 'Tipo de valvulopatía', errores)
@@ -342,7 +348,7 @@ export function normalizarFilaImportacion(
       diagnosticoEsValvulopatias: esValvulopatia,
       valvulopatiaId: valvulopatiaId ?? '',
       riesgoIds,
-    })
+    }).estado
   }
 
   const fechaCirugia = fechaIso(valorDe(datosOriginales, 'fecha_cirugia'), 'Fecha de cirugía', errores)
@@ -376,7 +382,9 @@ export function normalizarFilaImportacion(
         uso_cec: usoCec === 'NA' ? null : usoCec,
         tiempo_cec_min: usoCec === 'SI' ? tiempoCec : null,
         tiempo_clamp_min: usoCec === 'SI' ? tiempoClamp : null,
-        complicacion_intraqx_id: opcionId(opciones, 'COMPLICACION_INTRAQX', valorDe(datosOriginales, 'complicacion_intraqx'), 'Complicación intraquirúrgica', errores),
+        // El Excel solo trae una complicación por celda; se guarda como lista de un elemento (o
+        // vacía), ya que el módulo ahora permite varias por paciente (ver [[project-repo-setup]]).
+        complicacion_intraqx_ids: aLista(opcionId(opciones, 'COMPLICACION_INTRAQX', valorDe(datosOriginales, 'complicacion_intraqx'), 'Complicación intraquirúrgica', errores)),
         cierre_esternal_diferido: siNo(valorDe(datosOriginales, 'cierre_esternal_diferido'), 'Cierre esternal diferido', errores),
         extubacion_quirofano: siNo(valorDe(datosOriginales, 'extubacion_quirofano'), 'Extubación en quirófano', errores),
         estado_modulo: 'pendiente' as EstadoModulo,
@@ -400,7 +408,7 @@ export function normalizarFilaImportacion(
       procedimiento1Id: procedimientoIds[0] ?? '',
       usoCec: usoCec === 'SI' || usoCec === 'NO' ? usoCec : '',
       tiempoCecMin: tiempoCec?.toString() ?? '',
-    })
+    }).estado
   }
 
   const traslado = fechaIso(valorDe(datosOriginales, 'fecha_traslado_intermedio'), 'Fecha de traslado', errores)
@@ -417,7 +425,7 @@ export function normalizarFilaImportacion(
     ? {
         unidad_pop_id: opcionId(opciones, 'UNIDAD_POP', valorDe(datosOriginales, 'unidad_pop'), 'Unidad postoperatoria', errores),
         horas_ventilacion_mecanica: horasVentilacion,
-        complicacion_pop_id: opcionId(opciones, 'COMPLICACION_POP', valorDe(datosOriginales, 'complicacion_pop'), 'Complicación postoperatoria', errores),
+        complicacion_pop_ids: aLista(opcionId(opciones, 'COMPLICACION_POP', valorDe(datosOriginales, 'complicacion_pop'), 'Complicación postoperatoria', errores)),
         fecha_traslado_intermedio: traslado,
         fecha_salida: salida,
         condicion_salida_id: condicionSalidaId,
@@ -428,9 +436,9 @@ export function normalizarFilaImportacion(
     postoperatorio.estado_modulo = calcularEstadoModulo4({
       unidadPopId: postoperatorio.unidad_pop_id ?? '',
       horasVentilacion: horasVentilacion?.toString() ?? '',
-      complicacionPopId: postoperatorio.complicacion_pop_id ?? '',
+      complicacionPopIds: postoperatorio.complicacion_pop_ids,
       condicionSalidaId: condicionSalidaId ?? '',
-    })
+    }).estado
   }
 
   const reingreso = siNo(valorDe(datosOriginales, 'reingreso_30_dias'), 'Reingreso a 30 días', errores, true)
@@ -474,7 +482,7 @@ export function normalizarFilaImportacion(
       reingreso: seguimiento.reingreso_30_dias ?? '',
       fechaReingreso: seguimiento.fecha_reingreso ?? '',
       causaReingresoId: seguimiento.causa_reingreso_id ?? '',
-    })
+    }).estado
   }
 
   return {
