@@ -1,12 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { Cargando, MensajeError } from '../components/Estados'
 import { FichaPaciente, type NumeroModulo } from '../components/FichaPaciente'
 import { IconoAdultos } from '../components/iconos'
+import { SelectorEpisodiosAdulto } from '../components/SelectorEpisodiosAdulto'
 import { api } from '../lib/api'
 import { formatearEdad } from '../lib/fechas'
-import type { PacienteAdultoDetalle, PacienteAdultoResumen } from '../types/db'
+import type { EpisodioAdulto, PacienteAdultoDetalle, PacienteAdultoResumen } from '../types/db'
 import { Modulo1FormAdulto } from './modulos-adultos/Modulo1FormAdulto'
 import { Modulo2FormAdulto } from './modulos-adultos/Modulo2FormAdulto'
 import { Modulo3FormAdulto } from './modulos-adultos/Modulo3FormAdulto'
@@ -18,6 +19,14 @@ function usePacienteAdulto(id: string | undefined) {
     queryKey: ['paciente-adulto', id],
     enabled: !!id && id !== 'nuevo',
     queryFn: () => api.get<PacienteAdultoDetalle>(`/pacientes-adultos/${id}`),
+  })
+}
+
+function useEpisodiosAdulto(id: string | undefined) {
+  return useQuery({
+    queryKey: ['episodios-adulto', id],
+    enabled: !!id && id !== 'nuevo',
+    queryFn: () => api.get<EpisodioAdulto[]>(`/pacientes-adultos/${id}/episodios`),
   })
 }
 
@@ -42,9 +51,19 @@ export function PacienteAdultoFichaPage() {
   const navigate = useNavigate()
   const esNuevo = !id || id === 'nuevo'
   const [pestanaActiva, setPestanaActiva] = useState<NumeroModulo>(1)
+  const [episodioId, setEpisodioId] = useState<string | null>(null)
 
   const { data: paciente, isLoading, error } = usePacienteAdulto(id)
   const { data: resumen } = useResumenEdad(id)
+  const { data: episodios } = useEpisodiosAdulto(id)
+
+  // Por defecto se abre la intervención más reciente; una vez el usuario elige una (o se crea una
+  // nueva), esa elección se respeta mientras la lista no cambie de identidad.
+  useEffect(() => {
+    if (episodios && episodios.length > 0 && !episodios.some((e) => e.id === episodioId)) {
+      setEpisodioId(episodios[episodios.length - 1].id)
+    }
+  }, [episodios, episodioId])
 
   if (!esNuevo && isLoading) return <Cargando etiqueta="Cargando paciente…" />
   if (!esNuevo && error) return <MensajeError>No se pudo cargar el paciente.</MensajeError>
@@ -86,10 +105,13 @@ export function PacienteAdultoFichaPage() {
           }}
         />
       )}
-      {pestanaActiva === 2 && paciente && <Modulo2FormAdulto pacienteId={paciente.id} />}
-      {pestanaActiva === 3 && paciente && <Modulo3FormAdulto pacienteId={paciente.id} />}
-      {pestanaActiva === 4 && paciente && <Modulo4FormAdulto pacienteId={paciente.id} />}
-      {pestanaActiva === 5 && paciente && <Modulo5FormAdulto pacienteId={paciente.id} />}
+      {pestanaActiva !== 1 && paciente && episodios && (
+        <SelectorEpisodiosAdulto pacienteId={paciente.id} episodios={episodios} episodioId={episodioId} onSeleccionar={setEpisodioId} />
+      )}
+      {pestanaActiva === 2 && paciente && episodioId && <Modulo2FormAdulto pacienteId={paciente.id} episodioId={episodioId} />}
+      {pestanaActiva === 3 && paciente && episodioId && <Modulo3FormAdulto pacienteId={paciente.id} episodioId={episodioId} />}
+      {pestanaActiva === 4 && paciente && episodioId && <Modulo4FormAdulto pacienteId={paciente.id} episodioId={episodioId} />}
+      {pestanaActiva === 5 && paciente && episodioId && <Modulo5FormAdulto pacienteId={paciente.id} episodioId={episodioId} />}
     </FichaPaciente>
   )
 }

@@ -537,14 +537,16 @@ export const ENCABEZADOS_EXPORTACION = [
 // en vez de una fecha de llamada; y días de estancia en UCI/hospitalización propios (en el módulo
 // de adultos se escriben a mano, no se calculan). Ver server/rutas-pacientes-adultos.mjs.
 export const ENCABEZADOS_EXPORTACION_ADULTOS = [
-  ['numero_paciente', 'N° paciente'], ['nombre_completo', 'Nombre completo'], ['identificacion', 'Identificación'], ['sexo', 'Sexo'],
+  ['numero_paciente', 'N° paciente'], ['numero_episodio', 'N° intervención'], ['nombre_completo', 'Nombre completo'], ['identificacion', 'Identificación'], ['sexo', 'Sexo'],
   ['fecha_nacimiento', 'Fecha de nacimiento'], ['peso_kg', 'Peso (kg)'], ['talla_cm', 'Talla (cm)'], ['procedencia', 'Procedencia'],
   ['municipio_narino', 'Municipio de Nariño'], ['telefono', 'Teléfono'], ['eps', 'EPS'],
   ['diagnostico', 'Diagnóstico'], ['valvulopatia', 'Tipo de valvulopatía'], ['euroscore', 'Escala EuroSCORE (%)'], ['riesgos', 'Factores de riesgo'],
+  ['estado_preoperatorio', 'Estado preoperatorio'], ['antecedentes_quirurgicos', 'Antecedentes quirúrgicos'], ['comorbilidades', 'Comorbilidades'],
   ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'],
   ['numero_implante', 'Número de implante'], ['uso_cec', 'Uso de CEC'],
   ['tiempo_cec_min', 'Tiempo CEC (min)'], ['tiempo_clamp_min', 'Tiempo clamp (min)'], ['complicacion_intraqx', 'Complicación intraquirúrgica'],
-  ['cierre_esternal_diferido', 'Cierre esternal diferido'], ['extubacion_quirofano', 'Extubación en quirófano'], ['unidad_pop', 'Unidad postoperatoria'],
+  ['cierre_esternal_diferido', 'Cierre esternal diferido'], ['extubacion_quirofano', 'Extubación en quirófano'],
+  ['transfusion_intraoperatoria', 'Transfusión intraoperatoria'], ['unidad_pop', 'Unidad postoperatoria'],
   ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica'], ['complicacion_pop', 'Complicación postoperatoria'],
   ['fecha_traslado_intermedio', 'Fecha de traslado a intermedio'], ['dias_estancia_uci', 'Días de estancia en UCI'],
   ['fecha_salida', 'Fecha de salida'], ['dias_hospitalizacion_total', 'Días totales de hospitalización'], ['condicion_salida', 'Condición de salida'],

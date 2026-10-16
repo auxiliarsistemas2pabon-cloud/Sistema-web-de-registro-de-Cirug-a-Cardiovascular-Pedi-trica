@@ -98,7 +98,7 @@ function Seccion({ titulo, detalle, mensajeVacio, icono, alertas, rutaBase }: Pr
           {alertas.map((a) => {
             const vencida = a.dias_desde_referencia > 0
             return (
-              <li key={`${a.paciente_id}-${a.tipo_alerta}`}>
+              <li key={`${a.paciente_id}-${a.episodio_id ?? ''}-${a.tipo_alerta}`}>
                 <Link
                   to={`${rutaBase}/${a.paciente_id}`}
                   className={`flex items-center gap-3 border-l-4 px-4 py-3 transition-colors hover:bg-slate-50 sm:gap-4 sm:px-5 ${

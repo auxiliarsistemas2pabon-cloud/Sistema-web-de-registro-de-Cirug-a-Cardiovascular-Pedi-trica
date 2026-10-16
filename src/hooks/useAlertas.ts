@@ -4,6 +4,9 @@ import type { GrupoActivo } from '../lib/grupoActivo'
 
 export interface Alerta {
   paciente_id: string
+  /** Solo en adultos: a qué intervención pertenece esta alerta (un paciente puede tener más de
+   * una, cada una con su propia llamada de los 15 días y su propio seguimiento). */
+  episodio_id?: string
   numero_paciente: number
   nombre_completo: string
   identificacion: string
