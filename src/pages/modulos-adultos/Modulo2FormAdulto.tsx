@@ -17,13 +17,16 @@ interface Valores {
   valvulopatia_id: string
   euroscore: string
   riesgo_ids: string[]
+  estado_preoperatorio: string
+  antecedentes_quirurgicos: string
+  comorbilidades: string
 }
 
-function useDiagnosticoAdulto(pacienteId: string) {
+function useDiagnosticoAdulto(pacienteId: string, episodioId: string) {
   return useQuery({
-    queryKey: ['diagnostico-adulto', pacienteId],
+    queryKey: ['diagnostico-adulto', episodioId],
     queryFn: async (): Promise<{ diagnostico: DiagnosticoAdultoDetalle | null; riesgoIds: string[] }> => {
-      const datos = await api.get<(DiagnosticoAdultoDetalle & { riesgo_ids: string[] }) | null>(`/pacientes-adultos/${pacienteId}/diagnostico`)
+      const datos = await api.get<(DiagnosticoAdultoDetalle & { riesgo_ids: string[] }) | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/diagnostico`)
       return datos ? { diagnostico: datos, riesgoIds: datos.riesgo_ids } : { diagnostico: null, riesgoIds: [] }
     },
   })
@@ -35,13 +38,16 @@ function valoresIniciales(diagnostico: DiagnosticoAdultoDetalle | null, riesgoId
     valvulopatia_id: diagnostico?.valvulopatia_id ?? '',
     euroscore: diagnostico?.euroscore?.toString() ?? '',
     riesgo_ids: riesgoIds,
+    estado_preoperatorio: diagnostico?.estado_preoperatorio ?? '',
+    antecedentes_quirurgicos: diagnostico?.antecedentes_quirurgicos ?? '',
+    comorbilidades: diagnostico?.comorbilidades ?? '',
   }
 }
 
-export function Modulo2FormAdulto({ pacienteId }: { pacienteId: string }) {
+export function Modulo2FormAdulto({ pacienteId, episodioId }: { pacienteId: string; episodioId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
-  const { data, isLoading } = useDiagnosticoAdulto(pacienteId)
+  const { data, isLoading } = useDiagnosticoAdulto(pacienteId, episodioId)
   const { data: opcionesDiagnostico } = useOpciones('DIAGNOSTICO_ADULTO')
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
@@ -88,14 +94,17 @@ export function Modulo2FormAdulto({ pacienteId }: { pacienteId: string }) {
     setCamposFaltantes(faltantes)
 
     try {
-      await api.put(`/pacientes-adultos/${pacienteId}/diagnostico`, {
+      await api.put(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/diagnostico`, {
         diagnostico_id: valores.diagnostico_id || null,
         valvulopatia_id: esValvulopatia ? valores.valvulopatia_id || null : null,
         euroscore: valores.euroscore ? Number(valores.euroscore) : null,
         riesgo_ids: valores.riesgo_ids,
+        estado_preoperatorio: valores.estado_preoperatorio.trim() || null,
+        antecedentes_quirurgicos: valores.antecedentes_quirurgicos.trim() || null,
+        comorbilidades: valores.comorbilidades.trim() || null,
         estado_modulo,
       })
-      queryClient.invalidateQueries({ queryKey: ['diagnostico-adulto', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['diagnostico-adulto', episodioId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', pacienteId] })
       setGuardadoEn(new Date())
@@ -123,6 +132,20 @@ export function Modulo2FormAdulto({ pacienteId }: { pacienteId: string }) {
                   disabled={!esValvulopatia}
                   placeholder={esValvulopatia ? 'Seleccione…' : 'N/A'}
                 />
+              </Campo>
+            </div>
+          </SeccionFormulario>
+
+          <SeccionFormulario titulo="Antecedentes">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <Campo etiqueta="Estado preoperatorio">
+                <textarea rows={3} {...register('estado_preoperatorio')} className={claseInput} />
+              </Campo>
+              <Campo etiqueta="Antecedentes quirúrgicos">
+                <textarea rows={3} {...register('antecedentes_quirurgicos')} className={claseInput} />
+              </Campo>
+              <Campo etiqueta="Comorbilidades">
+                <textarea rows={3} {...register('comorbilidades')} className={claseInput} />
               </Campo>
             </div>
           </SeccionFormulario>

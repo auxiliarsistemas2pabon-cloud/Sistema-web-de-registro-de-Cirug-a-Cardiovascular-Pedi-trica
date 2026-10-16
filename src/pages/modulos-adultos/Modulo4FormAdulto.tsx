@@ -33,13 +33,13 @@ interface Valores {
   condicion_salida_id: string
 }
 
-function usePostoperatorioAdulto(pacienteId: string) {
+function usePostoperatorioAdulto(pacienteId: string, episodioId: string) {
   return useQuery({
-    queryKey: ['postoperatorio-adulto', pacienteId],
+    queryKey: ['postoperatorio-adulto', episodioId],
     queryFn: async () => {
       const [postoperatorio, cirugia] = await Promise.all([
-        api.get<PostoperatorioAdultoDetalle | null>(`/pacientes-adultos/${pacienteId}/postoperatorio`),
-        api.get<{ extubacion_quirofano: 'SI' | 'NO' | null; fecha_cirugia: string | null } | null>(`/pacientes-adultos/${pacienteId}/cirugia`),
+        api.get<PostoperatorioAdultoDetalle | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/postoperatorio`),
+        api.get<{ extubacion_quirofano: 'SI' | 'NO' | null; fecha_cirugia: string | null } | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/cirugia`),
       ])
       return {
         postoperatorio,
@@ -63,10 +63,10 @@ function valoresIniciales(po: PostoperatorioAdultoDetalle | null, sugerirCero: b
   }
 }
 
-export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
+export function Modulo4FormAdulto({ pacienteId, episodioId }: { pacienteId: string; episodioId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
-  const { data, isLoading } = usePostoperatorioAdulto(pacienteId)
+  const { data, isLoading } = usePostoperatorioAdulto(pacienteId, episodioId)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
@@ -120,7 +120,7 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
     setCamposFaltantes(faltantes)
 
     try {
-      await api.put(`/pacientes-adultos/${pacienteId}/postoperatorio`, {
+      await api.put(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/postoperatorio`, {
         unidad_pop_id: valores.unidad_pop_id || null,
         horas_ventilacion_mecanica:
           valores.horas_ventilacion_mecanica !== '' ? Number(valores.horas_ventilacion_mecanica) : null,
@@ -132,9 +132,9 @@ export function Modulo4FormAdulto({ pacienteId }: { pacienteId: string }) {
         condicion_salida_id: valores.condicion_salida_id || null,
         estado_modulo,
       })
-      queryClient.invalidateQueries({ queryKey: ['postoperatorio-adulto', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['postoperatorio-adulto', episodioId] })
       // Guardar el Módulo 4 puede crear o bloquear el Módulo 5 (condición de salida = Muerte).
-      queryClient.invalidateQueries({ queryKey: ['seguimiento-adulto', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['seguimiento-adulto', episodioId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', pacienteId] })
       setGuardadoEn(new Date())

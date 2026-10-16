@@ -23,6 +23,7 @@ interface CirugiaAdultoDetalle {
   tiempo_clamp_min: number | null
   cierre_esternal_diferido: 'SI' | 'NO' | null
   extubacion_quirofano: 'SI' | 'NO' | null
+  transfusion_intraoperatoria: string | null
   estado_modulo: string
 }
 
@@ -39,14 +40,15 @@ interface Valores {
   complicacion_intraqx_ids: string[]
   cierre_esternal_diferido: 'SI' | 'NO' | ''
   extubacion_quirofano: 'SI' | 'NO' | ''
+  transfusion_intraoperatoria: string
 }
 
-function useCirugiaAdulto(pacienteId: string) {
+function useCirugiaAdulto(pacienteId: string, episodioId: string) {
   return useQuery({
-    queryKey: ['cirugia-adulto', pacienteId],
+    queryKey: ['cirugia-adulto', episodioId],
     queryFn: async (): Promise<{ cirugia: CirugiaAdultoDetalle | null; procedimientoIds: string[]; complicacionIntraqxIds: string[]; fechaNacimiento: string | null }> => {
       const [cirugia, paciente] = await Promise.all([
-        api.get<(CirugiaAdultoDetalle & { procedimiento_ids: string[]; complicacion_intraqx_ids: string[] }) | null>(`/pacientes-adultos/${pacienteId}/cirugia`),
+        api.get<(CirugiaAdultoDetalle & { procedimiento_ids: string[]; complicacion_intraqx_ids: string[] }) | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/cirugia`),
         api.get<PacienteAdultoDetalle>(`/pacientes-adultos/${pacienteId}`),
       ])
       return {
@@ -73,13 +75,14 @@ function valoresIniciales(cirugia: CirugiaAdultoDetalle | null, procedimientoIds
     complicacion_intraqx_ids: complicacionIntraqxIds,
     cierre_esternal_diferido: cirugia?.cierre_esternal_diferido ?? '',
     extubacion_quirofano: cirugia?.extubacion_quirofano ?? '',
+    transfusion_intraoperatoria: cirugia?.transfusion_intraoperatoria ?? '',
   }
 }
 
-export function Modulo3FormAdulto({ pacienteId }: { pacienteId: string }) {
+export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: string; episodioId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
-  const { data, isLoading } = useCirugiaAdulto(pacienteId)
+  const { data, isLoading } = useCirugiaAdulto(pacienteId, episodioId)
   const { data: opcionesImplante } = useOpciones('IMPLANTE')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -164,7 +167,7 @@ export function Modulo3FormAdulto({ pacienteId }: { pacienteId: string }) {
     setCamposFaltantes(faltantes)
 
     try {
-      await api.put(`/pacientes-adultos/${pacienteId}/cirugia`, {
+      await api.put(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/cirugia`, {
         fecha_cirugia: valores.fecha_cirugia || null,
         implante_id: valores.implante_id || null,
         numero_implante: !implanteEsNA && valores.numero_implante.trim() ? valores.numero_implante.trim() : null,
@@ -174,10 +177,11 @@ export function Modulo3FormAdulto({ pacienteId }: { pacienteId: string }) {
         complicacion_intraqx_ids: valores.complicacion_intraqx_ids,
         cierre_esternal_diferido: valores.cierre_esternal_diferido || null,
         extubacion_quirofano: valores.extubacion_quirofano || null,
+        transfusion_intraoperatoria: valores.transfusion_intraoperatoria.trim() || null,
         procedimiento_ids: procedimientoIds,
         estado_modulo,
       })
-      queryClient.invalidateQueries({ queryKey: ['cirugia-adulto', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['cirugia-adulto', episodioId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', pacienteId] })
       setGuardadoEn(new Date())
@@ -306,6 +310,9 @@ export function Modulo3FormAdulto({ pacienteId }: { pacienteId: string }) {
                   <option value="SI">Sí</option>
                   <option value="NO">No</option>
                 </select>
+              </Campo>
+              <Campo etiqueta="Transfusión intraoperatoria" className="sm:col-span-2">
+                <textarea rows={2} {...register('transfusion_intraoperatoria')} className={claseInput} />
               </Campo>
             </div>
           </SeccionFormulario>

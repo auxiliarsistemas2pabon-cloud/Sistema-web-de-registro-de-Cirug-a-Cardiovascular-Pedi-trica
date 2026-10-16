@@ -244,6 +244,20 @@ const tablas = [
     FOREIGN KEY (creado_por) REFERENCES usuarios(id),
     FOREIGN KEY (eliminado_por) REFERENCES usuarios(id)
   )`,
+  // Un paciente adulto puede tener varias intervenciones (p. ej. una cirugía y luego una
+  // reintervención meses después); cada una agrupa su propio diagnóstico, cirugía, postoperatorio
+  // y seguimiento (ver diagnosticos_adultos/cirugias_adultos/postoperatorio_adultos/
+  // seguimientos_adultos más abajo, que referencian episodio_id en vez de paciente_id). El episodio
+  // 1 se crea junto con el paciente (crearPacienteAdulto en servicios-adultos.mjs); los siguientes
+  // se agregan desde la ficha ("+ Agregar intervención").
+  `CREATE TABLE IF NOT EXISTS episodios_adultos (
+    id CHAR(36) PRIMARY KEY,
+    paciente_id CHAR(36) NOT NULL,
+    numero_episodio TINYINT UNSIGNED NOT NULL,${AUDITORIA_COLS},
+    CONSTRAINT ck_epiad_numero CHECK (numero_episodio >= 1),
+    UNIQUE KEY uq_epiad_numero (paciente_id, numero_episodio),
+    FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id)
+  )`,
   `CREATE TABLE IF NOT EXISTS diagnosticos_adultos (
     id CHAR(36) PRIMARY KEY,
     paciente_id CHAR(36) NOT NULL UNIQUE,
@@ -353,6 +367,21 @@ const alteraciones = [
   ['cirugias', 'fecha_procedimiento_3', `ALTER TABLE cirugias ADD COLUMN fecha_procedimiento_3 DATE NULL AFTER fecha_procedimiento_2`],
   ['cirugias', 'numero_implante', `ALTER TABLE cirugias ADD COLUMN numero_implante VARCHAR(100) NULL AFTER implante_id`],
   ['cirugias_adultos', 'numero_implante', `ALTER TABLE cirugias_adultos ADD COLUMN numero_implante VARCHAR(100) NULL AFTER implante_id`],
+  // Columnas del formato original del hospital (FR-GCC-21) que no tenían campo propio: se agregan
+  // como texto libre, sin validar, igual que `observaciones` en seguimientos(_adultos).
+  ['diagnosticos_adultos', 'estado_preoperatorio', `ALTER TABLE diagnosticos_adultos ADD COLUMN estado_preoperatorio TEXT NULL`],
+  ['diagnosticos_adultos', 'antecedentes_quirurgicos', `ALTER TABLE diagnosticos_adultos ADD COLUMN antecedentes_quirurgicos TEXT NULL AFTER estado_preoperatorio`],
+  ['diagnosticos_adultos', 'comorbilidades', `ALTER TABLE diagnosticos_adultos ADD COLUMN comorbilidades TEXT NULL AFTER antecedentes_quirurgicos`],
+  ['cirugias_adultos', 'transfusion_intraoperatoria', `ALTER TABLE cirugias_adultos ADD COLUMN transfusion_intraoperatoria TEXT NULL`],
+  // Paso 1 de la migración a episodios (ver EPISODIO_ADULTO_TABLAS más abajo): columna nueva,
+  // nullable, para poder backfillear antes de quitar paciente_id. Sin "AFTER paciente_id": una vez
+  // que un arranque anterior ya quitó esa columna, esa cláusula fallaría (MySQL valida la columna
+  // de referencia antes de notar que episodio_id ya existe) y este ALTER debe poder reintentarse
+  // en cada arranque sin error.
+  ['diagnosticos_adultos', 'episodio_id', `ALTER TABLE diagnosticos_adultos ADD COLUMN episodio_id CHAR(36) NULL`],
+  ['cirugias_adultos', 'episodio_id', `ALTER TABLE cirugias_adultos ADD COLUMN episodio_id CHAR(36) NULL`],
+  ['postoperatorio_adultos', 'episodio_id', `ALTER TABLE postoperatorio_adultos ADD COLUMN episodio_id CHAR(36) NULL`],
+  ['seguimientos_adultos', 'episodio_id', `ALTER TABLE seguimientos_adultos ADD COLUMN episodio_id CHAR(36) NULL`],
 ]
 
 const restricciones = [
@@ -426,6 +455,85 @@ async function agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion) {
   }
 }
 
+/** Pone una columna en NOT NULL solo si todavía admite NULL (evita reescribir la tabla en cada
+ * arranque una vez aplicado: MODIFY COLUMN no es gratis, aunque sea un no-op lógico). */
+async function asegurarNotNull(pool, tabla, columna, tipo) {
+  const [[fila]] = await pool.query(`
+    SELECT IS_NULLABLE FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?`, [tabla, columna])
+  if (fila?.IS_NULLABLE === 'YES') await pool.query(`ALTER TABLE ${tabla} MODIFY COLUMN ${columna} ${tipo} NOT NULL`)
+}
+
+/** Agrega una restricción nombrada (UNIQUE KEY o FOREIGN KEY) si no existe, comprobando el catálogo
+ * en vez de atrapar un código de error: a diferencia de agregarRestriccionSiNoExiste (solo CHECK),
+ * el errno de "ya existe" para UNIQUE/FOREIGN KEY no es uniforme entre versiones de MySQL. */
+async function agregarRestriccionNombradaSiNoExiste(pool, nombre, tabla, definicion) {
+  const [[existente]] = await pool.query(`
+    SELECT 1 AS x FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?`, [tabla, nombre])
+  if (!existente) await pool.query(`ALTER TABLE ${tabla} ADD CONSTRAINT ${nombre} ${definicion}`)
+}
+
+async function columnaSinNulos(pool, tabla, columna) {
+  const [[{ pendientes }]] = await pool.query(`SELECT COUNT(*) AS pendientes FROM ${tabla} WHERE ${columna} IS NULL`)
+  return pendientes === 0
+}
+
+// ---------------------------------------------------------------------------------------------
+// Migración a episodios (adultos): diagnosticos_adultos/cirugias_adultos/postoperatorio_adultos/
+// seguimientos_adultos pasan de "1 por paciente" (paciente_id UNIQUE) a "1 por episodio"
+// (episodio_id UNIQUE), para permitir varias intervenciones por paciente. Se hace en tres pasos
+// seguros de re-ejecutar y de interrumpir a mitad de camino (inicializarBase corre en cada
+// arranque): (1) crear el episodio 1 de cada paciente que aún no tenga uno, (2) copiar paciente_id
+// → episodio_id fila por fila, (3) solo cuando TODAS las filas de una tabla ya tienen episodio_id,
+// apretar a NOT NULL, agregar la UNIQUE+FK nueva y recién ahí quitar paciente_id. Nunca se quita
+// paciente_id si queda alguna fila sin episodio_id: sin paciente_id ni episodio_id esa fila sería
+// irrecuperable (no hay forma de saber de quién era).
+// ---------------------------------------------------------------------------------------------
+
+/** Crea el episodio 1 de cada paciente adulto que todavía no tenga uno — cubre tanto los 71+
+ * pacientes ya existentes como cualquier paciente nuevo creado antes de que esta versión del
+ * servidor arrancara por primera vez. */
+async function crearEpisodiosAdultosFaltantes(pool) {
+  await pool.query(`
+    INSERT INTO episodios_adultos (id, paciente_id, numero_episodio, creado_por)
+    SELECT UUID(), p.id, 1, p.creado_por
+    FROM pacientes_adultos p
+    WHERE NOT EXISTS (SELECT 1 FROM episodios_adultos e WHERE e.paciente_id = p.id AND e.numero_episodio = 1)`)
+}
+
+/** Enlaza las filas existentes de un módulo de adultos (todavía con paciente_id) a su episodio 1.
+ * Errno 1054 = ER_BAD_FIELD_ERROR: paciente_id ya no existe en esta tabla (ya migrada antes). */
+async function migrarEpisodioAdultoSiExisteColumna(pool, tabla) {
+  try {
+    await pool.query(`
+      UPDATE ${tabla} t
+      JOIN episodios_adultos e ON e.paciente_id = t.paciente_id AND e.numero_episodio = 1
+      SET t.episodio_id = e.id
+      WHERE t.episodio_id IS NULL`)
+  } catch (err) {
+    if (err?.errno !== 1054) throw err
+  }
+}
+
+/** Solo cuando el backfill de episodio_id terminó para TODAS las filas (si no, se reintenta en el
+ * próximo arranque): aprieta a NOT NULL, agrega la UNIQUE+FK nuevas y recién ahí quita paciente_id
+ * (quitarColumnaSiExiste ya sabe encontrar y quitar su FK vieja por information_schema). */
+async function finalizarEpisodioAdultoSiListo(pool, tabla, nombreUnico, nombreFk) {
+  if (!(await columnaSinNulos(pool, tabla, 'episodio_id'))) return
+  await asegurarNotNull(pool, tabla, 'episodio_id', 'CHAR(36)')
+  await agregarRestriccionNombradaSiNoExiste(pool, nombreUnico, tabla, `UNIQUE KEY (episodio_id)`)
+  await agregarRestriccionNombradaSiNoExiste(pool, nombreFk, tabla, `FOREIGN KEY (episodio_id) REFERENCES episodios_adultos(id)`)
+  await quitarColumnaSiExiste(pool, tabla, 'paciente_id')
+}
+
+const EPISODIO_ADULTO_TABLAS = [
+  ['diagnosticos_adultos', 'uq_diagad_episodio', 'fk_diagad_episodio'],
+  ['cirugias_adultos', 'uq_cirad_episodio', 'fk_cirad_episodio'],
+  ['postoperatorio_adultos', 'uq_popad_episodio', 'fk_popad_episodio'],
+  ['seguimientos_adultos', 'uq_segad_episodio', 'fk_segad_episodio'],
+]
+
 /** Crea las tablas si no existen, siembra las listas y, si no hay usuarios, el primer administrador. */
 export async function inicializarBase(pool, admin) {
   for (const sentencia of tablas) await pool.query(sentencia)
@@ -435,6 +543,15 @@ export async function inicializarBase(pool, admin) {
   await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio', 'complicacion_pop_id', 'postoperatorio_complicaciones_pop', 'postoperatorio_id')
   await migrarComplicacionesSiExisteColumna(pool, 'cirugias_adultos', 'complicacion_intraqx_id', 'cirugias_adultos_complicaciones_intraqx', 'cirugia_id')
   await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio_adultos', 'complicacion_pop_id', 'postoperatorio_adultos_complicaciones_pop', 'postoperatorio_id')
+
+  await crearEpisodiosAdultosFaltantes(pool)
+  for (const tabla of ['diagnosticos_adultos', 'cirugias_adultos', 'postoperatorio_adultos', 'seguimientos_adultos']) {
+    await migrarEpisodioAdultoSiExisteColumna(pool, tabla)
+  }
+  for (const [tabla, nombreUnico, nombreFk] of EPISODIO_ADULTO_TABLAS) {
+    await finalizarEpisodioAdultoSiListo(pool, tabla, nombreUnico, nombreFk)
+  }
+
   for (const [tabla, columna] of columnasRetiradas) await quitarColumnaSiExiste(pool, tabla, columna)
 
   for (const [codigo, nombre] of categorias) {

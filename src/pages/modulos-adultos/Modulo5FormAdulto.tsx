@@ -40,13 +40,13 @@ function sumarDias(iso: string, dias: number): string {
   return fecha.toLocaleDateString('en-CA')
 }
 
-function useSeguimientoAdulto(pacienteId: string) {
+function useSeguimientoAdulto(pacienteId: string, episodioId: string) {
   return useQuery({
-    queryKey: ['seguimiento-adulto', pacienteId],
+    queryKey: ['seguimiento-adulto', episodioId],
     queryFn: async () => {
       const [seguimiento, postoperatorio] = await Promise.all([
-        api.get<SeguimientoAdultoDetalle | null>(`/pacientes-adultos/${pacienteId}/seguimiento`),
-        api.get<{ fecha_salida: string | null } | null>(`/pacientes-adultos/${pacienteId}/postoperatorio`),
+        api.get<SeguimientoAdultoDetalle | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/seguimiento`),
+        api.get<{ fecha_salida: string | null } | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/postoperatorio`),
       ])
       return { seguimiento, fechaSalida: postoperatorio?.fecha_salida ?? null }
     },
@@ -67,10 +67,10 @@ function valoresIniciales(s: SeguimientoAdultoDetalle | null): Valores {
   }
 }
 
-export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
+export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: string; episodioId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
-  const { data, isLoading } = useSeguimientoAdulto(pacienteId)
+  const { data, isLoading } = useSeguimientoAdulto(pacienteId, episodioId)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
@@ -151,7 +151,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
     setCamposFaltantes(faltantes)
 
     try {
-      await api.put(`/pacientes-adultos/${pacienteId}/seguimiento`, {
+      await api.put(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/seguimiento`, {
         fecha_control_cirugia: valores.fecha_control_cirugia || null,
         rehabilitacion_cardiaca: valores.rehabilitacion_cardiaca || null,
         estado_herida_id: valores.estado_herida_id || null,
@@ -163,7 +163,7 @@ export function Modulo5FormAdulto({ pacienteId }: { pacienteId: string }) {
         observaciones: valores.observaciones.trim() || null,
         estado_modulo,
       })
-      queryClient.invalidateQueries({ queryKey: ['seguimiento-adulto', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['seguimiento-adulto', episodioId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', pacienteId] })
       setGuardadoEn(new Date())

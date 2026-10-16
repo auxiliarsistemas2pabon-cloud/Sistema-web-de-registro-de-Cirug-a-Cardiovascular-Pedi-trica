@@ -39,19 +39,21 @@ rutasAlertas.get('/', asincrono(async (_req, res) => {
 rutasAlertas.get('/adultos', asincrono(async (_req, res) => {
   const hoy = hoyBogota()
   const filas = await todas(pool, `
-    SELECT p.id AS paciente_id, p.numero_paciente, p.nombre_completo, p.identificacion,
+    SELECT p.id AS paciente_id, po.episodio_id, p.numero_paciente, p.nombre_completo, p.identificacion,
            'llamada_15_dias' AS tipo_alerta, DATE_ADD(po.fecha_salida, INTERVAL 15 DAY) AS fecha_referencia,
            DATEDIFF(?, DATE_ADD(po.fecha_salida, INTERVAL 15 DAY)) AS dias_desde_referencia
-    FROM pacientes_adultos p
-    JOIN postoperatorio_adultos po ON po.paciente_id = p.id
-    JOIN seguimientos_adultos s ON s.paciente_id = p.id
+    FROM postoperatorio_adultos po
+    JOIN episodios_adultos ep ON ep.id = po.episodio_id
+    JOIN pacientes_adultos p ON p.id = ep.paciente_id
+    JOIN seguimientos_adultos s ON s.episodio_id = po.episodio_id
     WHERE p.eliminado = 0 AND s.no_aplica = 0 AND (s.llamado_15_dias IS NULL OR s.llamado_15_dias <> 'SI') AND po.fecha_salida IS NOT NULL
     UNION ALL
-    SELECT p.id, p.numero_paciente, p.nombre_completo, p.identificacion,
+    SELECT p.id, po.episodio_id, p.numero_paciente, p.nombre_completo, p.identificacion,
            'seguimiento_pendiente_alta', po.fecha_salida, DATEDIFF(?, po.fecha_salida)
-    FROM pacientes_adultos p
-    JOIN postoperatorio_adultos po ON po.paciente_id = p.id
-    JOIN seguimientos_adultos s ON s.paciente_id = p.id
+    FROM postoperatorio_adultos po
+    JOIN episodios_adultos ep ON ep.id = po.episodio_id
+    JOIN pacientes_adultos p ON p.id = ep.paciente_id
+    JOIN seguimientos_adultos s ON s.episodio_id = po.episodio_id
     WHERE p.eliminado = 0 AND s.no_aplica = 0 AND s.estado_modulo <> 'completo'
       AND po.fecha_salida IS NOT NULL AND po.fecha_salida >= DATE_SUB(?, INTERVAL 30 DAY)
     ORDER BY dias_desde_referencia DESC`, [hoy, hoy, hoy])
@@ -386,6 +388,7 @@ function listarPacientes(filas, filtros) {
     .sort((a, b) => a.fecha_cirugia.localeCompare(b.fecha_cirugia) || a.numero_paciente - b.numero_paciente)
     .map((f) => ({
       paciente_id: f.paciente_id,
+      cirugia_id: f.cirugia_id,
       numero_paciente: f.numero_paciente,
       // Documento del paciente: la matriz permite buscar por él.
       identificacion: f.identificacion,
@@ -500,10 +503,11 @@ async function cargarAdultos(desde, hasta) {
       dg.valor AS diagnostico, d.euroscore, eps.valor AS eps, pr.valor AS procedencia,
       p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica
     FROM cirugias_adultos c
-    JOIN pacientes_adultos p ON p.id = c.paciente_id
-    LEFT JOIN diagnosticos_adultos d ON d.paciente_id = p.id
-    LEFT JOIN postoperatorio_adultos po ON po.paciente_id = p.id
-    LEFT JOIN seguimientos_adultos s ON s.paciente_id = p.id
+    JOIN episodios_adultos ep ON ep.id = c.episodio_id
+    JOIN pacientes_adultos p ON p.id = ep.paciente_id
+    LEFT JOIN diagnosticos_adultos d ON d.episodio_id = c.episodio_id
+    LEFT JOIN postoperatorio_adultos po ON po.episodio_id = c.episodio_id
+    LEFT JOIN seguimientos_adultos s ON s.episodio_id = c.episodio_id
     LEFT JOIN opciones_lista cs ON cs.id = po.condicion_salida_id
     LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
     LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
@@ -548,39 +552,54 @@ rutasIndicadores.get('/adultos/pacientes', asincrono(async (req, res) => {
 // ---------------------------------------------------------------------------------------------
 
 const DETALLE_PEDIATRICO = {
-  tablas: {
-    pacientes: 'pacientes', diagnosticos: 'diagnosticos', riesgos: 'diagnosticos_riesgos', cirugias: 'cirugias',
-    procedimientos: 'cirugias_procedimientos', postoperatorio: 'postoperatorio', seguimientos: 'seguimientos',
-    complicacionesIntraqx: 'cirugias_complicaciones_intraqx', complicacionesPop: 'postoperatorio_complicaciones_pop',
-  },
+  tablas: { cirugias: 'cirugias', riesgos: 'diagnosticos_riesgos', procedimientos: 'cirugias_procedimientos',
+    diagnosticos: 'diagnosticos', complicacionesIntraqx: 'cirugias_complicaciones_intraqx', complicacionesPop: 'postoperatorio_complicaciones_pop' },
   // Los días de UCI y de hospitalización se calculan de las fechas, igual que en los indicadores.
   columnas: `rc.valor AS rachs, s.fecha_llamada_15_dias,
     CASE WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
          WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_uci,
     CASE WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_hospitalizacion`,
+  desdeCirugia: `
+    JOIN pacientes p ON p.id = c.paciente_id
+    LEFT JOIN diagnosticos d ON d.paciente_id = p.id
+    LEFT JOIN postoperatorio po ON po.paciente_id = p.id
+    LEFT JOIN seguimientos s ON s.paciente_id = p.id`,
   uniones: 'LEFT JOIN opciones_lista rc ON rc.id = d.rachs_id',
   // Cada procedimiento adicional es otra intervención, con su propia fecha.
   fechaProcedimiento: 'CASE cp.orden WHEN 1 THEN c.fecha_cirugia WHEN 2 THEN c.fecha_procedimiento_2 ELSE c.fecha_procedimiento_3 END',
 }
 const DETALLE_ADULTO = {
-  tablas: {
-    pacientes: 'pacientes_adultos', diagnosticos: 'diagnosticos_adultos', riesgos: 'diagnosticos_adultos_riesgos',
-    cirugias: 'cirugias_adultos', procedimientos: 'cirugias_adultos_procedimientos', postoperatorio: 'postoperatorio_adultos',
-    seguimientos: 'seguimientos_adultos',
-    complicacionesIntraqx: 'cirugias_adultos_complicaciones_intraqx', complicacionesPop: 'postoperatorio_adultos_complicaciones_pop',
-  },
-  columnas: 'd.euroscore, s.llamado_15_dias, po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hospitalizacion',
+  tablas: { cirugias: 'cirugias_adultos', riesgos: 'diagnosticos_adultos_riesgos', procedimientos: 'cirugias_adultos_procedimientos',
+    diagnosticos: 'diagnosticos_adultos', complicacionesIntraqx: 'cirugias_adultos_complicaciones_intraqx', complicacionesPop: 'postoperatorio_adultos_complicaciones_pop' },
+  columnas: `d.euroscore, s.llamado_15_dias, po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hospitalizacion,
+    d.estado_preoperatorio, d.antecedentes_quirurgicos, d.comorbilidades, c.transfusion_intraoperatoria`,
+  // Un paciente adulto puede tener varias intervenciones (episodios_adultos); cada una agrupa su
+  // propio diagnóstico/postoperatorio/seguimiento, enlazados por episodio_id (no paciente_id), así
+  // que esta ficha de detalle siempre muestra exactamente la intervención de `cirugiaId`, nunca una
+  // mezcla de varias.
+  desdeCirugia: `
+    JOIN episodios_adultos ep ON ep.id = c.episodio_id
+    JOIN pacientes_adultos p ON p.id = ep.paciente_id
+    LEFT JOIN diagnosticos_adultos d ON d.episodio_id = c.episodio_id
+    LEFT JOIN postoperatorio_adultos po ON po.episodio_id = c.episodio_id
+    LEFT JOIN seguimientos_adultos s ON s.episodio_id = c.episodio_id`,
   uniones: '',
   // Todos los procedimientos son de la misma cirugía.
   fechaProcedimiento: 'c.fecha_cirugia',
 }
 
-async function detallePaciente({ tablas, columnas, uniones, fechaProcedimiento }, pacienteId) {
+/**
+ * Detalle de una cirugía puntual (no de "el paciente"): en adultos, un paciente puede tener varias
+ * (una reintervención meses después), cada una con su propio diagnóstico/postoperatorio/seguimiento
+ * — por eso se busca por `cirugiaId`, nunca por paciente_id, y nunca se mezclan dos intervenciones
+ * en una misma ficha.
+ */
+async function detallePaciente({ tablas, columnas, desdeCirugia, uniones, fechaProcedimiento }, cirugiaId) {
   const ficha = await una(pool, `
     SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, sx.valor AS sexo, p.fecha_nacimiento,
       DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_cirugia_dias, p.peso_kg, p.talla_cm,
       pr.valor AS procedencia, mu.valor AS municipio_narino, eps.valor AS eps,
-      dg.valor AS diagnostico, va.valor AS valvulopatia,
+      d.id AS diagnostico_id_resuelto, dg.valor AS diagnostico, va.valor AS valvulopatia,
       c.fecha_cirugia, im.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
       (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM ${tablas.complicacionesIntraqx} cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
       c.cierre_esternal_diferido, c.extubacion_quirofano,
@@ -591,11 +610,8 @@ async function detallePaciente({ tablas, columnas, uniones, fechaProcedimiento }
       (s.no_aplica = 1) AS seguimiento_no_aplica, s.fecha_control_cirugia, s.rehabilitacion_cardiaca, eh.valor AS estado_herida,
       s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, cr.valor AS causa_reingreso, s.observaciones,
       ${columnas}
-    FROM ${tablas.pacientes} p
-    LEFT JOIN ${tablas.diagnosticos} d ON d.paciente_id = p.id
-    LEFT JOIN ${tablas.cirugias} c ON c.paciente_id = p.id
-    LEFT JOIN ${tablas.postoperatorio} po ON po.paciente_id = p.id
-    LEFT JOIN ${tablas.seguimientos} s ON s.paciente_id = p.id
+    FROM ${tablas.cirugias} c
+    ${desdeCirugia}
     LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
     LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
     LEFT JOIN opciones_lista mu ON mu.id = p.municipio_narino_id
@@ -608,24 +624,23 @@ async function detallePaciente({ tablas, columnas, uniones, fechaProcedimiento }
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     LEFT JOIN opciones_lista cr ON cr.id = s.causa_reingreso_id
     ${uniones}
-    WHERE p.eliminado = 0 AND p.id = ?`, [pacienteId])
+    WHERE p.eliminado = 0 AND c.id = ?`, [cirugiaId])
   if (!ficha) throw noEncontrado('No se encontró el paciente.')
 
   const [riesgos, procedimientos] = await Promise.all([
     todas(pool, `
       SELECT o.valor
       FROM ${tablas.riesgos} dr
-      JOIN ${tablas.diagnosticos} d ON d.id = dr.diagnostico_id
       JOIN opciones_lista o ON o.id = dr.riesgo_id
-      WHERE d.paciente_id = ?
-      ORDER BY o.orden, o.valor`, [pacienteId]),
+      WHERE dr.diagnostico_id = ?
+      ORDER BY o.orden, o.valor`, [ficha.diagnostico_id_resuelto]),
     todas(pool, `
       SELECT o.valor AS procedimiento, ${fechaProcedimiento} AS fecha
       FROM ${tablas.procedimientos} cp
       JOIN ${tablas.cirugias} c ON c.id = cp.cirugia_id
       JOIN opciones_lista o ON o.id = cp.procedimiento_id
-      WHERE c.paciente_id = ?
-      ORDER BY cp.orden`, [pacienteId]),
+      WHERE cp.cirugia_id = ?
+      ORDER BY cp.orden`, [cirugiaId]),
   ])
 
   return {
@@ -637,6 +652,7 @@ async function detallePaciente({ tablas, columnas, uniones, fechaProcedimiento }
   }
 }
 
+// El :id de estas dos rutas es una cirugía (cirugia_id), no un paciente — ver detallePaciente().
 rutasIndicadores.get('/pacientes/:id', asincrono(async (req, res) => {
   res.json(await detallePaciente(DETALLE_PEDIATRICO, req.params.id))
 }))
@@ -702,25 +718,27 @@ rutasExportacion.get('/pacientes-adultos', asincrono(async (_req, res) => {
   try {
     await conexion.query('SET SESSION group_concat_max_len = 1000000')
     const [filas] = await conexion.query(`
-      SELECT p.numero_paciente, p.nombre_completo, p.identificacion, sexo.valor AS sexo, p.fecha_nacimiento, p.peso_kg, p.talla_cm,
+      SELECT p.numero_paciente, ep.numero_episodio, p.nombre_completo, p.identificacion, sexo.valor AS sexo, p.fecha_nacimiento, p.peso_kg, p.talla_cm,
         procedencia.valor AS procedencia, municipio.valor AS municipio_narino, p.telefono, eps.valor AS eps,
         diagnostico.valor AS diagnostico, valvulopatia.valor AS valvulopatia, d.euroscore,
+        d.estado_preoperatorio, d.antecedentes_quirurgicos, d.comorbilidades,
         (SELECT GROUP_CONCAT(o.valor ORDER BY dr.id SEPARATOR ' | ') FROM diagnosticos_adultos_riesgos dr JOIN opciones_lista o ON o.id = dr.riesgo_id WHERE dr.diagnostico_id = d.id) AS riesgos,
         c.fecha_cirugia,
         (SELECT GROUP_CONCAT(o.valor ORDER BY cp.orden SEPARATOR ' | ') FROM cirugias_adultos_procedimientos cp JOIN opciones_lista o ON o.id = cp.procedimiento_id WHERE cp.cirugia_id = c.id) AS procedimientos,
         implante.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
         (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM cirugias_adultos_complicaciones_intraqx cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
-        c.cierre_esternal_diferido, c.extubacion_quirofano, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
+        c.cierre_esternal_diferido, c.extubacion_quirofano, c.transfusion_intraoperatoria, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
         (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM postoperatorio_adultos_complicaciones_pop cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id WHERE cpp.postoperatorio_id = po.id) AS complicacion_pop,
         po.fecha_traslado_intermedio, po.dias_estancia_uci, po.fecha_salida,
         po.dias_hospitalizacion_total, condicion_salida.valor AS condicion_salida,
         s.fecha_control_cirugia, s.rehabilitacion_cardiaca, estado_herida.valor AS estado_herida, s.llamado_15_dias,
         s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, causa_reingreso.valor AS causa_reingreso, s.observaciones
       FROM pacientes_adultos p
-      LEFT JOIN diagnosticos_adultos d ON d.paciente_id = p.id
-      LEFT JOIN cirugias_adultos c ON c.paciente_id = p.id
-      LEFT JOIN postoperatorio_adultos po ON po.paciente_id = p.id
-      LEFT JOIN seguimientos_adultos s ON s.paciente_id = p.id
+      JOIN episodios_adultos ep ON ep.paciente_id = p.id
+      LEFT JOIN diagnosticos_adultos d ON d.episodio_id = ep.id
+      LEFT JOIN cirugias_adultos c ON c.episodio_id = ep.id
+      LEFT JOIN postoperatorio_adultos po ON po.episodio_id = ep.id
+      LEFT JOIN seguimientos_adultos s ON s.episodio_id = ep.id
       LEFT JOIN opciones_lista sexo ON sexo.id = p.sexo_id
       LEFT JOIN opciones_lista procedencia ON procedencia.id = p.procedencia_id
       LEFT JOIN opciones_lista municipio ON municipio.id = p.municipio_narino_id
@@ -733,7 +751,7 @@ rutasExportacion.get('/pacientes-adultos', asincrono(async (_req, res) => {
       LEFT JOIN opciones_lista estado_herida ON estado_herida.id = s.estado_herida_id
       LEFT JOIN opciones_lista causa_reingreso ON causa_reingreso.id = s.causa_reingreso_id
       WHERE p.eliminado = 0
-      ORDER BY p.numero_paciente`)
+      ORDER BY p.numero_paciente, ep.numero_episodio`)
     res.json(filas)
   } finally {
     conexion.release()

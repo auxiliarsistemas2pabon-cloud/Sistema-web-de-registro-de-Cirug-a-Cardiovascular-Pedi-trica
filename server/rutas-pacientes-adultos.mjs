@@ -3,13 +3,15 @@ import { conTransaccion, hoyBogota, pool, todas, una } from './db.mjs'
 import { asincrono, validacion } from './errores.mjs'
 import { filaApi } from './servicios.mjs'
 import {
-  actualizarPacienteAdulto, crearPacienteAdulto, guardarCirugiaAdulto, guardarDiagnosticoAdulto, guardarPostoperatorioAdulto,
-  guardarSeguimientoAdulto, marcarEliminadoAdulto, obtenerCirugiaAdulto, obtenerDiagnosticoAdulto, obtenerPacienteAdulto,
-  obtenerPostoperatorioAdulto, obtenerSeguimientoAdulto,
+  actualizarPacienteAdulto, crearEpisodioAdulto, crearPacienteAdulto, guardarCirugiaAdulto, guardarDiagnosticoAdulto,
+  guardarPostoperatorioAdulto, guardarSeguimientoAdulto, listarEpisodiosAdultos, marcarEliminadoAdulto, obtenerCirugiaAdulto,
+  obtenerDiagnosticoAdulto, obtenerEpisodioAdulto, obtenerPacienteAdulto, obtenerPostoperatorioAdulto, obtenerSeguimientoAdulto,
 } from './servicios-adultos.mjs'
 
 export const rutasPacientesAdultos = Router()
 
+// La lista muestra una fila por paciente con el resumen de su intervención más reciente — cuando
+// hay varias, el detalle de todas se ve dentro de la ficha (selector de intervenciones).
 const SQL_RESUMEN = `
   SELECT
     p.id AS paciente_id, p.numero_paciente, p.nombre_completo, p.identificacion, p.fecha_nacimiento,
@@ -24,12 +26,18 @@ const SQL_RESUMEN = `
     COALESCE(po.estado_modulo, 'pendiente') AS estado_m4,
     COALESCE(s.estado_modulo, 'pendiente') AS estado_m5,
     dg.valor AS diagnostico_valor, d.euroscore, eps.valor AS eps_valor,
-    pr.valor AS procedencia_valor, cs.valor AS condicion_salida_valor, p.eliminado
+    pr.valor AS procedencia_valor, cs.valor AS condicion_salida_valor, p.eliminado,
+    ultimo.total_episodios
   FROM pacientes_adultos p
-  LEFT JOIN diagnosticos_adultos d ON d.paciente_id = p.id
-  LEFT JOIN cirugias_adultos c ON c.paciente_id = p.id
-  LEFT JOIN postoperatorio_adultos po ON po.paciente_id = p.id
-  LEFT JOIN seguimientos_adultos s ON s.paciente_id = p.id
+  JOIN (
+    SELECT paciente_id, MAX(numero_episodio) AS numero_episodio, COUNT(*) AS total_episodios
+    FROM episodios_adultos GROUP BY paciente_id
+  ) ultimo ON ultimo.paciente_id = p.id
+  LEFT JOIN episodios_adultos e ON e.paciente_id = p.id AND e.numero_episodio = ultimo.numero_episodio
+  LEFT JOIN diagnosticos_adultos d ON d.episodio_id = e.id
+  LEFT JOIN cirugias_adultos c ON c.episodio_id = e.id
+  LEFT JOIN postoperatorio_adultos po ON po.episodio_id = e.id
+  LEFT JOIN seguimientos_adultos s ON s.episodio_id = e.id
   LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
   LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
   LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
@@ -101,7 +109,19 @@ rutasPacientesAdultos.put('/:id/eliminado', asincrono(async (req, res) => {
   res.json({ id })
 }))
 
-// Módulos 2 a 5: GET devuelve el objeto o null si aún no existe; PUT es un upsert.
+// Intervenciones (episodios): la primera se crea junto con el paciente; las siguientes (p. ej.
+// una reintervención) se agregan desde aquí.
+rutasPacientesAdultos.get('/:id/episodios', asincrono(async (req, res) => {
+  await obtenerPacienteAdulto(pool, req.params.id)
+  res.json(await listarEpisodiosAdultos(pool, req.params.id))
+}))
+
+rutasPacientesAdultos.post('/:id/episodios', asincrono(async (req, res) => {
+  const id = await conTransaccion((conexion) => crearEpisodioAdulto(conexion, req.usuario, req.params.id))
+  res.status(201).json({ id })
+}))
+
+// Módulos 2 a 5, por intervención: GET devuelve el objeto o null si aún no existe; PUT es un upsert.
 const modulos = {
   diagnostico: { obtener: obtenerDiagnosticoAdulto, guardar: guardarDiagnosticoAdulto },
   cirugia: { obtener: obtenerCirugiaAdulto, guardar: guardarCirugiaAdulto },
@@ -110,15 +130,15 @@ const modulos = {
 }
 
 for (const [ruta, { obtener, guardar }] of Object.entries(modulos)) {
-  rutasPacientesAdultos.get(`/:id/${ruta}`, asincrono(async (req, res) => {
-    await obtenerPacienteAdulto(pool, req.params.id)
-    res.json(await obtener(pool, req.params.id))
+  rutasPacientesAdultos.get(`/:id/episodios/:episodioId/${ruta}`, asincrono(async (req, res) => {
+    await obtenerEpisodioAdulto(pool, req.params.id, req.params.episodioId)
+    res.json(await obtener(pool, req.params.episodioId))
   }))
 
-  rutasPacientesAdultos.put(`/:id/${ruta}`, asincrono(async (req, res) => {
+  rutasPacientesAdultos.put(`/:id/episodios/:episodioId/${ruta}`, asincrono(async (req, res) => {
     const id = await conTransaccion(async (conexion) => {
-      await obtenerPacienteAdulto(conexion, req.params.id)
-      return guardar(conexion, req.usuario, req.params.id, req.body)
+      await obtenerEpisodioAdulto(conexion, req.params.id, req.params.episodioId)
+      return guardar(conexion, req.usuario, req.params.episodioId, req.body)
     })
     res.json({ id })
   }))

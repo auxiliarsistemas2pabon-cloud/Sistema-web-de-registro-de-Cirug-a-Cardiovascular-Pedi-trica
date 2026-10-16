@@ -34,6 +34,9 @@ interface Detalle {
   rachs?: string | null
   /** Solo en adultos. */
   euroscore?: number | null
+  estado_preoperatorio?: string | null
+  antecedentes_quirurgicos?: string | null
+  comorbilidades?: string | null
   fecha_cirugia: string | null
   procedimientos: { procedimiento: string; fecha: string | null }[]
   implante: string | null
@@ -44,6 +47,8 @@ interface Detalle {
   complicacion_intraqx: string | null
   cierre_esternal_diferido: SiNo
   extubacion_quirofano: SiNo
+  /** Solo en adultos. */
+  transfusion_intraoperatoria?: string | null
   unidad_pop: string | null
   horas_ventilacion_mecanica: number | null
   complicacion_pop: string | null
@@ -103,17 +108,21 @@ const claseDatos = 'grid grid-cols-2 gap-x-4 gap-y-3.5 px-4 py-3.5 text-sm'
 interface Props {
   grupo: GrupoActivo
   pacienteId: string
+  /** La cirugía puntual a mostrar — en adultos, un paciente puede tener varias (reintervención),
+   * cada una con su propio diagnóstico/postoperatorio/seguimiento; esta ficha siempre muestra
+   * exactamente una, nunca una mezcla. */
+  cirugiaId: string
 }
 
 /**
  * Todo lo que se le hizo a un paciente, módulo por módulo: lo que muestra la matriz de resumen al
  * buscarlo por documento. Sin nombre ni teléfonos, como la matriz; la ficha completa queda a un clic.
  */
-export function DetallePaciente({ grupo, pacienteId }: Props) {
+export function DetallePaciente({ grupo, pacienteId, cirugiaId }: Props) {
   const adultos = grupo === 'adultos'
   const { data: d, isLoading, error } = useQuery({
-    queryKey: ['indicadores-paciente', grupo, pacienteId],
-    queryFn: () => api.get<Detalle>(`${adultos ? '/indicadores/adultos/pacientes' : '/indicadores/pacientes'}/${pacienteId}`),
+    queryKey: ['indicadores-paciente', grupo, cirugiaId],
+    queryFn: () => api.get<Detalle>(`${adultos ? '/indicadores/adultos/pacientes' : '/indicadores/pacientes'}/${cirugiaId}`),
   })
 
   // Un módulo sin ningún dato todavía no se ha diligenciado: se dice así, en vez de una lista de rayas.
@@ -174,6 +183,13 @@ export function DetallePaciente({ grupo, pacienteId }: Props) {
                   </ul>
                 )}
               </Dato>
+              {adultos && (
+                <>
+                  <Dato etiqueta="Estado preoperatorio" ancho>{d.estado_preoperatorio}</Dato>
+                  <Dato etiqueta="Antecedentes quirúrgicos" ancho>{d.antecedentes_quirurgicos}</Dato>
+                  <Dato etiqueta="Comorbilidades" ancho>{d.comorbilidades}</Dato>
+                </>
+              )}
             </dl>
           </Modulo>
 
@@ -205,6 +221,7 @@ export function DetallePaciente({ grupo, pacienteId }: Props) {
               <Dato etiqueta="Complicación intraquirúrgica" ancho>{d.complicacion_intraqx}</Dato>
               <Dato etiqueta="Cierre esternal diferido">{siNo(d.cierre_esternal_diferido)}</Dato>
               <Dato etiqueta="Extubación en quirófano">{siNo(d.extubacion_quirofano)}</Dato>
+              {adultos && <Dato etiqueta="Transfusión intraoperatoria" ancho>{d.transfusion_intraoperatoria}</Dato>}
             </dl>
           </Modulo>
 

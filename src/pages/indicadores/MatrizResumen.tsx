@@ -27,6 +27,8 @@ type CampoEtiqueta = 'sexo' | 'procedencia' | 'peso' | 'talla' | 'superficie' | 
 /** Un paciente operado en el periodo, con todas sus variables (GET /indicadores/pacientes). */
 export interface PacienteMatriz {
   paciente_id: string
+  /** La cirugía que esta fila describe — en adultos, un paciente puede tener varias (reintervención). */
+  cirugia_id: string
   numero_paciente: number
   /** Documento de identidad: solo dígitos (así lo exige la base de datos). */
   identificacion: string
@@ -128,9 +130,10 @@ export function MatrizResumen({ pacientes, cargando, grupo, claveGrupo, desde, h
   // ("1.085.123" encuentra 1085123), y basta con una parte para encontrarlo.
   const buscado = busqueda.replace(/\D/g, '')
   const visibles = buscado ? filas.filter((p) => p.identificacion.includes(buscado)) : filas
-  // El paciente del que se muestra todo lo que se le hizo: el único que queda a la vista o, si el
-  // documento escrito también es parte de otros más largos, el que lo tiene exacto.
-  const elegido = !buscado ? undefined : visibles.length === 1 ? visibles[0] : visibles.find((p) => p.identificacion === buscado)
+  // La(s) fila(s) de las que se muestra todo lo que se le hizo: la única que queda a la vista o, si
+  // el documento escrito también es parte de otros más largos, las que lo tienen exacto — puede ser
+  // más de una si el paciente tuvo más de una intervención (p. ej. una reintervención).
+  const elegidos = !buscado ? [] : visibles.length === 1 ? visibles : visibles.filter((p) => p.identificacion === buscado)
   const periodo = `${formatearFecha(desde)} – ${formatearFecha(hasta)}`
   const filtrado = (campo: CampoFiltro) => filtros.some((f) => f.campo === campo)
 
@@ -291,7 +294,7 @@ export function MatrizResumen({ pacientes, cargando, grupo, claveGrupo, desde, h
                   </thead>
                   <tbody>
                     {visibles.map((p) => (
-                      <tr key={p.paciente_id} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/60 hover:bg-sky-50/70">
+                      <tr key={p.cirugia_id} className="border-b border-slate-100 odd:bg-white even:bg-slate-50/60 hover:bg-sky-50/70">
                         <th scope="row" className="sticky left-0 z-[1] bg-inherit py-1.5 pr-3 pl-5 text-left font-semibold tabular-nums text-slate-900">
                           {p.numero_paciente}
                         </th>
@@ -329,7 +332,9 @@ export function MatrizResumen({ pacientes, cargando, grupo, claveGrupo, desde, h
           </>
         )}
       </Tarjeta>
-      {elegido && <DetallePaciente key={elegido.paciente_id} grupo={claveGrupo} pacienteId={elegido.paciente_id} />}
+      {elegidos.map((p) => (
+        <DetallePaciente key={p.cirugia_id} grupo={claveGrupo} pacienteId={p.paciente_id} cirugiaId={p.cirugia_id} />
+      ))}
     </div>
   )
 }

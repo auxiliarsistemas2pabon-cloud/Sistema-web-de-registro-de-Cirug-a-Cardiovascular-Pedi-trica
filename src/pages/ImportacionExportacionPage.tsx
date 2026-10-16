@@ -19,7 +19,7 @@ const TIPOS_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.
 // elemento (undefined) deja el Módulo 5 abierto hasta el final del arreglo. Pediátricos y adultos
 // tienen cortes distintos porque sus columnas no son las mismas (ver lib/importacion.ts).
 const CORTES_PEDIATRICOS = [0, 12, 16, 26, 32, undefined] as const
-const CORTES_ADULTOS = [0, 11, 15, 25, 33, undefined] as const
+const CORTES_ADULTOS = [0, 12, 19, 30, 38, undefined] as const
 
 /** Casilla grande (tarjeta seleccionable) para elegir un grupo de pacientes. */
 function OpcionGrupo({

@@ -111,10 +111,13 @@ export interface PacienteAdultoDetalle {
 
 export interface DiagnosticoAdultoDetalle {
   id: string
-  paciente_id: string
+  episodio_id: string
   diagnostico_id: string | null
   valvulopatia_id: string | null
   euroscore: number | null
+  estado_preoperatorio: string | null
+  antecedentes_quirurgicos: string | null
+  comorbilidades: string | null
   estado_modulo: EstadoModulo
 }
 
@@ -140,4 +143,16 @@ export interface PacienteAdultoResumen {
   procedencia_valor: string | null
   condicion_salida_valor: string | null
   eliminado: boolean
+  /** Cuántas intervenciones tiene el paciente en total (ver EpisodioAdulto); los módulos 2-5 de
+   * este resumen son los de la más reciente. */
+  total_episodios: number
+}
+
+/** Una intervención quirúrgica de un paciente adulto. La mayoría de los pacientes tiene solo una
+ * (numero_episodio = 1, creada junto con el paciente); una reintervención agrega la siguiente. */
+export interface EpisodioAdulto {
+  id: string
+  paciente_id: string
+  numero_episodio: number
+  creado_en: string
 }
