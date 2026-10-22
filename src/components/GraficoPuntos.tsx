@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis, type BarShapeProps } from 'recharts'
+import { Bar, BarChart, CartesianGrid, LabelList, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, type BarShapeProps } from 'recharts'
 import { AlternarTabla, SinDatosGrafico, TablaDatos, TickEnvuelto, TooltipGrafico } from './GraficoComun'
 import {
   caracteresPorCategoria,
@@ -25,6 +25,9 @@ interface Props extends PropsSeleccion {
   datos: DatoTasa[]
   /** Cómo se nombran los casos en el tooltip, en singular y plural (p. ej. fallecido / fallecidos). */
   nombreCasos: [string, string]
+  /** Línea horizontal de comparación (p. ej. la tasa de todo el periodo): deja ver de un vistazo
+   * qué categorías quedan por encima y cuáles por debajo. */
+  referencia?: { valor: number; etiqueta: string }
 }
 
 const ANCHO_EJE_Y = 40
@@ -32,7 +35,7 @@ const MARGEN = { top: 24, right: 8, bottom: 0, left: 0 }
 
 /** Tasa (%) por categoría ordenada, p. ej. mortalidad por RACHS-1. Rojo de estado crítico: el
  * valor significa un desenlace malo, no es solo "otra serie". */
-export function GraficoPuntos({ datos: tasas, nombreCasos, seleccion, onSeleccionar }: Props) {
+export function GraficoPuntos({ datos: tasas, nombreCasos, referencia, seleccion, onSeleccionar }: Props) {
   const [modoTabla, setModoTabla] = useState(false)
   const [ref, ancho] = useAnchoContenedor()
 
@@ -47,7 +50,7 @@ export function GraficoPuntos({ datos: tasas, nombreCasos, seleccion, onSeleccio
   // Techo del eje con aire por encima del máximo (mínimo 10 %, máximo 100 %), para que un 4 % no
   // ocupe todo el alto como si fuera una tasa enorme ni el punto más alto quede pegado al borde.
   // Las marcas van en pasos redondos: Recharts, con un techo como 25, inventaba 7 %, 14 %, 21 %.
-  const objetivo = Math.max(10, Math.max(...datos.map((d) => d.valor)) * 1.15)
+  const objetivo = Math.max(10, Math.max(...datos.map((d) => d.valor), referencia?.valor ?? 0) * 1.15)
   const paso = objetivo <= 10 ? 2 : objetivo <= 30 ? 5 : objetivo <= 60 ? 10 : 20
   const techo = Math.min(100, Math.ceil(objetivo / paso) * paso)
   const marcas = Array.from({ length: techo / paso + 1 }, (_, i) => i * paso)
@@ -100,6 +103,15 @@ export function GraficoPuntos({ datos: tasas, nombreCasos, seleccion, onSeleccio
               content={<TooltipGrafico sufijoValor="%" detalle={describir} interactivo={Boolean(onSeleccionar)} seleccion={seleccion} />}
               cursor={{ fill: 'var(--chart-grid)', opacity: 0.4 }}
             />
+            {referencia && (
+              // Línea continua y gris (no punteada ni roja): es contexto, no otro dato.
+              <ReferenceLine
+                y={referencia.valor}
+                stroke="var(--chart-no-aplica)"
+                strokeWidth={1.5}
+                ifOverflow="extendDomain"
+              />
+            )}
             <Bar
               dataKey="valor"
               shape={paleta}
@@ -117,6 +129,14 @@ export function GraficoPuntos({ datos: tasas, nombreCasos, seleccion, onSeleccio
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+      )}
+      {/* La línea de referencia se explica debajo, no dentro del gráfico: ahí se encimaba con los
+          valores de los puntos. */}
+      {referencia && !modoTabla && (
+        <p className="mt-2 flex items-center justify-center gap-2 text-xs text-slate-600">
+          <span className="h-0.5 w-5 rounded-full bg-[var(--chart-no-aplica)]" aria-hidden />
+          {referencia.etiqueta}
+        </p>
       )}
     </div>
   )

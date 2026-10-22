@@ -172,6 +172,49 @@ const RANGOS_HORAS_VM = [
   { hasta: 1, etiqueta: '0 h' }, { hasta: 7, etiqueta: '1–6 h' }, { hasta: 25, etiqueta: '7–24 h' },
   { hasta: 49, etiqueta: '25–48 h' }, { hasta: 169, etiqueta: '49–168 h' }, { etiqueta: '>168 h' },
 ]
+const RANGOS_DIAS_HOSP = [
+  { hasta: 4, etiqueta: '0–3 días' }, { hasta: 8, etiqueta: '4–7 días' }, { hasta: 15, etiqueta: '8–14 días' },
+  { hasta: 22, etiqueta: '15–21 días' }, { hasta: 31, etiqueta: '22–30 días' }, { etiqueta: '>30 días' },
+]
+const RANGOS_CEC = [
+  { hasta: 60, etiqueta: '<60 min' }, { hasta: 90, etiqueta: '60–89 min' }, { hasta: 120, etiqueta: '90–119 min' },
+  { hasta: 150, etiqueta: '120–149 min' }, { hasta: 180, etiqueta: '150–179 min' }, { etiqueta: '≥180 min' },
+]
+const RANGOS_CLAMP = [
+  { hasta: 30, etiqueta: '<30 min' }, { hasta: 60, etiqueta: '30–59 min' }, { hasta: 90, etiqueta: '60–89 min' },
+  { hasta: 120, etiqueta: '90–119 min' }, { etiqueta: '≥120 min' },
+]
+
+// La edad se agrupa por etapas, no por un número fijo de años: en niños importa si es neonato o
+// lactante (los cortes van en días y meses cumplidos), y en adultos, la década.
+const EDADES_PEDIATRICAS = ['Neonato (<28 días)', 'Lactante (1–11 meses)', '1–4 años', '5–9 años', '10–14 años', '≥15 años']
+function edadPediatrica({ edad_dias: dias, edad_meses: meses, edad_anios: anios }) {
+  if (dias === null || dias === undefined) return 'Sin dato'
+  if (dias < 28) return EDADES_PEDIATRICAS[0]
+  if (meses < 12) return EDADES_PEDIATRICAS[1]
+  if (anios < 5) return EDADES_PEDIATRICAS[2]
+  if (anios < 10) return EDADES_PEDIATRICAS[3]
+  if (anios < 15) return EDADES_PEDIATRICAS[4]
+  return EDADES_PEDIATRICAS[5]
+}
+const EDADES_ADULTOS = ['18–39 años', '40–49 años', '50–59 años', '60–69 años', '70–79 años', '≥80 años']
+function edadAdulto({ edad_anios: anios }) {
+  if (anios === null || anios === undefined) return 'Sin dato'
+  if (anios < 40) return EDADES_ADULTOS[0]
+  if (anios < 80) return EDADES_ADULTOS[Math.floor(anios / 10) - 3]
+  return EDADES_ADULTOS[5]
+}
+
+/** Las preguntas Sí/No de la ficha (uso de CEC, extubación en quirófano, rehabilitación…), en el
+ * orden fijo en que se grafican. */
+const ORDEN_SI_NO = ['Sí', 'No', 'No aplica', 'Sin dato']
+/** Opción "N/A" de una lista (o vacía). */
+const noAplica = (valor) => valor === null || valor === undefined || /^n\/?a$/i.test(valor.trim())
+
+const textoSiNo = (valor) => ({ SI: 'Sí', NO: 'No', NA: 'No aplica' })[valor] ?? 'Sin dato'
+
+/** Edad en años con decimales, para su mediana (las etapas usan los días, meses y años cumplidos). */
+const edadDecimal = (f) => (f.edad_dias === null || f.edad_dias === undefined ? null : f.edad_dias / 365.25)
 
 // ---------------------------------------------------------------------------------------------
 // Tablero dinámico: al hacer clic en una categoría de cualquier gráfico, todo el tablero se
@@ -179,10 +222,16 @@ const RANGOS_HORAS_VM = [
 // postoperatorio y seguimientos tienen paciente_id UNIQUE), así que contar filas es contar pacientes.
 // ---------------------------------------------------------------------------------------------
 
+/** Campos de selección múltiple: un paciente puede tener varios valores (varios procedimientos,
+ * factores de riesgo o complicaciones), así que cuenta en cada barra que le corresponda. */
+const CAMPOS_MULTIPLES = ['procedimiento', 'factor_riesgo', 'complicacion_intraqx', 'complicacion_pop']
+
 /** Campos filtrables: uno por gráfico, y el filtro usa exactamente la etiqueta que ese gráfico muestra. */
 const CAMPOS_FILTRO = [
-  'mes', 'riesgo', 'diagnostico', 'procedimiento', 'eps', 'procedencia', 'sexo', 'peso', 'talla', 'superficie',
-  'dias_uci', 'horas_vm', 'estado_herida', 'herida_grupo',
+  'mes', 'anio', 'trimestre', 'riesgo', 'diagnostico', 'valvulopatia', 'eps', 'procedencia', 'municipio', 'sexo', 'edad',
+  'peso', 'talla', 'superficie', 'implante', 'uso_cec', 'tiempo_cec', 'tiempo_clamp', 'cierre_esternal', 'extubacion',
+  'unidad_pop', 'dias_uci', 'horas_vm', 'dias_hosp', 'condicion_salida', 'rehabilitacion', 'estado_herida', 'herida_grupo',
+  'reingreso', 'causa_reingreso', ...CAMPOS_MULTIPLES,
 ]
 
 function leerFiltros(texto) {
@@ -229,53 +278,143 @@ function etiquetarFila(f, rangos) {
   const superficie = superficieCorporal(f.peso_kg)
   // Los fallecidos no tienen seguimiento: no entran en el estado de la herida ni en su filtro.
   const conSeguimiento = !f.seguimiento_no_aplica
+  // Los tiempos de CEC y de clamp solo se cuentan en las cirugías con circulación extracorpórea: en
+  // las demás no es un dato faltante, es que no aplica.
+  const conCec = f.uso_cec !== 'NO'
+  const [anio, mes] = f.fecha_cirugia.split('-').map(Number)
   return {
     ...f,
     superficie,
+    // Etiqueta null: el paciente no entra en ese gráfico (p. ej. el municipio de quien no es de Nariño).
     etiquetas: {
       mes: f.fecha_cirugia.slice(0, 7),
+      anio: String(anio),
+      trimestre: `${anio}-T${Math.ceil(mes / 3)}`,
       riesgo: f.riesgo,
       diagnostico: f.diagnostico ?? 'Sin diagnóstico',
+      // "N/A" en el tipo de valvulopatía o de implante es que no hubo: no se grafica. Para saber si el
+      // diagnóstico es una valvulopatía, el mismo criterio que la ficha: su texto.
+      valvulopatia: noAplica(f.valvulopatia)
+        ? (/valvulopat/i.test(f.diagnostico ?? '') ? 'Sin tipo registrado' : null)
+        : f.valvulopatia,
       eps: f.eps ?? 'Sin EPS',
       procedencia: f.procedencia ?? 'Sin procedencia',
+      municipio: f.procedencia_codigo === 'NARINO' ? (f.municipio ?? 'Sin municipio') : null,
       sexo: f.sexo ?? 'Sin dato',
+      edad: f.edad,
       peso: etiquetaRango(f.peso_kg, rangos.peso),
       talla: etiquetaRango(f.talla_cm, rangos.talla),
       superficie: etiquetaRango(superficie, rangos.superficie),
+      implante: noAplica(f.implante) && f.implante ? null : (f.implante ?? 'Sin dato'),
+      uso_cec: textoSiNo(f.uso_cec),
+      tiempo_cec: conCec ? etiquetaRango(f.tiempo_cec_min, RANGOS_CEC) : null,
+      tiempo_clamp: conCec ? etiquetaRango(f.tiempo_clamp_min, RANGOS_CLAMP) : null,
+      cierre_esternal: textoSiNo(f.cierre_esternal_diferido),
+      extubacion: textoSiNo(f.extubacion_quirofano),
+      unidad_pop: f.unidad_pop ?? 'Sin dato',
       dias_uci: etiquetaRango(f.dias_uci, RANGOS_DIAS_UCI),
       horas_vm: etiquetaRango(f.horas_vm, RANGOS_HORAS_VM),
+      dias_hosp: etiquetaRango(f.dias_hosp, RANGOS_DIAS_HOSP),
+      condicion_salida: f.condicion_salida ?? 'Sin registrar',
+      rehabilitacion: conSeguimiento ? textoSiNo(f.rehabilitacion_cardiaca) : null,
       estado_herida: conSeguimiento ? (f.estado_herida ?? 'Sin registrar') : null,
       herida_grupo: conSeguimiento ? grupoHerida(f.estado_herida) : null,
+      reingreso: conSeguimiento ? textoSiNo(f.reingreso_30_dias) : null,
+      causa_reingreso: f.reingreso_30_dias === 'SI' ? (f.causa_reingreso ?? 'Sin registrar') : null,
     },
   }
 }
 
 const cumple = (fila, filtro) =>
-  filtro.campo === 'procedimiento' ? fila.procedimientos.has(filtro.valor) : fila.etiquetas[filtro.campo] === filtro.valor
+  CAMPOS_MULTIPLES.includes(filtro.campo) ? fila.multiples[filtro.campo].has(filtro.valor) : fila.etiquetas[filtro.campo] === filtro.valor
 
-/** Pares (cantidad por etiqueta) de mayor a menor, y en orden alfabético los empates. */
+/** Pares (cantidad por etiqueta) de mayor a menor, y en orden alfabético los empates. Los pacientes
+ * con etiqueta null no entran en ese gráfico. */
 function contarEtiquetas(filas, campo) {
   const conteo = new Map()
-  for (const f of filas) conteo.set(f.etiquetas[campo], (conteo.get(f.etiquetas[campo]) ?? 0) + 1)
-  return [...conteo.entries()].sort((a, b) => b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'es'))
+  for (const f of filas) {
+    if (f.etiquetas[campo] !== null) conteo.set(f.etiquetas[campo], (conteo.get(f.etiquetas[campo]) ?? 0) + 1)
+  }
+  return [...conteo.entries()].sort((a, b) => esVacia(a[0]) - esVacia(b[0]) || b[1] - a[1] || String(a[0]).localeCompare(String(b[0]), 'es'))
+}
+const esVacia = (etiqueta) => /^sin /i.test(etiqueta)
+
+/** Conteo nominal de un campo, de mayor a menor y con la categoría vacía al final. */
+const conteoCampo = (filas, campo) => contarEtiquetas(filas, campo).map(([categoria, total_cirugias]) => ({ categoria, total_cirugias }))
+
+/** Conteo de un campo en un orden fijo (etapas de edad, Sí/No): solo las categorías con pacientes. */
+function conteoEnOrden(filas, campo, orden) {
+  const conteo = new Map(contarEtiquetas(filas, campo))
+  return [...orden, 'Sin dato'].filter((c, i, todas) => conteo.has(c) && todas.indexOf(c) === i)
+    .map((categoria) => ({ categoria, total_cirugias: conteo.get(categoria) }))
 }
 
-/** Procedimientos de cada cirugía del periodo (cirugia_id → Set), para contarlos y filtrar por ellos.
- * Los nombres de tabla son fijos, nunca vienen de la petición. */
-async function procedimientosPorCirugia(tablas, desde, hasta) {
-  const pares = await todas(pool, `
-    SELECT cp.cirugia_id, o.valor AS procedimiento
-    FROM ${tablas.cirugias} c
-    JOIN ${tablas.pacientes} p ON p.id = c.paciente_id
-    JOIN ${tablas.procedimientos} cp ON cp.cirugia_id = c.id
-    JOIN opciones_lista o ON o.id = cp.procedimiento_id
-    WHERE p.eliminado = 0 AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
-  const mapa = new Map()
-  for (const { cirugia_id, procedimiento } of pares) {
-    if (!mapa.has(cirugia_id)) mapa.set(cirugia_id, new Set())
-    mapa.get(cirugia_id).add(procedimiento)
+/** Conteo de un campo de selección múltiple: cada paciente suma en cada valor que tenga. */
+function conteoMultiple(filas, campo) {
+  const conteo = new Map()
+  for (const f of filas) for (const v of f.multiples[campo]) conteo.set(v, (conteo.get(v) ?? 0) + 1)
+  return [...conteo.entries()]
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+    .map(([categoria, total_cirugias]) => ({ categoria, total_cirugias }))
+}
+
+/** Las opciones que significan "ninguno" en las listas de selección múltiple: no son un factor de
+ * riesgo ni una complicación, así que no tienen barra (el paciente queda sin ninguna). */
+const CODIGOS_NINGUNO = new Set(['NINGUNO', 'NINGUNA', 'NO'])
+
+/**
+ * Valores de las listas de selección múltiple (id del dueño → Set de textos): procedimientos por
+ * cirugía, factores de riesgo por diagnóstico y complicaciones por cirugía o postoperatorio. Son
+ * tablas pequeñas, así que se leen completas. Los nombres de tabla son fijos, nunca vienen de la petición.
+ */
+async function valoresMultiples(tablas) {
+  const leer = async (tabla, dueno, opcion) => {
+    const pares = await todas(pool, `
+      SELECT t.${dueno} AS id, o.valor, o.codigo FROM ${tabla} t JOIN opciones_lista o ON o.id = t.${opcion}`)
+    const mapa = new Map()
+    for (const { id, valor, codigo } of pares) {
+      if (CODIGOS_NINGUNO.has(codigo)) continue
+      if (!mapa.has(id)) mapa.set(id, new Set())
+      mapa.get(id).add(valor)
+    }
+    return mapa
   }
-  return mapa
+  const [procedimiento, factor_riesgo, complicacion_intraqx, complicacion_pop] = await Promise.all([
+    leer(tablas.procedimientos, 'cirugia_id', 'procedimiento_id'),
+    leer(tablas.riesgos, 'diagnostico_id', 'riesgo_id'),
+    leer(tablas.complicacionesIntraqx, 'cirugia_id', 'complicacion_id'),
+    leer(tablas.complicacionesPop, 'postoperatorio_id', 'complicacion_id'),
+  ])
+  const vacio = new Set()
+  return (f) => ({
+    procedimiento: procedimiento.get(f.cirugia_id) ?? vacio,
+    factor_riesgo: factor_riesgo.get(f.diagnostico_fila_id) ?? vacio,
+    complicacion_intraqx: complicacion_intraqx.get(f.cirugia_id) ?? vacio,
+    complicacion_pop: complicacion_pop.get(f.postoperatorio_id) ?? vacio,
+  })
+}
+
+/** Las tasas de los indicadores clave en cada trimestre con cirugías. Por trimestre y no por mes:
+ * con pocas cirugías al mes, una sola muerte hace saltar la tasa de 0 % a 50 % y la tendencia no se
+ * lee. Un trimestre sin cirugías no tiene tasa (no es un 0 %), así que no aparece. */
+function tasasPorTrimestre(filas) {
+  const trimestres = new Map()
+  for (const f of filas) {
+    if (!trimestres.has(f.etiquetas.trimestre)) trimestres.set(f.etiquetas.trimestre, [])
+    trimestres.get(f.etiquetas.trimestre).push(f)
+  }
+  return [...trimestres.keys()].sort().map((trimestre) => {
+    const delTrimestre = trimestres.get(trimestre)
+    const cuenta = (fn) => delTrimestre.filter(fn).length
+    return {
+      trimestre,
+      total_cirugias: delTrimestre.length,
+      fallecidos: cuenta((f) => f.muerte),
+      complicacion_intraqx: cuenta((f) => f.comp_intraqx),
+      complicacion_pop: cuenta((f) => f.comp_pop),
+      reingresos: cuenta((f) => f.reingreso),
+    }
+  })
 }
 
 /**
@@ -285,7 +424,7 @@ async function procedimientosPorCirugia(tablas, desde, hasta) {
  * todas sus categorías (con la elegida resaltada en la pantalla) y los demás muestran solo a esos
  * pacientes, como en Power BI. El estado de la herida no cuenta a los fallecidos.
  */
-function calcularIndicadores({ filas, filtros, rangos, formatearRiesgo, resumenExtra = () => ({}) }) {
+function calcularIndicadores({ filas, filtros, rangos, ordenEdad, formatearRiesgo, resumenExtra = () => ({}) }) {
   const filtradas = (...excepto) =>
     filas.filter((f) => filtros.every((filtro) => excepto.includes(filtro.campo) || cumple(f, filtro)))
 
@@ -299,11 +438,6 @@ function calcularIndicadores({ filas, filtros, rangos, formatearRiesgo, resumenE
     const [anio, mes] = f.fecha_cirugia.split('-').map(Number)
     const clave = `${anio}-${mes}`
     porMes.set(clave, { anio, mes, total_cirugias: (porMes.get(clave)?.total_cirugias ?? 0) + 1 })
-  }
-
-  const porProcedimiento = new Map()
-  for (const f of filtradas('procedimiento')) {
-    for (const p of f.procedimientos) porProcedimiento.set(p, (porProcedimiento.get(p) ?? 0) + 1)
   }
 
   const riesgo = new Map()
@@ -320,6 +454,15 @@ function calcularIndicadores({ filas, filtros, rangos, formatearRiesgo, resumenE
   const superficie = filtradas('superficie')
   const diasUci = filtradas('dias_uci')
   const horasVm = filtradas('horas_vm')
+  const diasHosp = filtradas('dias_hosp')
+  const edad = filtradas('edad')
+  const tiempoCec = filtradas('tiempo_cec').filter((f) => f.etiquetas.tiempo_cec !== null)
+  const tiempoClamp = filtradas('tiempo_clamp').filter((f) => f.etiquetas.tiempo_clamp !== null)
+  // Base del porcentaje de las listas de selección múltiple: los pacientes, no la suma de barras.
+  const multiple = (campo) => {
+    const base = filtradas(campo)
+    return { pacientes: base.length, con_alguno: base.filter((f) => f.multiples[campo].size).length, conteo: conteoMultiple(base, campo) }
+  }
 
   return {
     resumen: {
@@ -334,15 +477,42 @@ function calcularIndicadores({ filas, filtros, rangos, formatearRiesgo, resumenE
       tasa_complicacion_intraqx_pct: porcentaje(cuenta((f) => f.comp_intraqx), total),
       tasa_complicacion_pop_pct: porcentaje(cuenta((f) => f.comp_pop), total),
       tasa_reingreso_30d_pct: porcentaje(cuenta((f) => f.reingreso), total),
+      // Los casos detrás de cada tasa, para leerla como "9 de 71 pacientes".
+      fallecidos: cuenta((f) => f.muerte),
+      con_complicacion_intraqx: cuenta((f) => f.comp_intraqx),
+      con_complicacion_pop: cuenta((f) => f.comp_pop),
+      reingresos: cuenta((f) => f.reingreso),
       tiempo_cec_promedio: promedio(columna(pacientes, 'tiempo_cec_min')),
+      tiempo_cec_mediana: mediana(columna(pacientes, 'tiempo_cec_min')),
       tiempo_clamp_promedio: promedio(columna(pacientes, 'tiempo_clamp_min')),
+      tiempo_clamp_mediana: mediana(columna(pacientes, 'tiempo_clamp_min')),
       ...resumenExtra(pacientes),
     },
     por_mes: [...porMes.values()].sort((a, b) => a.anio - b.anio || a.mes - b.mes),
+    por_anio: conteoCampo(filtradas('anio'), 'anio').sort((a, b) => a.categoria.localeCompare(b.categoria)),
+    // Indicadores clave: sus tasas trimestre a trimestre, y el detalle de cada uno.
+    por_trimestre: tasasPorTrimestre(filtradas('trimestre')),
+    por_complicacion_intraqx: multiple('complicacion_intraqx'),
+    por_complicacion_pop: multiple('complicacion_pop'),
+    por_reingreso: conteoEnOrden(filtradas('reingreso'), 'reingreso', ORDEN_SI_NO),
+    por_causa_reingreso: conteoCampo(filtradas('causa_reingreso'), 'causa_reingreso'),
+    por_condicion_salida: conteoCampo(filtradas('condicion_salida'), 'condicion_salida'),
     por_diagnostico: contarEtiquetas(filtradas('diagnostico'), 'diagnostico').map(([diagnostico, n]) => ({ diagnostico, total_cirugias: n })),
-    por_procedimiento: [...porProcedimiento.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
-      .map(([procedimiento, n]) => ({ procedimiento, total_cirugias: n })),
+    por_valvulopatia: conteoCampo(filtradas('valvulopatia'), 'valvulopatia'),
+    por_factor_riesgo: multiple('factor_riesgo'),
+    por_procedimiento: conteoMultiple(filtradas('procedimiento'), 'procedimiento')
+      .map(({ categoria, total_cirugias }) => ({ procedimiento: categoria, total_cirugias })),
+    por_implante: conteoCampo(filtradas('implante'), 'implante'),
+    por_uso_cec: conteoEnOrden(filtradas('uso_cec'), 'uso_cec', ORDEN_SI_NO),
+    por_tiempo_cec: distribucion(columna(tiempoCec, 'tiempo_cec_min'), RANGOS_CEC),
+    por_tiempo_clamp: distribucion(columna(tiempoClamp, 'tiempo_clamp_min'), RANGOS_CLAMP),
+    por_cierre_esternal: conteoEnOrden(filtradas('cierre_esternal'), 'cierre_esternal', ORDEN_SI_NO),
+    por_extubacion: conteoEnOrden(filtradas('extubacion'), 'extubacion', ORDEN_SI_NO),
+    por_unidad_pop: conteoCampo(filtradas('unidad_pop'), 'unidad_pop'),
+    por_dias_hosp: distribucion(columna(diasHosp, 'dias_hosp'), RANGOS_DIAS_HOSP),
+    por_rehabilitacion: conteoEnOrden(filtradas('rehabilitacion'), 'rehabilitacion', ORDEN_SI_NO),
+    por_edad: conteoEnOrden(edad, 'edad', ordenEdad),
+    por_municipio: conteoCampo(filtradas('municipio'), 'municipio'),
     ...formatearRiesgo(riesgo),
     por_eps: contarEtiquetas(filtradas('eps'), 'eps').map(([eps, n]) => ({ eps, total_cirugias: n })),
     por_procedencia: contarEtiquetas(filtradas('procedencia'), 'procedencia').map(([procedencia, n]) => ({ procedencia, total_cirugias: n })),
@@ -366,6 +536,10 @@ function calcularIndicadores({ filas, filtros, rangos, formatearRiesgo, resumenE
       superficie_corporal: resumenNumerico(columna(superficie, 'superficie'), 2),
       dias_uci: resumenNumerico(columna(diasUci, 'dias_uci')),
       horas_vm: resumenNumerico(columna(horasVm, 'horas_vm')),
+      dias_hosp: resumenNumerico(columna(diasHosp, 'dias_hosp')),
+      edad_anios: resumenNumerico(columna(edad, 'edad_anios_decimal')),
+      tiempo_cec: resumenNumerico(columna(tiempoCec, 'tiempo_cec_min')),
+      tiempo_clamp: resumenNumerico(columna(tiempoClamp, 'tiempo_clamp_min')),
     },
   }
 }
@@ -426,7 +600,14 @@ async function cargarPediatricos(desde, hasta) {
       ) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
       dg.valor AS diagnostico, rc.valor AS rachs, eps.valor AS eps, pr.valor AS procedencia,
-      p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica
+      p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica,
+      d.id AS diagnostico_fila_id, po.id AS postoperatorio_id,
+      DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_dias,
+      TIMESTAMPDIFF(MONTH, p.fecha_nacimiento, c.fecha_cirugia) AS edad_meses,
+      TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, c.fecha_cirugia) AS edad_anios,
+      pr.codigo AS procedencia_codigo, mu.valor AS municipio, va.valor AS valvulopatia, im.valor AS implante,
+      c.uso_cec, c.cierre_esternal_diferido, c.extubacion_quirofano, up.valor AS unidad_pop, cs.valor AS condicion_salida,
+      s.rehabilitacion_cardiaca, s.reingreso_30_dias, cr.valor AS causa_reingreso
     FROM cirugias c
     JOIN pacientes p ON p.id = c.paciente_id
     LEFT JOIN diagnosticos d ON d.paciente_id = p.id
@@ -439,21 +620,29 @@ async function cargarPediatricos(desde, hasta) {
     LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
     LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
+    LEFT JOIN opciones_lista mu ON mu.id = p.municipio_narino_id
+    LEFT JOIN opciones_lista va ON va.id = d.valvulopatia_id
+    LEFT JOIN opciones_lista im ON im.id = c.implante_id
+    LEFT JOIN opciones_lista up ON up.id = po.unidad_pop_id
+    LEFT JOIN opciones_lista cr ON cr.id = s.causa_reingreso_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
-  const procedimientos = await procedimientosPorCirugia(
-    { cirugias: 'cirugias', pacientes: 'pacientes', procedimientos: 'cirugias_procedimientos' }, desde, hasta)
+  const multiples = await valoresMultiples(DETALLE_PEDIATRICO.tablas)
 
   return crudas.map((f) => etiquetarFila({
     ...f,
     riesgo: f.rachs ?? 'Sin RACHS',
-    procedimientos: procedimientos.get(f.cirugia_id) ?? new Set(),
+    edad: edadPediatrica(f),
+    edad_anios_decimal: edadDecimal(f),
+    multiples: multiples(f),
   }, RANGOS_PEDIATRICOS))
 }
 
 rutasIndicadores.get('/', asincrono(async (req, res) => {
   const { desde, hasta, filtros } = leerConsulta(req)
   const filas = await cargarPediatricos(desde, hasta)
-  res.json(calcularIndicadores({ filas, filtros, rangos: RANGOS_PEDIATRICOS, formatearRiesgo: formatearRiesgoPediatrico }))
+  res.json(calcularIndicadores({
+    filas, filtros, rangos: RANGOS_PEDIATRICOS, ordenEdad: EDADES_PEDIATRICAS, formatearRiesgo: formatearRiesgoPediatrico,
+  }))
 }))
 
 rutasIndicadores.get('/pacientes', asincrono(async (req, res) => {
@@ -484,11 +673,22 @@ const formatearRiesgoAdultos = (riesgo) => ({
   }),
 })
 
+/**
+ * Días de UCI y de hospitalización de adultos: se escriben a mano en la ficha, pero muchas fichas
+ * (las importadas del Excel del servicio) solo traen las fechas. Sin el número, se calcula de las
+ * fechas igual que en pediátricos (traslado a intermedio o salida, menos la fecha de cirugía) — el
+ * mismo valor que trae la columna del Excel.
+ */
+const DIAS_ADULTOS = `
+      COALESCE(po.dias_estancia_uci, CASE WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
+           WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END) AS dias_uci,
+      COALESCE(po.dias_hospitalizacion_total, DATEDIFF(po.fecha_salida, c.fecha_cirugia)) AS dias_hosp`
+
 /** Pacientes adultos operados en el periodo, cada uno con sus etiquetas para filtrar. */
 async function cargarAdultos(desde, hasta) {
   const crudas = await todas(pool, `
     SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, c.id AS cirugia_id, c.fecha_cirugia, c.tiempo_cec_min, c.tiempo_clamp_min,
-      po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hosp,
+      ${DIAS_ADULTOS},
       po.horas_ventilacion_mecanica AS horas_vm,
       (cs.codigo = 'MUERTE') AS muerte,
       EXISTS (
@@ -501,7 +701,14 @@ async function cargarAdultos(desde, hasta) {
       ) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
       dg.valor AS diagnostico, d.euroscore, eps.valor AS eps, pr.valor AS procedencia,
-      p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica
+      p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica,
+      d.id AS diagnostico_fila_id, po.id AS postoperatorio_id,
+      DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_dias,
+      TIMESTAMPDIFF(MONTH, p.fecha_nacimiento, c.fecha_cirugia) AS edad_meses,
+      TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, c.fecha_cirugia) AS edad_anios,
+      pr.codigo AS procedencia_codigo, mu.valor AS municipio, va.valor AS valvulopatia, im.valor AS implante,
+      c.uso_cec, c.cierre_esternal_diferido, c.extubacion_quirofano, up.valor AS unidad_pop, cs.valor AS condicion_salida,
+      s.rehabilitacion_cardiaca, s.reingreso_30_dias, cr.valor AS causa_reingreso
     FROM cirugias_adultos c
     JOIN episodios_adultos ep ON ep.id = c.episodio_id
     JOIN pacientes_adultos p ON p.id = ep.paciente_id
@@ -514,14 +721,20 @@ async function cargarAdultos(desde, hasta) {
     LEFT JOIN opciones_lista pr ON pr.id = p.procedencia_id
     LEFT JOIN opciones_lista sx ON sx.id = p.sexo_id
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
+    LEFT JOIN opciones_lista mu ON mu.id = p.municipio_narino_id
+    LEFT JOIN opciones_lista va ON va.id = d.valvulopatia_id
+    LEFT JOIN opciones_lista im ON im.id = c.implante_id
+    LEFT JOIN opciones_lista up ON up.id = po.unidad_pop_id
+    LEFT JOIN opciones_lista cr ON cr.id = s.causa_reingreso_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
-  const procedimientos = await procedimientosPorCirugia(
-    { cirugias: 'cirugias_adultos', pacientes: 'pacientes_adultos', procedimientos: 'cirugias_adultos_procedimientos' }, desde, hasta)
+  const multiples = await valoresMultiples(DETALLE_ADULTO.tablas)
 
   return crudas.map((f) => etiquetarFila({
     ...f,
     riesgo: categoriaEuroscore(f.euroscore),
-    procedimientos: procedimientos.get(f.cirugia_id) ?? new Set(),
+    edad: edadAdulto(f),
+    edad_anios_decimal: edadDecimal(f),
+    multiples: multiples(f),
   }, RANGOS_ADULTOS))
 }
 
@@ -531,6 +744,7 @@ rutasIndicadores.get('/adultos', asincrono(async (req, res) => {
     filas: await cargarAdultos(desde, hasta),
     filtros,
     rangos: RANGOS_ADULTOS,
+    ordenEdad: EDADES_ADULTOS,
     formatearRiesgo: formatearRiesgoAdultos,
     resumenExtra: (pacientes) => ({
       euroscore_promedio: promedio(pacientes.map((f) => f.euroscore)),
@@ -571,7 +785,7 @@ const DETALLE_PEDIATRICO = {
 const DETALLE_ADULTO = {
   tablas: { cirugias: 'cirugias_adultos', riesgos: 'diagnosticos_adultos_riesgos', procedimientos: 'cirugias_adultos_procedimientos',
     diagnosticos: 'diagnosticos_adultos', complicacionesIntraqx: 'cirugias_adultos_complicaciones_intraqx', complicacionesPop: 'postoperatorio_adultos_complicaciones_pop' },
-  columnas: `d.euroscore, s.llamado_15_dias, po.dias_estancia_uci AS dias_uci, po.dias_hospitalizacion_total AS dias_hospitalizacion,
+  columnas: `d.euroscore, s.llamado_15_dias, ${DIAS_ADULTOS.replace('AS dias_hosp', 'AS dias_hospitalizacion')},
     d.estado_preoperatorio, d.antecedentes_quirurgicos, d.comorbilidades, c.transfusion_intraoperatoria`,
   // Un paciente adulto puede tener varias intervenciones (episodios_adultos); cada una agrupa su
   // propio diagnóstico/postoperatorio/seguimiento, enlazados por episodio_id (no paciente_id), así

@@ -16,6 +16,7 @@ import {
   caracteresPorCategoria,
   COLOR_SIN_DATO,
   esSinDato,
+  MENSAJE_SIN_REGISTRO,
   estaAtenuado,
   OPACIDAD_ATENUADA,
   partirEtiqueta,
@@ -52,6 +53,8 @@ export function GraficoColumnas({ datos, histograma = false, unidad, seleccion, 
   const [ref, ancho] = useAnchoContenedor()
 
   if (datos.length === 0) return <SinDatosGrafico />
+  // Todo en "Sin dato" (o rangos vacíos): no hay distribución que mostrar.
+  if (datos.every((d) => esSinDato(d.etiqueta) || d.valor === 0)) return <SinDatosGrafico mensaje={MENSAJE_SIN_REGISTRO} />
 
   const sufijoUnidad = unidad ? ` ${unidad}` : ''
   const etiquetaEje = (texto: string) => (sufijoUnidad && texto.endsWith(sufijoUnidad) ? texto.slice(0, -sufijoUnidad.length) : texto)

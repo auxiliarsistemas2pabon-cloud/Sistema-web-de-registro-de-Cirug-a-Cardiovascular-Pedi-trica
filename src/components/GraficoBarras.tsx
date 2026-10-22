@@ -15,6 +15,7 @@ import { AlternarTabla, SinDatosGrafico, TablaDatos, TickTruncado, TooltipGrafic
 import {
   COLOR_SIN_DATO,
   esSinDato,
+  MENSAJE_SIN_REGISTRO,
   estaAtenuado,
   OPACIDAD_ATENUADA,
   porcentajeEntero,
@@ -31,7 +32,14 @@ interface Props extends PropsSeleccion {
   alturaPorFila?: number
   /** Añade a la etiqueta de cada barra su porcentaje del total (p. ej. "15 (58%)"). */
   conPorcentaje?: boolean
+  /** Base del porcentaje cuando no es la suma de las barras: en una variable de selección múltiple
+   * (factores de riesgo, complicaciones) un paciente cuenta en varias barras, así que el porcentaje
+   * va sobre los pacientes, no sobre la suma. */
+  totalPorcentaje?: number
 }
+
+/** Caracteres por línea del nombre de cada barra (se parte en dos líneas como máximo). */
+const CARACTERES_POR_LINEA = 26
 
 /** A partir de esta cantidad de barras, ya no se etiqueta cada una (se volvería ruido): el eje y el tooltip siguen llevando el valor. */
 const MAX_BARRAS_CON_ETIQUETA = 8
@@ -39,17 +47,21 @@ const MAX_BARRAS_CON_ETIQUETA = 8
 /** Barras horizontales de una sola serie: la forma para ordenar categorías nominales por cantidad
  * (diagnósticos, procedimientos, EPS, procedencia), sobre todo con nombres largos. Nunca un color
  * por categoría — la identidad no importa aquí, solo la cantidad —, salvo "Sin dato" en gris. */
-export function GraficoBarras({ datos, sufijoValor = '', alturaPorFila = 32, conPorcentaje = false, seleccion, onSeleccionar }: Props) {
+export function GraficoBarras({ datos, sufijoValor = '', alturaPorFila = 32, conPorcentaje = false, totalPorcentaje, seleccion, onSeleccionar }: Props) {
   const [modoTabla, setModoTabla] = useState(false)
 
   if (datos.length === 0) return <SinDatosGrafico />
+  if (datos.every((d) => esSinDato(d.etiqueta))) return <SinDatosGrafico mensaje={MENSAJE_SIN_REGISTRO} />
 
-  const altura = Math.max(datos.length * alturaPorFila, 80)
+  // Si algún nombre se parte en dos líneas, cada fila crece para que no se encimen con la vecina.
+  const filaEfectiva = datos.some((d) => d.etiqueta.length > CARACTERES_POR_LINEA) ? Math.max(alturaPorFila, 42) : alturaPorFila
+  const altura = Math.max(datos.length * filaEfectiva, 80)
   const conEtiquetas = datos.length <= MAX_BARRAS_CON_ETIQUETA
   // El eje de categorías mide lo que pide la etiqueta más larga (~7 px por carácter a 12 px), hasta
-  // 190 px: con un ancho fijo, las etiquetas cortas (rangos de peso, sexo) dejaban media tarjeta vacía.
-  const anchoEje = Math.min(190, Math.max(56, Math.max(...datos.map((d) => d.etiqueta.length)) * 7 + 12))
-  const total = datos.reduce((suma, d) => suma + d.valor, 0)
+  // una línea de CARACTERES_POR_LINEA (las más largas se parten en dos): con un ancho fijo, las
+  // etiquetas cortas (rangos de peso, sexo) dejaban media tarjeta vacía.
+  const anchoEje = Math.max(56, Math.min(CARACTERES_POR_LINEA, Math.max(...datos.map((d) => d.etiqueta.length))) * 7 + 12)
+  const total = totalPorcentaje ?? datos.reduce((suma, d) => suma + d.valor, 0)
   const etiquetaBarra = (v: unknown) => {
     if (typeof v !== 'number') return ''
     return conPorcentaje ? `${v}${sufijoValor} (${porcentajeEntero(v, total)}%)` : `${v}${sufijoValor}`
@@ -59,7 +71,7 @@ export function GraficoBarras({ datos, sufijoValor = '', alturaPorFila = 32, con
     <div className={claseBarrasClicables({ onSeleccionar })}>
       <AlternarTabla modoTabla={modoTabla} onCambiar={setModoTabla} />
       {modoTabla ? (
-        <TablaDatos datos={datos} sufijoValor={sufijoValor} conPorcentaje={conPorcentaje} seleccion={seleccion} onSeleccionar={onSeleccionar} />
+        <TablaDatos datos={datos} sufijoValor={sufijoValor} conPorcentaje={conPorcentaje} totalPorcentaje={totalPorcentaje} seleccion={seleccion} onSeleccionar={onSeleccionar} />
       ) : (
         <ResponsiveContainer width="100%" height={altura}>
           <BarChart
@@ -74,13 +86,13 @@ export function GraficoBarras({ datos, sufijoValor = '', alturaPorFila = 32, con
               dataKey="etiqueta"
               width={anchoEje}
               interval={0}
-              tick={<TickTruncado maxCaracteres={28} />}
+              tick={<TickTruncado maxCaracteres={CARACTERES_POR_LINEA} />}
             />
             <Tooltip
               content={
                 <TooltipGrafico
                   sufijoValor={sufijoValor}
-                  detalle={conPorcentaje ? (d) => `${porcentajeEntero(d.valor, total)}% del total` : undefined}
+                  detalle={conPorcentaje ? (d) => `${porcentajeEntero(d.valor, total)}% ${totalPorcentaje === undefined ? 'del total' : 'de los pacientes'}` : undefined}
                   interactivo={Boolean(onSeleccionar)}
                   seleccion={seleccion}
                 />

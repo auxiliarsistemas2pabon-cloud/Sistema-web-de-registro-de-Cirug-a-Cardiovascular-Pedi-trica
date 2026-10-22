@@ -1,7 +1,7 @@
-import { claveDe, partirEtiqueta, porcentajeEntero, recortar, tienePacientes, type Dato, type PropsSeleccion } from '../lib/graficos'
+import { claveDe, partirEtiqueta, porcentajeEntero, tienePacientes, type Dato, type PropsSeleccion } from '../lib/graficos'
 
-export function SinDatosGrafico() {
-  return <p className="py-8 text-center text-sm text-slate-400">Sin datos para este rango.</p>
+export function SinDatosGrafico({ mensaje = 'Sin datos para este rango.' }: { mensaje?: string }) {
+  return <p className="py-8 text-center text-sm text-slate-400">{mensaje}</p>
 }
 
 /**
@@ -39,10 +39,9 @@ export function TickEnvuelto({
 
 /**
  * Tick del eje Y para barras horizontales con nombres largos (diagnósticos, procedimientos):
- * Recharts no trunca ni mide el texto, así que un nombre largo se envuelve en varias líneas y
- * se encima con la fila de arriba/abajo (cada categoría solo tiene el alto de una barra). En vez
- * de agrandar esa fila para el peor caso, se recorta a una sola línea; el nombre completo queda
- * en el `<title>` (tooltip nativo del navegador) y en el tooltip del gráfico al pasar el mouse.
+ * Recharts no parte ni mide el texto, así que aquí se parte en dos líneas como máximo (caben en el
+ * alto de una fila) y solo lo que aún no quepa se recorta; el nombre completo queda en el
+ * `<title>` (tooltip nativo del navegador) y en el tooltip del gráfico al pasar el mouse.
  */
 export function TickTruncado({
   x,
@@ -56,11 +55,15 @@ export function TickTruncado({
   maxCaracteres?: number
 }) {
   const texto = payload?.value ?? ''
-  const recortado = recortar(texto, maxCaracteres)
+  const lineas = partirEtiqueta(texto, maxCaracteres)
   return (
-    <text x={x} y={y} dy={4} textAnchor="end" fontSize={12} fill="var(--chart-texto-secundario)">
-      {texto !== recortado && <title>{texto}</title>}
-      {recortado}
+    <text x={x} y={y} textAnchor="end" fontSize={12} fill="var(--chart-texto-secundario)">
+      {lineas.join(' ') !== texto && <title>{texto}</title>}
+      {lineas.map((linea, i) => (
+        <tspan key={i} x={x} dy={i === 0 ? (lineas.length > 1 ? -2 : 4) : 13}>
+          {linea}
+        </tspan>
+      ))}
     </text>
   )
 }
@@ -87,14 +90,17 @@ export function TablaDatos({
   datos,
   sufijoValor = '',
   conPorcentaje = false,
+  totalPorcentaje,
   seleccion,
   onSeleccionar,
 }: {
   datos: Dato[]
   sufijoValor?: string
   conPorcentaje?: boolean
+  /** Base del porcentaje, si no es la suma de las filas (ver GraficoBarras). */
+  totalPorcentaje?: number
 } & PropsSeleccion) {
-  const total = datos.reduce((suma, d) => suma + d.valor, 0)
+  const total = totalPorcentaje ?? datos.reduce((suma, d) => suma + d.valor, 0)
   return (
     <table className="w-full text-left text-sm">
       <thead className="text-xs uppercase tracking-wide text-slate-500">
