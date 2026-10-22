@@ -2,6 +2,8 @@ import type { ReactNode } from 'react'
 
 interface Props {
   titulo?: ReactNode
+  /** Una línea bajo el título que dice cómo leer el contenido (p. ej. qué cuenta un gráfico). */
+  descripcion?: ReactNode
   icono?: ReactNode
   contador?: number
   /** Contenido alineado a la derecha del encabezado (botones, enlaces). */
@@ -13,7 +15,7 @@ interface Props {
 /** Tarjeta blanca con borde y sombra sutil, con un encabezado opcional (icono + título + contador).
     Usa overflow-clip (no overflow-hidden) para recortar las esquinas: overflow-hidden convierte a la
     tarjeta en contenedor de scroll y un encabezado de tabla "sticky" dentro de ella nunca se pega. */
-export function Tarjeta({ titulo, icono, contador, acciones, className = '', children }: Props) {
+export function Tarjeta({ titulo, descripcion, icono, contador, acciones, className = '', children }: Props) {
   return (
     <div className={`overflow-clip rounded-xl border border-slate-200/80 bg-white shadow-[var(--sombra-tarjeta)] ${className}`}>
       {titulo && (
@@ -23,7 +25,10 @@ export function Tarjeta({ titulo, icono, contador, acciones, className = '', chi
               {icono}
             </span>
           )}
-          <h2 className="text-[15px] font-semibold text-slate-900">{titulo}</h2>
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold text-slate-900">{titulo}</h2>
+            {descripcion && <p className="mt-0.5 text-xs leading-snug text-slate-500">{descripcion}</p>}
+          </div>
           {contador !== undefined && (
             <span className="inline-flex h-5 min-w-5 flex-none items-center justify-center rounded-full bg-slate-100 px-1.5 text-xs font-semibold tabular-nums text-slate-600">
               {contador}

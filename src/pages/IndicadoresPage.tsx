@@ -8,7 +8,8 @@ import { GraficoBarras } from '../components/GraficoBarras'
 import { GraficoColumnas } from '../components/GraficoColumnas'
 import { GraficoDona, type Segmento } from '../components/GraficoDona'
 import { GraficoLineaTiempo } from '../components/GraficoLineaTiempo'
-import { GraficoPuntos } from '../components/GraficoPuntos'
+import { GraficoPuntos, type DatoTasa } from '../components/GraficoPuntos'
+import { GraficoSiNo } from '../components/GraficoSiNo'
 import { Tarjeta } from '../components/Tarjeta'
 import {
   IconoAlerta,
@@ -55,8 +56,14 @@ interface Resumen {
   tasa_complicacion_intraqx_pct: number | null
   tasa_complicacion_pop_pct: number | null
   tasa_reingreso_30d_pct: number | null
+  fallecidos: number
+  con_complicacion_intraqx: number
+  con_complicacion_pop: number
+  reingresos: number
   tiempo_cec_promedio: number | null
+  tiempo_cec_mediana: number | null
   tiempo_clamp_promedio: number | null
+  tiempo_clamp_mediana: number | null
   // Solo en el grupo adultos.
   euroscore_promedio?: number | null
   euroscore_mediana?: number | null
@@ -65,6 +72,37 @@ interface Resumen {
 /** Conteo de pacientes por categoría o por rango (las distribuciones vienen ya agrupadas del servidor). */
 type Conteo = { categoria: string; total_cirugias: number }[]
 const aDatos = (conteo: Conteo) => conteo.map((d) => ({ etiqueta: d.categoria, valor: d.total_cirugias }))
+
+/** Variable de selección múltiple: cada paciente cuenta en cada valor que tenga, así que el
+ * porcentaje va sobre los pacientes (no sobre la suma de las barras). */
+type ConteoMultiple = { pacientes: number; con_alguno: number; conteo: Conteo }
+const aMultiple = (m: ConteoMultiple) => ({ pacientes: m.pacientes, conAlguno: m.con_alguno, datos: aDatos(m.conteo) })
+
+/** Indicadores clave de un trimestre: casos de cada desenlace sobre las cirugías del trimestre. */
+type Trimestre = {
+  trimestre: string
+  total_cirugias: number
+  fallecidos: number
+  complicacion_intraqx: number
+  complicacion_pop: number
+  reingresos: number
+}
+type CasosTrimestre = Exclude<keyof Trimestre, 'trimestre' | 'total_cirugias'>
+
+/** Tasa (%) de un desenlace por trimestre, con sus casos y total para el tooltip. La clave
+ * ("2026-T1") es la que entiende el filtro del servidor. */
+function tasasTrimestre(trimestres: Trimestre[], casos: CasosTrimestre): DatoTasa[] {
+  return trimestres.map((t) => {
+    const [anio, q] = t.trimestre.split('-')
+    return {
+      etiqueta: `${q} ${anio}`,
+      clave: t.trimestre,
+      valor: t.total_cirugias ? Math.round((1000 * t[casos]) / t.total_cirugias) / 10 : 0,
+      casos: t[casos],
+      total: t.total_cirugias,
+    }
+  })
+}
 
 type ConteoRiesgo = { total_cirugias: number; fallecidos: number; mortalidad_pct: number }
 type GrupoHerida = 'adecuada' | 'alteracion' | 'no_aplica' | 'sin_registrar'
@@ -109,8 +147,31 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
       const parametroFiltros = enviados.length ? `&filtros=${encodeURIComponent(JSON.stringify(enviados))}` : ''
       const r = await api.get<{
         resumen: Resumen
-        estadisticas: Record<'peso' | 'talla' | 'superficie_corporal' | 'dias_uci' | 'horas_vm', Estadisticas>
+        estadisticas: Record<
+          'peso' | 'talla' | 'superficie_corporal' | 'dias_uci' | 'horas_vm' | 'dias_hosp' | 'edad_anios' | 'tiempo_cec' | 'tiempo_clamp',
+          Estadisticas
+        >
         por_mes: { anio: number; mes: number; total_cirugias: number }[]
+        por_anio: Conteo
+        por_trimestre: Trimestre[]
+        por_complicacion_intraqx: ConteoMultiple
+        por_complicacion_pop: ConteoMultiple
+        por_reingreso: Conteo
+        por_causa_reingreso: Conteo
+        por_condicion_salida: Conteo
+        por_valvulopatia: Conteo
+        por_factor_riesgo: ConteoMultiple
+        por_implante: Conteo
+        por_uso_cec: Conteo
+        por_tiempo_cec: Conteo
+        por_tiempo_clamp: Conteo
+        por_cierre_esternal: Conteo
+        por_extubacion: Conteo
+        por_unidad_pop: Conteo
+        por_dias_hosp: Conteo
+        por_rehabilitacion: Conteo
+        por_edad: Conteo
+        por_municipio: Conteo
         por_diagnostico: { diagnostico: string; total_cirugias: number }[]
         por_procedimiento: { procedimiento: string; total_cirugias: number }[]
         por_rachs?: ({ rachs: string } & ConteoRiesgo)[]
@@ -135,6 +196,26 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         resumen: r.resumen,
         estadisticas: r.estadisticas,
         porMes: mesesContinuos(r.por_mes),
+        porAnio: aDatos(r.por_anio),
+        porTrimestre: r.por_trimestre,
+        porComplicacionIntraqx: aMultiple(r.por_complicacion_intraqx),
+        porComplicacionPop: aMultiple(r.por_complicacion_pop),
+        porReingreso: aDatos(r.por_reingreso),
+        porCausaReingreso: aDatos(r.por_causa_reingreso),
+        porCondicionSalida: aDatos(r.por_condicion_salida),
+        porValvulopatia: aDatos(r.por_valvulopatia),
+        porFactorRiesgo: aMultiple(r.por_factor_riesgo),
+        porImplante: aDatos(r.por_implante),
+        porUsoCec: aDatos(r.por_uso_cec),
+        porTiempoCec: aDatos(r.por_tiempo_cec),
+        porTiempoClamp: aDatos(r.por_tiempo_clamp),
+        porCierreEsternal: aDatos(r.por_cierre_esternal),
+        porExtubacion: aDatos(r.por_extubacion),
+        porUnidadPop: aDatos(r.por_unidad_pop),
+        porDiasHosp: aDatos(r.por_dias_hosp),
+        porRehabilitacion: aDatos(r.por_rehabilitacion),
+        porEdad: aDatos(r.por_edad),
+        porMunicipio: aDatos(r.por_municipio),
         porDiagnostico: r.por_diagnostico.map((d) => ({ etiqueta: d.diagnostico, valor: d.total_cirugias })),
         porProcedimiento: r.por_procedimiento.map((d) => ({ etiqueta: d.procedimiento, valor: d.total_cirugias })),
         porRiesgoTotal: riesgo.map((d) => ({ etiqueta: d.etiqueta, clave: d.clave, valor: d.total_cirugias })),
@@ -212,6 +293,26 @@ function segmentosHerida(grupos: { grupo: GrupoHerida; total: number; categorias
   }))
 }
 
+/** Respuestas Sí/No de la ficha en una dona. Colores fijos por respuesta (nunca por posición). Si el
+ * "Sí" es un desenlace malo (un reingreso), va en el rojo de estado crítico. */
+function segmentosSiNo(conteo: Dato[], siEsAdverso = false): Segmento[] {
+  const colores: Record<string, string> = {
+    Sí: siEsAdverso ? 'var(--status-critical)' : 'var(--chart-cat-1)',
+    No: siEsAdverso ? 'var(--chart-azul)' : 'var(--chart-cat-3)',
+    'No aplica': 'var(--chart-no-aplica)',
+  }
+  return conteo.map((d) => ({ ...d, color: colores[d.etiqueta] ?? COLOR_SIN_DATO }))
+}
+
+/** Pie de un gráfico de selección múltiple: de qué total sale el porcentaje y cuántos no tienen ninguno. */
+function NotaMultiple({ pacientes, conAlguno, ninguno }: { pacientes: number; conAlguno: number; ninguno: string }) {
+  return (
+    <p className="mt-3 text-xs text-slate-500">
+      Un paciente puede tener más de uno: el porcentaje es sobre los {pacientes} pacientes. {pacientes - conAlguno} {ninguno}.
+    </p>
+  )
+}
+
 function num(v: number | null | undefined, decimales = 1): string {
   if (v === null || v === undefined) return '—'
   return v.toFixed(decimales)
@@ -219,13 +320,16 @@ function num(v: number | null | undefined, decimales = 1): string {
 
 /** El tablero se recorre por categorías, una a la vez, en vez de una sola página con todos los
  * gráficos apilados. La pestaña activa va en la URL (?vista=…) para que sobreviva a una recarga.
- * Van en el orden de los módulos de la ficha (paciente, riesgo y cirugía, postoperatorio), con la
+ * Tras el resumen van los indicadores clave del servicio (mortalidad, complicaciones, reingreso) y
+ * luego los módulos de la ficha en su orden (paciente, riesgo, cirugía, postoperatorio), con la
  * matriz por paciente al final, como consulta de detalle. */
 const PESTANAS = [
   { clave: 'resumen', etiqueta: 'Resumen', icono: <IconoGrafico /> },
+  { clave: 'clave', etiqueta: 'Indicadores clave', etiquetaCorta: 'Indicadores', icono: <IconoAlerta /> },
   { clave: 'pacientes', etiqueta: 'Pacientes', icono: <IconoPacientes /> },
-  { clave: 'riesgo', etiqueta: 'Riesgo y cirugía', icono: <IconoCorazon /> },
-  { clave: 'postoperatorio', etiqueta: 'Postoperatorio', icono: <IconoReloj /> },
+  { clave: 'riesgo', etiqueta: 'Riesgo y diagnóstico', etiquetaCorta: 'Riesgo', icono: <IconoEscudo /> },
+  { clave: 'cirugia', etiqueta: 'Cirugía', icono: <IconoCorazon /> },
+  { clave: 'postoperatorio', etiqueta: 'Postoperatorio y egreso', etiquetaCorta: 'Postoperatorio', icono: <IconoReloj /> },
   { clave: 'matriz', etiqueta: 'Matriz de resumen', etiquetaCorta: 'Matriz', icono: <IconoLista /> },
 ] as const
 
@@ -237,6 +341,47 @@ function useVista(): [Vista, (vista: Vista) => void] {
   // replace: cambiar de pestaña no deja una entrada por cada clic en el historial del navegador.
   return [vista, (nueva) => setParams({ vista: nueva }, { replace: true })]
 }
+
+/** Los cuatro indicadores clave con tasa: cada uno con su tendencia por trimestre y su tasa del periodo. */
+const INDICADORES_CLAVE: {
+  titulo: string
+  descripcion: string
+  casos: CasosTrimestre
+  global: 'mortalidad_hospitalaria_pct' | 'tasa_complicacion_intraqx_pct' | 'tasa_complicacion_pop_pct' | 'tasa_reingreso_30d_pct'
+  nombreCasos: [string, string]
+}[] = [
+  {
+    titulo: 'Mortalidad hospitalaria',
+    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos fallecieron antes del egreso.',
+    casos: 'fallecidos',
+    global: 'mortalidad_hospitalaria_pct',
+    nombreCasos: ['fallecido', 'fallecidos'],
+  },
+  {
+    titulo: 'Complicación intraquirúrgica',
+    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos tuvieron una complicación en quirófano.',
+    casos: 'complicacion_intraqx',
+    global: 'tasa_complicacion_intraqx_pct',
+    nombreCasos: ['paciente con complicación', 'pacientes con complicación'],
+  },
+  {
+    titulo: 'Complicación postoperatoria',
+    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos tuvieron una complicación después de la cirugía.',
+    casos: 'complicacion_pop',
+    global: 'tasa_complicacion_pop_pct',
+    nombreCasos: ['paciente con complicación', 'pacientes con complicación'],
+  },
+  {
+    titulo: 'Reingreso a 30 días',
+    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos volvieron a la institución en los 30 días siguientes al egreso.',
+    casos: 'reingresos',
+    global: 'tasa_reingreso_30d_pct',
+    nombreCasos: ['reingreso', 'reingresos'],
+  },
+]
+
+/** Base de una tasa, bajo la cifra: "9 de 71 pacientes". */
+const deTotal = (casos: number, total: number) => `${casos} de ${total} ${total === 1 ? 'paciente' : 'pacientes'}`
 
 /** Mediana junto al título de un gráfico de distribución (nada si no hay datos). */
 function Mediana({ valor, unidad, decimales = 1 }: { valor: number | null | undefined; unidad: string; decimales?: number }) {
@@ -388,8 +533,8 @@ export function IndicadoresPage() {
       </Tarjeta>
 
       {/* En el celular las pestañas van en una cuadrícula de 2 columnas (la última, si queda sola,
-          ocupa la fila completa); desde sm, en una sola fila. */}
-      <div role="tablist" className="mb-6 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:inline-flex">
+          ocupa la fila completa), en tabletas de 4, y desde xl en una sola fila. */}
+      <div role="tablist" className="mb-6 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-4 xl:inline-flex">
         {PESTANAS.map((p) => (
           <button
             key={p.clave}
@@ -397,7 +542,7 @@ export function IndicadoresPage() {
             role="tab"
             aria-selected={vista === p.clave}
             onClick={() => setVista(p.clave)}
-            className={`flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors last:odd:col-span-2 ${
+            className={`flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors max-sm:last:odd:col-span-2 ${
               vista === p.clave ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
@@ -438,28 +583,38 @@ export function IndicadoresPage() {
                   etiqueta="Mortalidad hospitalaria"
                   valor={`${num(data.resumen.mortalidad_hospitalaria_pct)}%`}
                   tono="critico"
+                  detalle={deTotal(data.resumen.fallecidos, data.resumen.total_cirugias)}
                   icono={<IconoAlerta className="h-4 w-4" />}
                 />
                 <TarjetaKpi
                   etiqueta="Complicación intraquirúrgica"
                   valor={`${num(data.resumen.tasa_complicacion_intraqx_pct)}%`}
+                  detalle={deTotal(data.resumen.con_complicacion_intraqx, data.resumen.total_cirugias)}
                   icono={<IconoEscudo className="h-4 w-4" />}
                 />
                 <TarjetaKpi
                   etiqueta="Complicación postoperatoria"
                   valor={`${num(data.resumen.tasa_complicacion_pop_pct)}%`}
+                  detalle={deTotal(data.resumen.con_complicacion_pop, data.resumen.total_cirugias)}
                   icono={<IconoEscudo className="h-4 w-4" />}
                 />
                 <TarjetaKpi
                   etiqueta="Reingreso a 30 días"
                   valor={`${num(data.resumen.tasa_reingreso_30d_pct)}%`}
+                  detalle={deTotal(data.resumen.reingresos, data.resumen.total_cirugias)}
                   icono={<IconoRegresar className="h-4 w-4" />}
                 />
               </div>
 
-              <Tarjeta titulo="Cirugías por mes">
-                <GraficoLineaTiempo datos={data.porMes} {...interaccion('mes')} />
-              </Tarjeta>
+              {/* El mes muestra la tendencia; el año, el volumen comparable entre años. */}
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+                <Tarjeta titulo="Cirugías por mes" descripcion="Número de cirugías realizadas cada mes." className="lg:col-span-2">
+                  <GraficoLineaTiempo datos={data.porMes} {...interaccion('mes')} />
+                </Tarjeta>
+                <Tarjeta titulo="Cirugías por año" descripcion="Número de cirugías realizadas cada año.">
+                  <GraficoColumnas datos={data.porAnio} {...interaccion('anio')} />
+                </Tarjeta>
+              </div>
 
               <Tarjeta titulo="Tiempos y estancia (promedio / mediana)">
                 <div className="-mx-5 -my-2 overflow-x-auto">
@@ -476,8 +631,8 @@ export function IndicadoresPage() {
                         { etiqueta: 'Días en UCI', promedio: data.resumen.dias_uci_promedio, mediana: data.resumen.dias_uci_mediana },
                         { etiqueta: 'Días de hospitalización', promedio: data.resumen.dias_hospitalizacion_promedio, mediana: data.resumen.dias_hospitalizacion_mediana },
                         { etiqueta: 'Horas de ventilación mecánica', promedio: data.resumen.horas_ventilacion_promedio, mediana: data.resumen.horas_ventilacion_mediana },
-                        { etiqueta: 'Tiempo de CEC (min)', promedio: data.resumen.tiempo_cec_promedio, mediana: undefined },
-                        { etiqueta: 'Tiempo de clamp de aorta (min)', promedio: data.resumen.tiempo_clamp_promedio, mediana: undefined },
+                        { etiqueta: 'Tiempo de CEC (min)', promedio: data.resumen.tiempo_cec_promedio, mediana: data.resumen.tiempo_cec_mediana },
+                        { etiqueta: 'Tiempo de clamp de aorta (min)', promedio: data.resumen.tiempo_clamp_promedio, mediana: data.resumen.tiempo_clamp_mediana },
                         ...(grupo === 'adultos'
                           ? [{ etiqueta: 'EuroSCORE (%)', promedio: data.resumen.euroscore_promedio, mediana: data.resumen.euroscore_mediana, decimales: 2 }]
                           : []),
@@ -485,9 +640,7 @@ export function IndicadoresPage() {
                         <tr key={fila.etiqueta}>
                           <th scope="row" className="px-5 py-2.5 font-normal">{fila.etiqueta}</th>
                           <td className="px-5 py-2.5 text-right font-medium tabular-nums">{num(fila.promedio, fila.decimales)}</td>
-                          <td className="px-5 py-2.5 text-right font-medium tabular-nums">
-                            {fila.mediana === undefined ? '—' : num(fila.mediana, fila.decimales)}
-                          </td>
+                          <td className="px-5 py-2.5 text-right font-medium tabular-nums">{num(fila.mediana, fila.decimales)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -497,36 +650,102 @@ export function IndicadoresPage() {
             </div>
           )}
 
+          {/* Los indicadores clave del servicio: primero cómo evoluciona cada tasa (por trimestre, con
+              sus casos y su total en el tooltip), luego de qué está hecha (tipos y causas). */}
+          {vista === 'clave' && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                {INDICADORES_CLAVE.map((indicador) => (
+                  <Tarjeta key={indicador.casos} titulo={`${indicador.titulo} por trimestre (%)`} descripcion={indicador.descripcion}>
+                    <GraficoPuntos
+                      datos={tasasTrimestre(data.porTrimestre, indicador.casos)}
+                      nombreCasos={indicador.nombreCasos}
+                      referencia={
+                        data.resumen[indicador.global] === null
+                          ? undefined
+                          : { valor: data.resumen[indicador.global] ?? 0, etiqueta: `Promedio del periodo ${num(data.resumen[indicador.global])}%` }
+                      }
+                      {...interaccion('trimestre')}
+                    />
+                  </Tarjeta>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Tarjeta titulo="Complicaciones intraquirúrgicas por tipo" descripcion="Cuántos pacientes tuvieron cada complicación en quirófano.">
+                  <GraficoBarras
+                    datos={data.porComplicacionIntraqx.datos}
+                    conPorcentaje
+                    totalPorcentaje={data.porComplicacionIntraqx.pacientes}
+                    {...interaccion('complicacion_intraqx')}
+                  />
+                  <NotaMultiple {...data.porComplicacionIntraqx} ninguno="sin complicación intraquirúrgica registrada" />
+                </Tarjeta>
+                <Tarjeta titulo="Complicaciones postoperatorias por tipo" descripcion="Cuántos pacientes tuvieron cada complicación después de la cirugía.">
+                  <GraficoBarras
+                    datos={data.porComplicacionPop.datos}
+                    conPorcentaje
+                    totalPorcentaje={data.porComplicacionPop.pacientes}
+                    {...interaccion('complicacion_pop')}
+                  />
+                  <NotaMultiple {...data.porComplicacionPop} ninguno="sin complicación postoperatoria registrada" />
+                </Tarjeta>
+                <Tarjeta
+                  titulo="Reingreso a la institución en los primeros 30 días"
+                  descripcion="Según el seguimiento post-egreso (Módulo 5). No incluye a los pacientes fallecidos."
+                >
+                  <GraficoSiNo
+                    segmentos={segmentosSiNo(data.porReingreso, true)}
+                    unidad="pacientes con seguimiento"
+                    significado="reingresaron"
+                    {...interaccion('reingreso')}
+                  />
+                </Tarjeta>
+                <Tarjeta titulo="Causa de reingreso" descripcion="Por qué volvieron los pacientes que reingresaron.">
+                  <GraficoBarras datos={data.porCausaReingreso} conPorcentaje {...interaccion('causa_reingreso')} />
+                </Tarjeta>
+              </div>
+            </div>
+          )}
+
           {/* Peso, talla y superficie corporal se agrupan en rangos fijos de uso clínico (definidos en
               server/rutas-consultas.mjs), distintos para niños y adultos: histogramas en el orden de
               los rangos, no el de la cantidad, para que se lea la forma de la distribución. */}
           {vista === 'pacientes' && (
             <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
               {/* La EPS va de segunda, junto al sexo (pedido del equipo); el resto sigue en filas de alto
-                  parecido: la procedencia con el peso, y la talla con la superficie corporal. */}
-              <Tarjeta titulo="Cirugías por sexo">
+                  parecido: la procedencia con su municipio, la edad con el peso, y la talla con la
+                  superficie corporal. */}
+              <Tarjeta titulo="Cirugías por sexo" descripcion="Proporción de pacientes operados de cada sexo.">
                 <GraficoDona segmentos={segmentosSexo(data.porSexo, opcionesSexo?.map((o) => o.valor) ?? [])} {...interaccion('sexo')} />
               </Tarjeta>
-              <Tarjeta titulo="Distribución por EPS">
+              <Tarjeta titulo="Distribución por EPS" descripcion="Cuántos pacientes operados tiene cada EPS.">
                 <GraficoBarras datos={data.porEps} conPorcentaje {...interaccion('eps')} />
               </Tarjeta>
-              <Tarjeta titulo="Distribución por procedencia">
+              <Tarjeta titulo="Distribución por procedencia" descripcion="De qué departamento vienen los pacientes operados.">
                 <GraficoBarras datos={data.porProcedencia} conPorcentaje {...interaccion('procedencia')} />
               </Tarjeta>
-              <Tarjeta titulo="Cirugías por peso" acciones={<Mediana valor={data.estadisticas.peso.mediana} unidad="kg" />}>
+              <Tarjeta titulo="Procedencia por municipio de Nariño" descripcion="De qué municipio vienen los pacientes de Nariño.">
+                <GraficoBarras datos={data.porMunicipio} conPorcentaje {...interaccion('municipio')} />
+              </Tarjeta>
+              <Tarjeta
+                titulo="Cirugías por edad"
+                descripcion="Cuántos pacientes hay en cada grupo de edad, según la edad cumplida el día de la cirugía."
+                acciones={<Mediana valor={data.estadisticas.edad_anios.mediana} unidad="años" />}>
+                <GraficoColumnas datos={data.porEdad} histograma {...interaccion('edad')} />
+              </Tarjeta>
+              <Tarjeta titulo="Cirugías por peso" descripcion="Cuántos pacientes hay en cada rango de peso." acciones={<Mediana valor={data.estadisticas.peso.mediana} unidad="kg" />}>
                 <GraficoColumnas datos={data.porPeso} histograma unidad="kg" {...interaccion('peso')} />
               </Tarjeta>
-              <Tarjeta titulo="Cirugías por talla" acciones={<Mediana valor={data.estadisticas.talla.mediana} unidad="cm" />}>
+              <Tarjeta titulo="Cirugías por talla" descripcion="Cuántos pacientes hay en cada rango de talla." acciones={<Mediana valor={data.estadisticas.talla.mediana} unidad="cm" />}>
                 <GraficoColumnas datos={data.porTalla} histograma unidad="cm" {...interaccion('talla')} />
               </Tarjeta>
               <Tarjeta
                 titulo="Cirugías por superficie corporal"
+                descripcion="Calculada con (peso en kg × 4 + 7) ÷ (peso en kg + 90), con el peso del Módulo 1."
                 acciones={<Mediana valor={data.estadisticas.superficie_corporal.mediana} unidad="m²" decimales={2} />}
               >
                 <GraficoColumnas datos={data.porSuperficieCorporal} histograma unidad="m²" {...interaccion('superficie')} />
-                <p className="mt-3 text-xs text-slate-500">
-                  Calculada con la fórmula (peso en kg × 4 + 7) ÷ (peso en kg + 90), con el peso del Módulo 1.
-                </p>
               </Tarjeta>
             </div>
           )}
@@ -536,40 +755,99 @@ export function IndicadoresPage() {
               {/* Columnas para la escala ordinal de riesgo y puntos para la tasa de mortalidad: mismas
                   categorías, en el mismo orden, una junto a la otra (y el mismo filtro). */}
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Tarjeta titulo={`Cirugías por ${tituloRiesgo}`}>
+                <Tarjeta titulo={`Cirugías por ${tituloRiesgo}`} descripcion="Cuántos pacientes hay en cada categoría de riesgo quirúrgico.">
                   <GraficoColumnas datos={data.porRiesgoTotal} {...interaccion('riesgo')} />
                 </Tarjeta>
-                <Tarjeta titulo={`Mortalidad por ${tituloRiesgo} (%)`}>
+                <Tarjeta titulo={`Mortalidad por ${tituloRiesgo} (%)`} descripcion="De cada 100 pacientes de cada categoría de riesgo, cuántos fallecieron.">
                   <GraficoPuntos datos={data.porRiesgoMortalidad} nombreCasos={['fallecido', 'fallecidos']} {...interaccion('riesgo')} />
                 </Tarjeta>
               </div>
 
-              <Tarjeta titulo="Cirugías por diagnóstico">
+              <Tarjeta titulo="Cirugías por diagnóstico" descripcion="Cuántos pacientes operados tienen cada diagnóstico.">
                 <GraficoBarras datos={data.porDiagnostico} {...interaccion('diagnostico')} />
               </Tarjeta>
 
-              <Tarjeta titulo="Cirugías por procedimiento">
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Tarjeta titulo="Tipo de valvulopatía" descripcion="Solo los pacientes con diagnóstico de valvulopatía.">
+                  <GraficoBarras datos={data.porValvulopatia} conPorcentaje {...interaccion('valvulopatia')} />
+                </Tarjeta>
+                <Tarjeta titulo="Factores de riesgo" descripcion="Cuántos pacientes tienen cada factor de riesgo.">
+                  <GraficoBarras
+                    datos={data.porFactorRiesgo.datos}
+                    conPorcentaje
+                    totalPorcentaje={data.porFactorRiesgo.pacientes}
+                    {...interaccion('factor_riesgo')}
+                  />
+                  <NotaMultiple {...data.porFactorRiesgo} ninguno="sin factores de riesgo registrados" />
+                </Tarjeta>
+              </div>
+            </div>
+          )}
+
+          {/* El acto quirúrgico: qué se hizo, con qué y cómo terminó en el quirófano. Las preguntas
+              Sí/No van en donas; los tiempos, en histogramas con su mediana. */}
+          {vista === 'cirugia' && (
+            <div className="space-y-4">
+              <Tarjeta titulo="Procedimiento quirúrgico realizado" descripcion="Cuántas veces se realizó cada procedimiento.">
                 <GraficoBarras datos={data.porProcedimiento} {...interaccion('procedimiento')} />
               </Tarjeta>
+
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Tarjeta titulo="Tipo de implante" descripcion="Cuántas cirugías usaron cada tipo de implante (sin contar las que no llevaron, N/A).">
+                  <GraficoBarras datos={data.porImplante} conPorcentaje {...interaccion('implante')} />
+                </Tarjeta>
+                <Tarjeta titulo="Uso de circulación extracorpórea" descripcion="¿La cirugía se hizo con circulación extracorpórea (CEC)?">
+                  <GraficoSiNo segmentos={segmentosSiNo(data.porUsoCec)} significado="con circulación extracorpórea" {...interaccion('uso_cec')} />
+                </Tarjeta>
+                <Tarjeta
+                  titulo="Tiempo de circulación extracorpórea" descripcion="Cuántas cirugías con CEC duraron cada rango de minutos en bomba."
+                  acciones={<Mediana valor={data.estadisticas.tiempo_cec.mediana} unidad="min" decimales={0} />}
+                >
+                  <GraficoColumnas datos={data.porTiempoCec} histograma unidad="min" {...interaccion('tiempo_cec')} />
+                </Tarjeta>
+                <Tarjeta
+                  titulo="Tiempo de clamp de aorta" descripcion="Cuántas cirugías con CEC tuvieron la aorta pinzada cada rango de minutos."
+                  acciones={<Mediana valor={data.estadisticas.tiempo_clamp.mediana} unidad="min" decimales={0} />}
+                >
+                  <GraficoColumnas datos={data.porTiempoClamp} histograma unidad="min" {...interaccion('tiempo_clamp')} />
+                </Tarjeta>
+                <Tarjeta titulo="Cierre esternal diferido" descripcion="¿Se dejó el esternón abierto para cerrarlo en un segundo tiempo?">
+                  <GraficoSiNo segmentos={segmentosSiNo(data.porCierreEsternal)} significado="con cierre esternal diferido" {...interaccion('cierre_esternal')} />
+                </Tarjeta>
+                <Tarjeta titulo="Extubación en quirófano" descripcion="¿El paciente salió del quirófano ya extubado?">
+                  <GraficoSiNo segmentos={segmentosSiNo(data.porExtubacion)} significado="con extubación en quirófano" {...interaccion('extubacion')} />
+                </Tarjeta>
+              </div>
             </div>
           )}
 
           {vista === 'postoperatorio' && (
-            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 xl:grid-cols-3">
-              <Tarjeta titulo="Cirugías por días de estancia en UCI" acciones={<Mediana valor={data.estadisticas.dias_uci.mediana} unidad="días" />}>
-                <GraficoColumnas datos={data.porDiasUci} histograma unidad="días" {...interaccion('dias_uci')} />
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <Tarjeta titulo="Unidad del paciente en el postoperatorio" descripcion="A qué unidad pasó cada paciente después de la cirugía.">
+                <GraficoBarras datos={data.porUnidadPop} conPorcentaje {...interaccion('unidad_pop')} />
               </Tarjeta>
-              <Tarjeta
-                titulo="Cirugías por horas de ventilación mecánica"
-                acciones={<Mediana valor={data.estadisticas.horas_vm.mediana} unidad="h" />}
-              >
+              <Tarjeta titulo="Cirugías por horas de ventilación mecánica" descripcion="Cuántos pacientes estuvieron conectados al ventilador cada rango de horas." acciones={<Mediana valor={data.estadisticas.horas_vm.mediana} unidad="h" />}>
                 <GraficoColumnas datos={data.porHorasVm} histograma unidad="h" {...interaccion('horas_vm')} />
               </Tarjeta>
-              <Tarjeta titulo="Estado de la herida quirúrgica" className="lg:col-span-2 xl:col-span-1">
+              <Tarjeta titulo="Días de estancia en UCI" descripcion="Cuántos pacientes estuvieron en UCI cada rango de días después de la cirugía." acciones={<Mediana valor={data.estadisticas.dias_uci.mediana} unidad="días" />}>
+                <GraficoColumnas datos={data.porDiasUci} histograma unidad="días" {...interaccion('dias_uci')} />
+              </Tarjeta>
+              <Tarjeta titulo="Días totales de hospitalización" descripcion="Cuántos pacientes estuvieron hospitalizados cada rango de días después de la cirugía." acciones={<Mediana valor={data.estadisticas.dias_hosp.mediana} unidad="días" />}>
+                <GraficoColumnas datos={data.porDiasHosp} histograma unidad="días" {...interaccion('dias_hosp')} />
+              </Tarjeta>
+              <Tarjeta titulo="Condición de egreso" descripcion="En qué condición salió cada paciente de la institución.">
+                <GraficoBarras datos={data.porCondicionSalida} conPorcentaje {...interaccion('condicion_salida')} />
+              </Tarjeta>
+              <Tarjeta titulo="Terapia de rehabilitación cardíaca" descripcion="Según el seguimiento post-egreso. No incluye a los pacientes fallecidos.">
+                <GraficoSiNo
+                  segmentos={segmentosSiNo(data.porRehabilitacion)}
+                  unidad="pacientes con seguimiento"
+                  significado="recibieron terapia de rehabilitación cardíaca"
+                  {...interaccion('rehabilitacion')}
+                />
+              </Tarjeta>
+              <Tarjeta titulo="Estado de la herida quirúrgica" descripcion="Cómo estaba la herida en el control post-egreso. No incluye a los pacientes fallecidos." className="lg:col-span-2">
                 <GraficoDona segmentos={segmentosHerida(data.porHeridaGrupo)} {...interaccion('herida_grupo')} />
-                <p className="mt-4 text-xs text-slate-500">
-                  Según el seguimiento post-egreso (Módulo 5). No incluye a los pacientes fallecidos, para quienes el seguimiento no aplica.
-                </p>
               </Tarjeta>
             </div>
           )}

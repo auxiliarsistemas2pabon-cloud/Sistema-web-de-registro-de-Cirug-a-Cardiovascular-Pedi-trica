@@ -63,6 +63,10 @@ export function seleccionarPorIndice(datos: Dato[], estado: { activeIndex?: unkn
 export const COLOR_SIN_DATO = 'var(--chart-sin-dato)'
 export const esSinDato = (etiqueta: string) => /^sin /i.test(etiqueta)
 
+/** Un gráfico en el que ningún paciente tiene el dato (todo es "Sin dato") no muestra una sola
+ * barra gris enorme: dice que el dato no se ha registrado. */
+export const MENSAJE_SIN_REGISTRO = 'Ningún paciente del periodo tiene este dato registrado.'
+
 /** Porcentaje entero de una parte sobre el total (0 si no hay total). */
 export const porcentajeEntero = (valor: number, total: number) => (total ? Math.round((valor / total) * 100) : 0)
 
