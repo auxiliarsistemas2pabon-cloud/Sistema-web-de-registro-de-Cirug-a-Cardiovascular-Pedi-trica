@@ -3,118 +3,106 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseAccionCampo, claseBotonAgregar, claseInput } from '../../components/Campo'
+import { FilaProcedimiento } from '../../components/FilaProcedimiento'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { IconoCerrar, IconoMas } from '../../components/iconos'
-import { SelectOpciones } from '../../components/SelectOpciones'
 import { SeleccionMultiple } from '../../components/SeleccionMultiple'
-import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo3Adulto } from '../../lib/completitud'
+import { especificacionesElegidas, sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
+import { procedimientosIniciales, procedimientosParaGuardar, type ProcedimientoFormulario } from '../../lib/procedimientos'
 import { api, mensajeDe } from '../../lib/api'
-import type { PacienteAdultoDetalle } from '../../types/db'
+import type { PacienteAdultoDetalle, ProcedimientoGuardado } from '../../types/db'
 import { Cargando, MensajeError } from '../../components/Estados'
 
 interface CirugiaAdultoDetalle {
   id: string
   fecha_cirugia: string | null
-  implante_id: string | null
-  numero_implante: string | null
   uso_cec: 'SI' | 'NO' | null
   tiempo_cec_min: number | null
   tiempo_clamp_min: number | null
   cierre_esternal_diferido: 'SI' | 'NO' | null
   extubacion_quirofano: 'SI' | 'NO' | null
-  transfusion_intraoperatoria: string | null
   estado_modulo: string
+  procedimientos: ProcedimientoGuardado[]
+  complicacion_intraqx_ids: string[]
+  complicacion_intraqx_especificaciones: Record<string, string>
 }
 
 interface Valores {
   fecha_cirugia: string
-  procedimiento_1_id: string
-  procedimiento_2_id: string
-  procedimiento_3_id: string
-  implante_id: string
-  numero_implante: string
+  /** Siempre tres lugares: los procedimientos 2 y 3 sin agregar quedan vacíos. */
+  procedimientos: ProcedimientoFormulario[]
   uso_cec: 'SI' | 'NO' | ''
   tiempo_cec_min: string
   tiempo_clamp_min: string
   complicacion_intraqx_ids: string[]
+  complicacion_intraqx_especificaciones: Record<string, string>
   cierre_esternal_diferido: 'SI' | 'NO' | ''
   extubacion_quirofano: 'SI' | 'NO' | ''
-  transfusion_intraoperatoria: string
 }
+
+const PROCEDIMIENTO_VACIO: ProcedimientoFormulario = { procedimiento_id: '', especificacion: '', implante: '', tipo_implante_id: '' }
 
 function useCirugiaAdulto(pacienteId: string, episodioId: string) {
   return useQuery({
     queryKey: ['cirugia-adulto', episodioId],
-    queryFn: async (): Promise<{ cirugia: CirugiaAdultoDetalle | null; procedimientoIds: string[]; complicacionIntraqxIds: string[]; fechaNacimiento: string | null }> => {
+    queryFn: async (): Promise<{ cirugia: CirugiaAdultoDetalle | null; fechaNacimiento: string | null }> => {
       const [cirugia, paciente] = await Promise.all([
-        api.get<(CirugiaAdultoDetalle & { procedimiento_ids: string[]; complicacion_intraqx_ids: string[] }) | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/cirugia`),
+        api.get<CirugiaAdultoDetalle | null>(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/cirugia`),
         api.get<PacienteAdultoDetalle>(`/pacientes-adultos/${pacienteId}`),
       ])
-      return {
-        cirugia,
-        procedimientoIds: cirugia?.procedimiento_ids ?? [],
-        complicacionIntraqxIds: cirugia?.complicacion_intraqx_ids ?? [],
-        fechaNacimiento: paciente.fecha_nacimiento,
-      }
+      return { cirugia, fechaNacimiento: paciente.fecha_nacimiento }
     },
   })
 }
 
-function valoresIniciales(cirugia: CirugiaAdultoDetalle | null, procedimientoIds: string[], complicacionIntraqxIds: string[]): Valores {
+function valoresIniciales(cirugia: CirugiaAdultoDetalle | null): Valores {
   return {
     fecha_cirugia: cirugia?.fecha_cirugia ?? '',
-    procedimiento_1_id: procedimientoIds[0] ?? '',
-    procedimiento_2_id: procedimientoIds[1] ?? '',
-    procedimiento_3_id: procedimientoIds[2] ?? '',
-    implante_id: cirugia?.implante_id ?? '',
-    numero_implante: cirugia?.numero_implante ?? '',
+    procedimientos: procedimientosIniciales(cirugia?.procedimientos ?? []),
     uso_cec: cirugia?.uso_cec ?? '',
     tiempo_cec_min: cirugia?.tiempo_cec_min?.toString() ?? '',
     tiempo_clamp_min: cirugia?.tiempo_clamp_min?.toString() ?? '',
-    complicacion_intraqx_ids: complicacionIntraqxIds,
+    complicacion_intraqx_ids: cirugia?.complicacion_intraqx_ids ?? [],
+    complicacion_intraqx_especificaciones: cirugia?.complicacion_intraqx_especificaciones ?? {},
     cierre_esternal_diferido: cirugia?.cierre_esternal_diferido ?? '',
     extubacion_quirofano: cirugia?.extubacion_quirofano ?? '',
-    transfusion_intraoperatoria: cirugia?.transfusion_intraoperatoria ?? '',
   }
 }
 
 export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: string; episodioId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
+  const esOtro = useEsOpcionOtro()
   const { data, isLoading } = useCirugiaAdulto(pacienteId, episodioId)
-  const { data: opcionesImplante } = useOpciones('IMPLANTE')
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [guardadoEn, setGuardadoEn] = useState<Date | null>(null)
   const [camposFaltantes, setCamposFaltantes] = useState<string[]>([])
 
   const { register, handleSubmit, watch, reset, setValue, control } = useForm<Valores>({
-    defaultValues: valoresIniciales(data?.cirugia ?? null, data?.procedimientoIds ?? [], data?.complicacionIntraqxIds ?? []),
+    defaultValues: valoresIniciales(data?.cirugia ?? null),
   })
 
   // Igual que en el módulo pediátrico: el procedimiento 2 y el 3 quedan ocultos hasta que se
   // agregan. Aquí, a diferencia del pediátrico, los tres comparten la misma fecha de cirugía
   // (el módulo de adultos no tiene fecha propia por procedimiento), así que no hay validación de
-  // fechas entre ellos: agregar uno solo revela su selector de procedimiento.
-  const [mostrarP2, setMostrarP2] = useState(!!data?.procedimientoIds[1])
-  const [mostrarP3, setMostrarP3] = useState(!!data?.procedimientoIds[2])
+  // fechas entre ellos: agregar uno solo revela su procedimiento, con su implante.
+  const [mostrarP2, setMostrarP2] = useState(!!data?.cirugia?.procedimientos[1])
+  const [mostrarP3, setMostrarP3] = useState(!!data?.cirugia?.procedimientos[2])
 
   useEffect(() => {
     if (data) {
-      reset(valoresIniciales(data.cirugia, data.procedimientoIds, data.complicacionIntraqxIds))
-      setMostrarP2(!!data.procedimientoIds[1])
-      setMostrarP3(!!data.procedimientoIds[2])
+      reset(valoresIniciales(data.cirugia))
+      setMostrarP2(!!data.cirugia?.procedimientos[1])
+      setMostrarP3(!!data.cirugia?.procedimientos[2])
     }
   }, [data, reset])
 
   const usoCec = watch('uso_cec')
   const complicacionIntraqxIds = watch('complicacion_intraqx_ids')
-  const implanteId = watch('implante_id')
-  const implanteEsNA = !implanteId || opcionesImplante?.find((o) => o.id === implanteId)?.valor === 'N/A'
-  const p1 = watch('procedimiento_1_id')
-  const p2 = watch('procedimiento_2_id')
-  const p3 = watch('procedimiento_3_id')
+  const complicacionIntraqxEspecificaciones = watch('complicacion_intraqx_especificaciones')
+  const [p1, p2, p3] = watch('procedimientos').map((p) => p.procedimiento_id)
 
   if (isLoading) return <Cargando />
 
@@ -122,13 +110,13 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     (!!p1 && !!p2 && p1 === p2) || (!!p1 && !!p3 && p1 === p3) || (!!p2 && !!p3 && p2 === p3)
 
   function quitarProcedimiento2() {
-    setValue('procedimiento_2_id', '')
+    setValue('procedimientos.1', { ...PROCEDIMIENTO_VACIO })
     setMostrarP2(false)
     quitarProcedimiento3()
   }
 
   function quitarProcedimiento3() {
-    setValue('procedimiento_3_id', '')
+    setValue('procedimientos.2', { ...PROCEDIMIENTO_VACIO })
     setMostrarP3(false)
   }
 
@@ -136,13 +124,12 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     if (!perfil) return
     setGuardadoEn(null)
     setCamposFaltantes([])
+    const [v1, v2, v3] = valores.procedimientos.map((p) => p.procedimiento_id)
     if (data?.fechaNacimiento && valores.fecha_cirugia && valores.fecha_cirugia < data.fechaNacimiento) {
       setError('La fecha de cirugía no puede ser anterior a la fecha de nacimiento.')
       return
     }
-    if ((!!valores.procedimiento_1_id && !!valores.procedimiento_2_id && valores.procedimiento_1_id === valores.procedimiento_2_id) ||
-        (!!valores.procedimiento_1_id && !!valores.procedimiento_3_id && valores.procedimiento_1_id === valores.procedimiento_3_id) ||
-        (!!valores.procedimiento_2_id && !!valores.procedimiento_3_id && valores.procedimiento_2_id === valores.procedimiento_3_id)) {
+    if ((!!v1 && !!v2 && v1 === v2) || (!!v1 && !!v3 && v1 === v3) || (!!v2 && !!v3 && v2 === v3)) {
       setError('Los procedimientos 1, 2 y 3 no pueden repetirse.')
       return
     }
@@ -155,12 +142,17 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     setError(null)
     setGuardando(true)
 
-    const procedimientoIds = [valores.procedimiento_1_id, valores.procedimiento_2_id, valores.procedimiento_3_id]
-      .filter(Boolean)
-
+    const elegidos = valores.procedimientos.filter((p) => p.procedimiento_id)
     const { estado: estado_modulo, faltantes } = calcularEstadoModulo3Adulto({
+      sinEspecificar: sinEspecificar([
+        ...elegidos.map((p, i) => ({ etiqueta: `Procedimiento quirúrgico ${i + 1}`, esOtro: esOtro('PROCEDIMIENTOS_ADULTO', p.procedimiento_id), texto: p.especificacion })),
+        ...valores.complicacion_intraqx_ids.map((id) => ({
+          etiqueta: 'Complicación intraquirúrgica', esOtro: esOtro('COMPLICACION_INTRAQX', id), texto: valores.complicacion_intraqx_especificaciones[id],
+        })),
+      ]),
       fechaCirugia: valores.fecha_cirugia,
-      procedimiento1Id: valores.procedimiento_1_id,
+      procedimiento1Id: v1,
+      procedimientos: elegidos.map((p) => ({ implante: p.implante, tipoImplanteId: p.tipo_implante_id })),
       usoCec: valores.uso_cec,
       tiempoCecMin: valores.tiempo_cec_min,
     })
@@ -169,21 +161,20 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     try {
       await api.put(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/cirugia`, {
         fecha_cirugia: valores.fecha_cirugia || null,
-        implante_id: valores.implante_id || null,
-        numero_implante: !implanteEsNA && valores.numero_implante.trim() ? valores.numero_implante.trim() : null,
+        procedimientos: procedimientosParaGuardar(valores.procedimientos, (id) => esOtro('PROCEDIMIENTOS_ADULTO', id)),
         uso_cec: valores.uso_cec || null,
         tiempo_cec_min: valores.uso_cec === 'SI' && valores.tiempo_cec_min ? Number(valores.tiempo_cec_min) : null,
         tiempo_clamp_min: valores.uso_cec === 'SI' && valores.tiempo_clamp_min ? Number(valores.tiempo_clamp_min) : null,
         complicacion_intraqx_ids: valores.complicacion_intraqx_ids,
+        complicacion_intraqx_especificaciones: especificacionesElegidas(valores.complicacion_intraqx_ids, valores.complicacion_intraqx_especificaciones),
         cierre_esternal_diferido: valores.cierre_esternal_diferido || null,
         extubacion_quirofano: valores.extubacion_quirofano || null,
-        transfusion_intraoperatoria: valores.transfusion_intraoperatoria.trim() || null,
-        procedimiento_ids: procedimientoIds,
         estado_modulo,
       })
       queryClient.invalidateQueries({ queryKey: ['cirugia-adulto', episodioId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['episodios-adulto', pacienteId] })
       setGuardadoEn(new Date())
     } catch (causa) {
       setError(mensajeDe(causa, 'No se pudo guardar el Módulo 3.'))
@@ -198,47 +189,46 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
         <div className="space-y-5">
           <SeccionFormulario titulo="Procedimientos realizados">
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <Campo etiqueta="Procedimiento quirúrgico 1 *" className="sm:col-span-2">
-                  <SelectOpciones categoria="PROCEDIMIENTOS_ADULTO" control={control} name="procedimiento_1_id" />
-                </Campo>
-                <Campo etiqueta="Fecha de cirugía *">
-                  <input type="date" min={data?.fechaNacimiento ?? undefined} {...register('fecha_cirugia')} className={claseInput} />
-                </Campo>
-              </div>
+              <FilaProcedimiento
+                control={control}
+                indice={0}
+                categoria="PROCEDIMIENTOS_ADULTO"
+                etiqueta="Procedimiento quirúrgico 1 *"
+                fecha={
+                  <Campo etiqueta="Fecha de cirugía *">
+                    <input type="date" min={data?.fechaNacimiento ?? undefined} {...register('fecha_cirugia')} className={claseInput} />
+                  </Campo>
+                }
+              />
 
               {mostrarP2 && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <Campo
-                    etiqueta="Procedimiento quirúrgico 2"
-                    className="sm:col-span-2"
-                    accion={
-                      <button type="button" onClick={quitarProcedimiento2} aria-label="Quitar procedimiento 2" className={claseAccionCampo}>
-                        <IconoCerrar className="h-3.5 w-3.5" />
-                        Quitar
-                      </button>
-                    }
-                  >
-                    <SelectOpciones categoria="PROCEDIMIENTOS_ADULTO" control={control} name="procedimiento_2_id" />
-                  </Campo>
-                </div>
+                <FilaProcedimiento
+                  control={control}
+                  indice={1}
+                  categoria="PROCEDIMIENTOS_ADULTO"
+                  etiqueta="Procedimiento quirúrgico 2"
+                  accion={
+                    <button type="button" onClick={quitarProcedimiento2} aria-label="Quitar procedimiento 2" className={claseAccionCampo}>
+                      <IconoCerrar className="h-3.5 w-3.5" />
+                      Quitar
+                    </button>
+                  }
+                />
               )}
 
               {mostrarP2 && mostrarP3 && (
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <Campo
-                    etiqueta="Procedimiento quirúrgico 3"
-                    className="sm:col-span-2"
-                    accion={
-                      <button type="button" onClick={quitarProcedimiento3} aria-label="Quitar procedimiento 3" className={claseAccionCampo}>
-                        <IconoCerrar className="h-3.5 w-3.5" />
-                        Quitar
-                      </button>
-                    }
-                  >
-                    <SelectOpciones categoria="PROCEDIMIENTOS_ADULTO" control={control} name="procedimiento_3_id" />
-                  </Campo>
-                </div>
+                <FilaProcedimiento
+                  control={control}
+                  indice={2}
+                  categoria="PROCEDIMIENTOS_ADULTO"
+                  etiqueta="Procedimiento quirúrgico 3"
+                  accion={
+                    <button type="button" onClick={quitarProcedimiento3} aria-label="Quitar procedimiento 3" className={claseAccionCampo}>
+                      <IconoCerrar className="h-3.5 w-3.5" />
+                      Quitar
+                    </button>
+                  }
+                />
               )}
 
               {!(mostrarP2 && mostrarP3) && (
@@ -254,17 +244,6 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
                 </button>
               )}
               {repetido && <MensajeError>Los procedimientos no pueden repetirse.</MensajeError>}
-            </div>
-          </SeccionFormulario>
-
-          <SeccionFormulario titulo="Implante">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <Campo etiqueta="Tipo de implante">
-                <SelectOpciones categoria="IMPLANTE" control={control} name="implante_id" />
-              </Campo>
-              <Campo etiqueta="Número de implante">
-                <input disabled={implanteEsNA} placeholder={implanteEsNA ? 'N/A' : undefined} {...register('numero_implante')} className={claseInput} />
-              </Campo>
             </div>
           </SeccionFormulario>
 
@@ -295,6 +274,8 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
                   codigoExcluyente="NINGUNA"
                   value={complicacionIntraqxIds}
                   onChange={(v) => setValue('complicacion_intraqx_ids', v)}
+                  especificaciones={complicacionIntraqxEspecificaciones}
+                  onEspecificar={(id, texto) => setValue('complicacion_intraqx_especificaciones', { ...complicacionIntraqxEspecificaciones, [id]: texto })}
                 />
               </div>
               <Campo etiqueta="Cierre esternal diferido">
@@ -310,9 +291,6 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
                   <option value="SI">Sí</option>
                   <option value="NO">No</option>
                 </select>
-              </Campo>
-              <Campo etiqueta="Transfusión intraoperatoria" className="sm:col-span-2">
-                <textarea rows={2} {...register('transfusion_intraoperatoria')} className={claseInput} />
               </Campo>
             </div>
           </SeccionFormulario>

@@ -5,7 +5,6 @@
 export type CampoFiltro =
   | 'mes'
   | 'anio'
-  | 'trimestre'
   | 'riesgo'
   | 'diagnostico'
   | 'valvulopatia'
@@ -50,9 +49,8 @@ export interface Filtro {
 export const NOMBRE_CAMPO: Record<CampoFiltro, string> = {
   mes: 'Mes',
   anio: 'Año',
-  trimestre: 'Trimestre',
   riesgo: 'Riesgo',
-  diagnostico: 'Diagnóstico',
+  diagnostico: 'Diagnóstico (principal o adicional)',
   valvulopatia: 'Tipo de valvulopatía',
   factor_riesgo: 'Factor de riesgo',
   procedimiento: 'Procedimiento',
@@ -64,7 +62,7 @@ export const NOMBRE_CAMPO: Record<CampoFiltro, string> = {
   peso: 'Peso',
   talla: 'Talla',
   superficie: 'Superficie corporal',
-  implante: 'Implante',
+  implante: 'Tipo de implante',
   uso_cec: 'Uso de CEC',
   tiempo_cec: 'Tiempo de CEC',
   tiempo_clamp: 'Tiempo de clamp',

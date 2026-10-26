@@ -38,6 +38,11 @@ interface Props {
   estados: Record<NumeroModulo, EstadoModulo | undefined>
   pestanaActiva: NumeroModulo
   onCambiarPestana: (modulo: NumeroModulo) => void
+  /** Solo adultos: el selector de intervenciones. Va en la tarjeta del paciente, justo encima de los
+   * módulos, porque elige la intervención de los módulos 2 a 5 (no es parte de ninguno de ellos). */
+  intervenciones?: ReactNode
+  /** Junto a "Módulo N de 5", qué intervención se está viendo (p. ej. "Intervención 2"). */
+  contexto?: string
   children: ReactNode
 }
 
@@ -110,6 +115,8 @@ export function FichaPaciente({
   estados,
   pestanaActiva,
   onCambiarPestana,
+  intervenciones,
+  contexto,
   children,
 }: Props) {
   const refPasos = useRef<HTMLOListElement>(null)
@@ -162,6 +169,8 @@ export function FichaPaciente({
               </dl>
             )}
 
+            {intervenciones && <div className="border-t border-slate-100 px-5 py-4">{intervenciones}</div>}
+
             <nav aria-label="Módulos de la ficha" className="border-t border-slate-100 bg-slate-50/70">
               <ol
                 ref={refPasos}
@@ -211,7 +220,9 @@ export function FichaPaciente({
           <Tarjeta>
             <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-slate-100 px-5 py-4 sm:px-6">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Módulo {pestanaActiva} de 5</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Módulo {pestanaActiva} de 5{contexto && <span className="text-[var(--pabon-azul-oscuro)]"> · {contexto}</span>}
+                </p>
                 <h2 id="titulo-modulo" className="mt-0.5 text-lg font-semibold tracking-tight text-slate-900">
                   {NOMBRES_MODULOS[pestanaActiva - 1]}
                 </h2>

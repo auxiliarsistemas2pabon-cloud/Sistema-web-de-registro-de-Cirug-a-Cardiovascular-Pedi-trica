@@ -4,9 +4,12 @@ import { Cargando, EstadoVacio } from '../../components/Estados'
 import { SinDatosGrafico } from '../../components/GraficoComun'
 import { IconoBajar, IconoBuscar, IconoCerrar, IconoFiltro } from '../../components/iconos'
 import { Tarjeta } from '../../components/Tarjeta'
+import { api } from '../../lib/api'
+import { descargarMatrizExcel, type FilaExportacion } from '../../lib/excelMatriz'
 import { formatearNumero, redondear } from '../../lib/estadisticas'
 import { formatearFecha } from '../../lib/fechas'
 import type { GrupoActivo } from '../../lib/grupoActivo'
+import { ENCABEZADOS_EXPORTACION, ENCABEZADOS_EXPORTACION_ADULTOS } from '../../lib/importacion'
 import { DetallePaciente } from './DetallePaciente'
 import { NOMBRE_CAMPO, type CampoFiltro, type Filtro } from './filtros'
 
@@ -76,8 +79,6 @@ const COLUMNAS: Columna[] = [
   },
 ]
 
-const nombreColumna = (c: Columna) => (c.unidad ? `${c.titulo} (${c.unidad})` : c.titulo)
-
 /** Lo que se lee en la celda: el valor (la superficie con sus 2 decimales) o "—" si falta. */
 function textoCelda(c: Columna, p: PacienteMatriz): string {
   const v = c.valor(p)
@@ -116,10 +117,11 @@ interface Props {
 }
 
 /**
- * Matriz de resumen por paciente: una sola tabla con una fila por paciente operado y todas sus
- * variables en columnas, con un buscador por documento. Un clic en un valor filtra todo el tablero
- * por él (en las columnas numéricas, por su rango). Se descarga tal cual a Excel. Al buscar un
- * paciente por su documento, debajo de la tabla aparece todo lo que se le hizo.
+ * Matriz de resumen por paciente: una sola tabla con una fila por paciente operado y sus variables en
+ * columnas, con un buscador por documento. Un clic en un valor filtra todo el tablero por él (en las
+ * columnas numéricas, por su rango). Al buscar un paciente por su documento, debajo de la tabla
+ * aparece todo lo que se le hizo. El Excel lleva los mismos pacientes con todos los campos de su ficha
+ * (pedido del 23-oct), no solo las columnas que caben en pantalla.
  */
 export function MatrizResumen({ pacientes, cargando, grupo, claveGrupo, desde, hasta, filtros, onFiltrar, nombreArchivo }: Props) {
   const [busqueda, setBusqueda] = useState('')
@@ -141,43 +143,23 @@ export function MatrizResumen({ pacientes, cargando, grupo, claveGrupo, desde, h
     setDescargando(true)
     setErrorDescarga(false)
     try {
-      // Carga diferida: exceljs pesa y solo hace falta al descargar (igual que en Exportar datos).
-      const [{ default: ExcelJS }, { saveAs }] = await Promise.all([import('exceljs'), import('file-saver')])
-      const libro = new ExcelJS.Workbook()
-      const hoja = libro.addWorksheet('Matriz por paciente', { views: [{ state: 'frozen', xSplit: 2, ySplit: 5 }] })
-      hoja.columns = [{ width: 9 }, { width: 16 }, { width: 14 }, ...COLUMNAS.map((c) => ({ width: c.numerica ? 14 : 24 }))]
-      const borde = { style: 'thin' as const, color: { argb: 'FFD9D9D9' } }
-      const bordes = { top: borde, bottom: borde, left: borde, right: borde }
-      const condiciones = [
-        ...filtros.map((f) => `${NOMBRE_CAMPO[f.campo]} = ${f.etiqueta}`),
-        ...(buscado ? [`Documento contiene ${buscado}`] : []),
-      ]
-
-      hoja.addRow([`Matriz de resumen por paciente · ${grupo}`]).font = { bold: true, size: 14 }
-      hoja.addRow([`Fecha de cirugía: ${periodo} · ${visibles.length} pacientes operados`])
-      hoja.addRow([condiciones.length ? `Filtros: ${condiciones.join(' · ')}` : 'Sin filtros'])
-      hoja.addRow([])
-      const encabezado = hoja.addRow(['N.º', 'Documento', 'Fecha de cirugía', ...COLUMNAS.map(nombreColumna)])
-      encabezado.eachCell((celda) => {
-        celda.font = { bold: true }
-        celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0EDFA' } }
-        celda.border = bordes
-        celda.alignment = { vertical: 'middle', wrapText: true }
+      const parametros = new URLSearchParams({ desde, hasta })
+      if (filtros.length) parametros.set('filtros', JSON.stringify(filtros.map(({ campo, valor }) => ({ campo, valor }))))
+      const ruta = claveGrupo === 'adultos' ? '/indicadores/adultos/exportar' : '/indicadores/exportar'
+      const { filas: todas } = await api.get<{ filas: FilaExportacion[] }>(`${ruta}?${parametros}`)
+      // La búsqueda por documento es de la pantalla: se aplica igual aquí, sobre las mismas filas.
+      const filasExcel = buscado ? todas.filter((f) => String(f.identificacion ?? '').includes(buscado)) : todas
+      await descargarMatrizExcel({
+        titulo: `Matriz de resumen por paciente · ${grupo}`,
+        subtitulo: `Fecha de cirugía: ${periodo} · ${filasExcel.length} pacientes operados`,
+        condiciones: [
+          ...filtros.map((f) => `${NOMBRE_CAMPO[f.campo]} = ${f.etiqueta}`),
+          ...(buscado ? [`Documento contiene ${buscado}`] : []),
+        ],
+        columnas: claveGrupo === 'adultos' ? ENCABEZADOS_EXPORTACION_ADULTOS : ENCABEZADOS_EXPORTACION,
+        filas: filasExcel,
+        nombreArchivo,
       })
-      // Filtros de Excel en el encabezado, para que el equipo pueda ordenar y filtrar la matriz.
-      hoja.autoFilter = { from: { row: encabezado.number, column: 1 }, to: { row: encabezado.number, column: 3 + COLUMNAS.length } }
-
-      // Los valores van como números para poder usarlos en fórmulas; el documento, como texto (un
-      // número de 10 o más cifras Excel lo mostraría en notación científica).
-      const columnaSuperficie = 4 + COLUMNAS.findIndex((c) => c.etiqueta === 'superficie')
-      for (const p of visibles) {
-        const fila = hoja.addRow([p.numero_paciente, p.identificacion, formatearFecha(p.fecha_cirugia), ...COLUMNAS.map((c) => c.valor(p))])
-        fila.eachCell({ includeEmpty: true }, (celda) => (celda.border = bordes))
-        fila.getCell(columnaSuperficie).numFmt = '0.00'
-      }
-
-      const contenido = await libro.xlsx.writeBuffer()
-      saveAs(new Blob([contenido], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), nombreArchivo)
     } catch {
       setErrorDescarga(true)
     } finally {

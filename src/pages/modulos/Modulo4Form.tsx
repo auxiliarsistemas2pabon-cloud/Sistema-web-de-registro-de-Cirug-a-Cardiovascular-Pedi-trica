@@ -2,11 +2,14 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
-import { Campo, claseInput } from '../../components/Campo'
+import { Campo, CampoCalculado, claseInput } from '../../components/Campo'
+import { CampoOpciones } from '../../components/CampoOpciones'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { SeleccionMultiple } from '../../components/SeleccionMultiple'
 import { calcularEstadoModulo4 } from '../../lib/completitud'
+import { diasEstancia, formatearFecha } from '../../lib/fechas'
+import { especificacionesElegidas, sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
 import { api, mensajeDe } from '../../lib/api'
 import { Cargando, MensajeError } from '../../components/Estados'
 
@@ -15,18 +18,22 @@ interface PostoperatorioDetalle {
   unidad_pop_id: string | null
   horas_ventilacion_mecanica: number | null
   complicacion_pop_ids: string[]
+  complicacion_pop_especificaciones: Record<string, string>
   fecha_traslado_intermedio: string | null
   fecha_salida: string | null
   condicion_salida_id: string | null
+  condicion_salida_otro: string | null
 }
 
 interface Valores {
   unidad_pop_id: string
   horas_ventilacion_mecanica: string
   complicacion_pop_ids: string[]
+  complicacion_pop_especificaciones: Record<string, string>
   fecha_traslado_intermedio: string
   fecha_salida: string
   condicion_salida_id: string
+  condicion_salida_otro: string
 }
 
 function usePostoperatorio(pacienteId: string) {
@@ -52,15 +59,20 @@ function valoresIniciales(po: PostoperatorioDetalle | null, sugerirCero: boolean
     horas_ventilacion_mecanica:
       po?.horas_ventilacion_mecanica?.toString() ?? (sugerirCero ? '0' : ''),
     complicacion_pop_ids: po?.complicacion_pop_ids ?? [],
+    complicacion_pop_especificaciones: po?.complicacion_pop_especificaciones ?? {},
     fecha_traslado_intermedio: po?.fecha_traslado_intermedio ?? '',
     fecha_salida: po?.fecha_salida ?? '',
     condicion_salida_id: po?.condicion_salida_id ?? '',
+    condicion_salida_otro: po?.condicion_salida_otro ?? '',
   }
 }
+
+const textoDias = (dias: number | null) => (dias === null ? null : `${dias} ${dias === 1 ? 'día' : 'días'}`)
 
 export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
+  const esOtro = useEsOpcionOtro()
   const { data, isLoading } = usePostoperatorio(pacienteId)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,6 +90,10 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
   }, [data, reset])
 
   const complicacionPopIds = watch('complicacion_pop_ids')
+  const complicacionPopEspecificaciones = watch('complicacion_pop_especificaciones')
+  // Se recalculan mientras se escriben las fechas (pedido del 23-oct), con la misma cuenta del servidor.
+  const dias = diasEstancia({ fechaCirugia: data?.fechaCirugia ?? null, fechaTraslado: watch('fecha_traslado_intermedio'), fechaSalida: watch('fecha_salida') })
+  const sinCirugia = data?.fechaCirugia ? undefined : 'Registre la fecha de cirugía en el Módulo 3'
 
   if (isLoading) return <Cargando />
 
@@ -104,7 +120,14 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
     setError(null)
     setGuardando(true)
 
+    const condicionEsOtro = esOtro('CONDICION_SALIDA', valores.condicion_salida_id)
     const { estado: estado_modulo, faltantes } = calcularEstadoModulo4({
+      sinEspecificar: sinEspecificar([
+        ...valores.complicacion_pop_ids.map((id) => ({
+          etiqueta: 'Complicación postoperatoria', esOtro: esOtro('COMPLICACION_POP', id), texto: valores.complicacion_pop_especificaciones[id],
+        })),
+        { etiqueta: 'Condición en que sale el paciente', esOtro: condicionEsOtro, texto: valores.condicion_salida_otro },
+      ]),
       unidadPopId: valores.unidad_pop_id,
       horasVentilacion: valores.horas_ventilacion_mecanica,
       complicacionPopIds: valores.complicacion_pop_ids,
@@ -118,9 +141,11 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
         horas_ventilacion_mecanica:
           valores.horas_ventilacion_mecanica !== '' ? Number(valores.horas_ventilacion_mecanica) : null,
         complicacion_pop_ids: valores.complicacion_pop_ids,
+        complicacion_pop_especificaciones: especificacionesElegidas(valores.complicacion_pop_ids, valores.complicacion_pop_especificaciones),
         fecha_traslado_intermedio: valores.fecha_traslado_intermedio || null,
         fecha_salida: valores.fecha_salida || null,
         condicion_salida_id: valores.condicion_salida_id || null,
+        condicion_salida_otro: condicionEsOtro ? valores.condicion_salida_otro.trim() || null : null,
         estado_modulo,
       })
       queryClient.invalidateQueries({ queryKey: ['postoperatorio', pacienteId] })
@@ -137,6 +162,8 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
     }
   }
 
+  const desdeCirugia = data?.fechaCirugia ? `Desde la fecha de cirugía (${formatearFecha(data.fechaCirugia)})` : null
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
       <fieldset className="space-y-5">
@@ -151,31 +178,54 @@ export function Modulo4Form({ pacienteId }: { pacienteId: string }) {
                 <input type="number" min="0" step="1" {...register('horas_ventilacion_mecanica')} className={claseInput} />
               </Campo>
 
-              <Campo etiqueta="Fecha de traslado a intermedio">
-                <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_traslado_intermedio')} className={claseInput} />
-              </Campo>
-
-              <div className="lg:col-span-3">
+              <div className="sm:col-span-2 lg:col-span-3">
                 <label className="mb-2 block text-sm font-medium text-slate-700">Complicación postoperatoria *</label>
                 <SeleccionMultiple
                   categoria="COMPLICACION_POP"
                   codigoExcluyente="NO"
                   value={complicacionPopIds}
                   onChange={(v) => setValue('complicacion_pop_ids', v)}
+                  especificaciones={complicacionPopEspecificaciones}
+                  onEspecificar={(id, texto) => setValue('complicacion_pop_especificaciones', { ...complicacionPopEspecificaciones, [id]: texto })}
                 />
               </div>
             </div>
           </SeccionFormulario>
 
+          <SeccionFormulario titulo="Estancia en UCI">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <Campo etiqueta="Fecha de traslado a intermedio">
+                <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_traslado_intermedio')} className={claseInput} />
+              </Campo>
+              <CampoCalculado
+                etiqueta="Días de estancia en UCI"
+                valor={textoDias(dias.uci)}
+                pendiente={sinCirugia ?? 'Se calcula con las fechas'}
+                explicacion={desdeCirugia ? `${desdeCirugia} hasta el traslado a cuidados intermedios (o la salida, si no hubo traslado).` : undefined}
+                className="lg:col-span-2"
+              />
+            </div>
+          </SeccionFormulario>
+
           <SeccionFormulario titulo="Egreso">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Campo etiqueta="Fecha de salida">
                 <input type="date" min={data?.fechaCirugia ?? undefined} {...register('fecha_salida')} className={claseInput} />
               </Campo>
-
-              <Campo etiqueta="Condición en que sale el paciente *">
-                <SelectOpciones categoria="CONDICION_SALIDA" control={control} name="condicion_salida_id" />
-              </Campo>
+              <CampoCalculado
+                etiqueta="Días totales de hospitalización"
+                valor={textoDias(dias.hospitalizacion)}
+                pendiente={sinCirugia ?? 'Se calcula con la fecha de salida'}
+                explicacion={desdeCirugia ? `${desdeCirugia} hasta el egreso de la institución.` : undefined}
+              />
+              <CampoOpciones
+                etiqueta="Condición en que sale el paciente *"
+                categoria="CONDICION_SALIDA"
+                control={control}
+                name="condicion_salida_id"
+                nameOtro="condicion_salida_otro"
+                className="sm:col-span-2 lg:col-span-1"
+              />
             </div>
           </SeccionFormulario>
         </div>

@@ -137,6 +137,27 @@ export class Validador {
     return v
   }
 
+  /** Mapa id de opción → texto: la especificación de cada opción "Otro…" elegida en una selección
+   * múltiple. undefined si el campo no llegó (quien no lo conoce, como la importación, no borra lo
+   * guardado); los textos vacíos se descartan. */
+  especificaciones(campo) {
+    const v = this.cuerpo[campo]
+    if (v === undefined) return undefined
+    if (v === null) return {}
+    const entradas = typeof v === 'object' && !Array.isArray(v) ? Object.entries(v) : null
+    if (!entradas || entradas.some(([id, t]) => !/^[0-9a-f-]{36}$/i.test(id) || (t !== null && typeof t !== 'string'))) {
+      this.error(campo, 'Debe ser un objeto { id de opción: texto }.')
+      return undefined
+    }
+    const salida = {}
+    for (const [id, t] of entradas) {
+      const limpio = (t ?? '').trim()
+      if (limpio.length > 255) this.error(campo, 'Cada especificación puede tener hasta 255 caracteres.')
+      if (limpio) salida[id] = limpio
+    }
+    return salida
+  }
+
   textos(campo) {
     const v = this.cuerpo[campo]
     if (v === undefined || v === null) return []

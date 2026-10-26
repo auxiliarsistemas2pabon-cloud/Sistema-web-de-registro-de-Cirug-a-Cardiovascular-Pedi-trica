@@ -25,6 +25,26 @@ export function Campo({ etiqueta, error, children, className, accion }: CampoPro
   )
 }
 
+/** Un dato que no se escribe sino que se calcula de otros campos (p. ej. los días de estancia, de las
+ * fechas): se ve como un campo deshabilitado, con la explicación de la cuenta debajo. */
+export function CampoCalculado({ etiqueta, valor, pendiente, explicacion, className }: {
+  etiqueta: string
+  valor: string | null
+  /** Lo que se lee mientras faltan los datos para calcularlo. */
+  pendiente: string
+  explicacion?: string
+  className?: string
+}) {
+  return (
+    <div className={className}>
+      <Campo etiqueta={etiqueta}>
+        <input disabled value={valor ?? ''} placeholder={pendiente} className={claseInput} />
+      </Campo>
+      {explicacion && <p className="mt-1 text-xs text-slate-500">{explicacion}</p>}
+    </div>
+  )
+}
+
 export const claseInput =
   'w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-xs transition-colors outline-none hover:border-slate-400 focus:border-[var(--pabon-azul-oscuro)] focus:ring-3 focus:ring-[var(--pabon-azul-claro)]/25 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none disabled:hover:border-slate-300'
 

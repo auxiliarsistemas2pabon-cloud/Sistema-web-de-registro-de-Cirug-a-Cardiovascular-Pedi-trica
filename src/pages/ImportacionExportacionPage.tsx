@@ -6,20 +6,14 @@ import { EncabezadoPagina } from '../components/EncabezadoPagina'
 import { MensajeAdvertencia, MensajeError, MensajeExito } from '../components/Estados'
 import { Tarjeta } from '../components/Tarjeta'
 import { IconoAdultos, IconoBajar, IconoDocumento, IconoPacientes } from '../components/iconos'
-import { ENCABEZADOS_EXPORTACION, ENCABEZADOS_EXPORTACION_ADULTOS } from '../lib/importacion'
+import { ENCABEZADOS_EXPORTACION, ENCABEZADOS_EXPORTACION_ADULTOS, type ColumnaExportacion } from '../lib/importacion'
 import { api } from '../lib/api'
 import { useGrupoActivo } from '../lib/grupoActivo'
 
 type FilaExportacion = Record<string, string | number | boolean | null>
-type Encabezados = readonly (readonly [string, string])[]
+type Encabezados = readonly ColumnaExportacion[]
 
 const TIPOS_XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-
-// Límites (índice de inicio) de cada módulo dentro de ENCABEZADOS_EXPORTACION* — el último
-// elemento (undefined) deja el Módulo 5 abierto hasta el final del arreglo. Pediátricos y adultos
-// tienen cortes distintos porque sus columnas no son las mismas (ver lib/importacion.ts).
-const CORTES_PEDIATRICOS = [0, 12, 16, 26, 32, undefined] as const
-const CORTES_ADULTOS = [0, 12, 19, 30, 38, undefined] as const
 
 /** Casilla grande (tarjeta seleccionable) para elegir un grupo de pacientes. */
 function OpcionGrupo({
@@ -80,21 +74,15 @@ function prepararHoja(libro: ExcelJS.Workbook, nombre: string, columnas: Encabez
   })
 }
 
-/** Agrega la hoja "Datos" (todas las columnas) y una hoja por módulo (1 a 5) de un grupo. Cuando se
- * exportan ambos grupos a la vez, `sufijo` evita nombres de hoja repetidos ("Módulo 1" por partida
- * doble no tendría sentido en un mismo libro); si se exporta un solo grupo, las hojas quedan con
- * el nombre de siempre. */
-function agregarHojasGrupo(
-  libro: ExcelJS.Workbook,
-  filas: FilaExportacion[],
-  encabezados: Encabezados,
-  cortes: readonly [number, number, number, number, number, number | undefined],
-  sufijo: string | null,
-) {
+/** Agrega la hoja "Datos" (todas las columnas) y una hoja por módulo (1 a 5) de un grupo, con las
+ * columnas que ENCABEZADOS_EXPORTACION* marca de ese módulo. Cuando se exportan ambos grupos a la vez,
+ * `sufijo` evita nombres de hoja repetidos ("Módulo 1" por partida doble no tendría sentido en un
+ * mismo libro); si se exporta un solo grupo, las hojas quedan con el nombre de siempre. */
+function agregarHojasGrupo(libro: ExcelJS.Workbook, filas: FilaExportacion[], encabezados: Encabezados, sufijo: string | null) {
   const nombre = (base: string) => (sufijo ? `${base} (${sufijo})` : base)
   prepararHoja(libro, nombre('Datos'), encabezados, filas)
-  for (let modulo = 1; modulo <= 5; modulo++) {
-    prepararHoja(libro, nombre(`Módulo ${modulo}`), encabezados.slice(cortes[modulo - 1], cortes[modulo]), filas)
+  for (const modulo of [1, 2, 3, 4, 5] as const) {
+    prepararHoja(libro, nombre(`Módulo ${modulo}`), encabezados.filter(([, , m]) => m === modulo), filas)
   }
 }
 
@@ -131,12 +119,12 @@ export function ImportacionExportacionPage() {
       const resumen: string[] = []
       if (incluirPediatricos) {
         const filas = await obtenerFilasPediatricos()
-        agregarHojasGrupo(libro, filas, ENCABEZADOS_EXPORTACION, CORTES_PEDIATRICOS, ambosGrupos ? 'Pediátricos' : null)
+        agregarHojasGrupo(libro, filas, ENCABEZADOS_EXPORTACION, ambosGrupos ? 'Pediátricos' : null)
         resumen.push(`${filas.length} pediátricos`)
       }
       if (incluirAdultos) {
         const filas = await obtenerFilasAdultos()
-        agregarHojasGrupo(libro, filas, ENCABEZADOS_EXPORTACION_ADULTOS, CORTES_ADULTOS, ambosGrupos ? 'Adultos' : null)
+        agregarHojasGrupo(libro, filas, ENCABEZADOS_EXPORTACION_ADULTOS, ambosGrupos ? 'Adultos' : null)
         resumen.push(`${filas.length} adultos`)
       }
       const contenido = await libro.xlsx.writeBuffer()

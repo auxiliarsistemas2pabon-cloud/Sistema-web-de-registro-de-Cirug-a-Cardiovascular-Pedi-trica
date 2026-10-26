@@ -18,6 +18,8 @@ interface Props {
   /** Solo con onClick: marca la tarjeta como la opción seleccionada. */
   activo?: boolean
   titulo?: string
+  /** Solo con onClick: lo que hace el clic, como un enlace al pie (p. ej. "Ver los pacientes"). */
+  accion?: string
 }
 
 // Los íconos llevan color con valores arbitrarios (text-[#…]) y no con text-emerald-600 &
@@ -30,7 +32,7 @@ const TONOS: Record<Tono, { insignia: string; barra: string }> = {
   critico: { insignia: 'bg-red-50 text-[#dc2626]', barra: 'bg-red-500' },
 }
 
-export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal', detalle, progreso, segmentos, onClick, activo = false, titulo }: Props) {
+export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal', detalle, progreso, segmentos, onClick, activo = false, titulo, accion }: Props) {
   const estilo = TONOS[tono]
   const contenido = (
     <>
@@ -45,6 +47,14 @@ export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal', detalle, p
       <div className="mt-auto pt-2">
         <p className="text-2xl font-semibold tracking-tight tabular-nums text-slate-900 sm:text-[1.75rem] sm:leading-9">{valor}</p>
         {detalle && <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">{detalle}</p>}
+        {onClick && accion && (
+          <p className="mt-2 flex items-center gap-1 text-xs font-medium text-sky-700">
+            {accion}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" aria-hidden>
+              <path d="m9 6 6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </p>
+        )}
         {(progreso !== undefined || segmentos) && (
           <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-slate-100" aria-hidden>
             {(segmentos ?? [{ porcentaje: progreso ?? 0, clase: `${estilo.barra} rounded-full` }]).map((tramo, indice) => (
@@ -72,7 +82,7 @@ export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal', detalle, p
       onClick={onClick}
       aria-pressed={activo}
       title={titulo}
-      className={`${base} w-full cursor-pointer outline-none transition-all focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40 ${
+      className={`${base} group w-full cursor-pointer outline-none transition-all focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40 ${
         activo
           ? 'border-[var(--pabon-azul-oscuro)] ring-1 ring-[var(--pabon-azul-oscuro)]'
           : 'border-slate-200/80 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md hover:shadow-slate-900/5'

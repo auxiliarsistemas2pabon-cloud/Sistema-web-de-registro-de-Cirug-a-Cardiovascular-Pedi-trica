@@ -99,6 +99,139 @@ export async function idPorCodigo(conexion, categoria, codigo) {
   return fila?.id ?? null
 }
 
+// ---------------------------------------------------------------------------------------------
+// Opciones "Otro…": al elegir una, se escribe cuál (pedido del 23-oct)
+// ---------------------------------------------------------------------------------------------
+
+const sinTildes = (texto) => texto.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+
+/** Las opciones que piden especificar cuál: las que dicen otro/otra/otros/otras ("Otro país", "Otras
+ * cardiopatías congénitas", "Síndrome genético (… u otro)", "Reintervención por otra causa…"). Por su
+ * texto, como la valvulopatía: el catálogo no les da un código estable y el Administrador puede agregar
+ * más. La misma regla está en src/lib/opciones.ts, para que la ficha muestre la casilla justo cuando el
+ * servidor la guarda. */
+export const esTextoOtro = (valor) => /(^|[^a-z])otr[oa]s?([^a-z]|$)/.test(sinTildes(valor ?? ''))
+
+/** Regla silenciosa: la especificación de un campo de selección única solo se guarda si la opción
+ * elegida es un "Otro…". */
+export async function especificacionDe(conexion, opcionId, texto) {
+  return texto && esTextoOtro(await valorDe(conexion, opcionId)) ? texto : null
+}
+
+/** Selección múltiple de una tabla puente (factores de riesgo, complicaciones): los ids, en el orden en
+ * que se leen siempre, y la especificación de cada "Otro…" elegido (id → texto). */
+export async function leerSeleccion(conexion, { tabla, columnaDueno, duenoId, columnaOpcion }) {
+  const filas = await todas(conexion, `SELECT ${columnaOpcion} AS opcion_id, especificacion FROM ${tabla} WHERE ${columnaDueno} = ? ORDER BY id`, [duenoId])
+  return {
+    ids: filas.map((f) => f.opcion_id),
+    especificaciones: Object.fromEntries(filas.filter((f) => f.especificacion).map((f) => [f.opcion_id, f.especificacion])),
+  }
+}
+
+/**
+ * Reemplaza una selección múltiple dentro de la misma transacción: se quita lo que sobra, se agrega lo
+ * nuevo y, si llegaron `especificaciones` (id → texto), se guarda la de cada "Otro…" elegido (en las
+ * demás opciones queda vacía). Sin `especificaciones` — quien no conoce el campo, como la importación —
+ * se conservan las que ya había. Los nombres de tabla y columna son fijos, nunca vienen de la petición.
+ */
+export async function sincronizarSeleccion(conexion, usuario, { tabla, columnaDueno, duenoId, columnaOpcion, ids, especificaciones }) {
+  const actuales = await todas(conexion, `SELECT id, ${columnaOpcion} AS opcion_id, especificacion FROM ${tabla} WHERE ${columnaDueno} = ?`, [duenoId])
+  for (const fila of actuales) {
+    if (!ids.includes(fila.opcion_id)) await eliminarFila(conexion, usuario, tabla, fila.id)
+  }
+  for (const opcionId of ids) {
+    const fila = actuales.find((f) => f.opcion_id === opcionId)
+    const especificacion = especificaciones === undefined
+      ? (fila?.especificacion ?? null)
+      : await especificacionDe(conexion, opcionId, especificaciones[opcionId])
+    if (!fila) {
+      await insertar(conexion, usuario, tabla, { [columnaDueno]: duenoId, [columnaOpcion]: opcionId, especificacion }, { conAuditoriaUsuario: false })
+    } else if ((fila.especificacion ?? null) !== especificacion) {
+      await actualizar(conexion, usuario, tabla, fila.id, { especificacion }, { conAuditoriaUsuario: false })
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Procedimientos de una cirugía: hasta tres, cada uno con su especificación ("Otro…") y su implante
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * Procedimientos que llegan en la petición, en orden (1 a 3). Cada uno trae su especificación y si lleva
+ * implante (Sí / No / No aplica) con su tipo. También se acepta la forma anterior, `procedimiento_ids`
+ * (solo los ids), de quien aún no conoce el implante por procedimiento, como la importación: su
+ * `detalle` queda en null y se conserva lo que ya estaba guardado de cada procedimiento.
+ */
+export function leerProcedimientos(v, cuerpo) {
+  if (cuerpo.procedimientos === undefined || cuerpo.procedimientos === null) {
+    return v.ids('procedimiento_ids').map((procedimientoId) => ({ procedimientoId, detalle: null }))
+  }
+  if (!Array.isArray(cuerpo.procedimientos) || cuerpo.procedimientos.some((p) => p === null || typeof p !== 'object' || Array.isArray(p))) {
+    v.error('procedimientos', 'Debe ser una lista de procedimientos.')
+    return []
+  }
+  return cuerpo.procedimientos.map((item, i) => {
+    const p = new Validador(item)
+    const procedimientoId = p.id('procedimiento_id', { obligatorio: true })
+    const detalle = {
+      especificacion: p.texto('especificacion'),
+      implante: p.opcion('implante', ['SI', 'NO', 'NA']),
+      tipo_implante_id: p.id('tipo_implante_id'),
+    }
+    for (const [campo, mensaje] of Object.entries(p.campos)) v.error(`procedimientos.${i}.${campo}`, mensaje)
+    return { procedimientoId, detalle }
+  })
+}
+
+/** Reglas silenciosas de cada procedimiento: la especificación solo si es un "Otro…" y el tipo de
+ * implante solo si lleva implante. */
+export async function normalizarProcedimientos(conexion, procedimientos) {
+  for (const { procedimientoId, detalle } of procedimientos) {
+    if (!detalle) continue
+    detalle.especificacion = await especificacionDe(conexion, procedimientoId, detalle.especificacion)
+    if (detalle.implante !== 'SI') detalle.tipo_implante_id = null
+  }
+}
+
+/** El orden del arreglo es el orden 1..3. Primero se quita lo que cambió de lugar o de procedimiento y
+ * luego se inserta (índices únicos por orden y por procedimiento); lo que sigue en su lugar se actualiza. */
+export async function sincronizarProcedimientos(conexion, usuario, tabla, cirugiaId, procedimientos) {
+  const actuales = await todas(conexion, `SELECT id, procedimiento_id, orden FROM ${tabla} WHERE cirugia_id = ?`, [cirugiaId])
+  const clave = (procedimientoId, orden) => `${procedimientoId}:${orden}`
+  const nuevas = new Set(procedimientos.map((p, i) => clave(p.procedimientoId, i + 1)))
+  for (const fila of actuales) {
+    if (!nuevas.has(clave(fila.procedimiento_id, fila.orden))) await eliminarFila(conexion, usuario, tabla, fila.id)
+  }
+  for (const [i, { procedimientoId, detalle }] of procedimientos.entries()) {
+    const fila = actuales.find((f) => clave(f.procedimiento_id, f.orden) === clave(procedimientoId, i + 1))
+    if (!fila) {
+      await insertar(conexion, usuario, tabla, { cirugia_id: cirugiaId, procedimiento_id: procedimientoId, orden: i + 1, ...detalle }, { conAuditoriaUsuario: false })
+    } else if (detalle) {
+      await actualizar(conexion, usuario, tabla, fila.id, detalle, { conAuditoriaUsuario: false })
+    }
+  }
+}
+
+/** Procedimientos guardados de una cirugía, en orden, con su especificación e implante. */
+export async function leerProcedimientosGuardados(conexion, tabla, cirugiaId) {
+  return todas(conexion, `SELECT procedimiento_id, especificacion, implante, tipo_implante_id FROM ${tabla} WHERE cirugia_id = ? ORDER BY orden`, [cirugiaId])
+}
+
+// ---------------------------------------------------------------------------------------------
+// Días de estancia, calculados de las fechas (pedido del 23-oct). La misma cuenta está en
+// src/lib/fechas.ts (diasEstancia), para mostrarla en la ficha mientras se escriben las fechas.
+// ---------------------------------------------------------------------------------------------
+
+/** Días en UCI: de la fecha de cirugía al traslado a cuidados intermedios o, si no hubo traslado (el
+ * paciente salió de la UCI a su egreso), a la fecha de salida. `c` y `po` son los alias de la cirugía y
+ * del postoperatorio en la consulta. */
+export const sqlDiasUci = (c, po) => `CASE
+  WHEN ${po}.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(${po}.fecha_traslado_intermedio, ${c}.fecha_cirugia)
+  WHEN ${po}.fecha_salida IS NOT NULL THEN DATEDIFF(${po}.fecha_salida, ${c}.fecha_cirugia) END`
+
+/** Días totales de hospitalización: de la fecha de cirugía a la de egreso de la institución. */
+export const sqlDiasHospitalizacion = (c, po) => `DATEDIFF(${po}.fecha_salida, ${c}.fecha_cirugia)`
+
 const ESTADOS = ['pendiente', 'completo']
 
 // ---------------------------------------------------------------------------------------------
@@ -117,14 +250,17 @@ function leerPaciente(cuerpo) {
     nombre_completo: v.texto('nombre_completo', { obligatorio: true }),
     identificacion: v.texto('identificacion', { obligatorio: true, max: 50 }),
     sexo_id: v.id('sexo_id'),
+    sexo_otro: v.texto('sexo_otro'),
     fecha_nacimiento: v.fecha('fecha_nacimiento', { obligatoria: true }),
     peso_kg: v.decimal('peso_kg', { min: 0.5, max: 150 }),
     talla_cm: v.entero('talla_cm', { min: 30, max: 220 }),
     procedencia_id: v.id('procedencia_id'),
+    procedencia_otro: v.texto('procedencia_otro'),
     municipio_narino_id: v.id('municipio_narino_id'),
     telefonos: v.textos('telefonos'),
     sin_telefono: v.booleano('sin_telefono'),
     eps_id: v.id('eps_id'),
+    eps_otro: v.texto('eps_otro'),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   if (datos.identificacion && !/^\d+$/.test(datos.identificacion)) v.error('identificacion', 'Solo se permiten números.')
@@ -134,20 +270,24 @@ function leerPaciente(cuerpo) {
   return datos
 }
 
-async function normalizarPaciente(conexion, datos) {
-  // Regla silenciosa: el municipio solo aplica cuando la procedencia es Nariño.
+/** Reglas silenciosas del Módulo 1, iguales en pediátricos y adultos: el municipio solo aplica cuando la
+ * procedencia es Nariño, y cada especificación solo si se eligió un "Otro…". */
+export async function normalizarDatosPaciente(conexion, datos) {
   if ((await codigoDe(conexion, datos.procedencia_id)) !== 'NARINO') datos.municipio_narino_id = null
+  datos.sexo_otro = await especificacionDe(conexion, datos.sexo_id, datos.sexo_otro)
+  datos.procedencia_otro = await especificacionDe(conexion, datos.procedencia_id, datos.procedencia_otro)
+  datos.eps_otro = await especificacionDe(conexion, datos.eps_id, datos.eps_otro)
   return datos
 }
 
 export async function crearPaciente(conexion, usuario, cuerpo, extras = {}) {
-  const datos = await normalizarPaciente(conexion, leerPaciente(cuerpo))
+  const datos = await normalizarDatosPaciente(conexion, leerPaciente(cuerpo))
   return insertar(conexion, usuario, 'pacientes', { ...datos, ...extras, actualizado_por: usuario.id })
 }
 
 export async function actualizarPaciente(conexion, usuario, id, cuerpo) {
   await obtenerPaciente(conexion, id)
-  const datos = await normalizarPaciente(conexion, leerPaciente(cuerpo))
+  const datos = await normalizarDatosPaciente(conexion, leerPaciente(cuerpo))
   await actualizar(conexion, usuario, 'pacientes', id, datos)
   return id
 }
@@ -170,23 +310,41 @@ export async function marcarEliminado(conexion, usuario, id, eliminado) {
 export async function obtenerDiagnostico(conexion, pacienteId) {
   const fila = await una(conexion, 'SELECT * FROM diagnosticos WHERE paciente_id = ?', [pacienteId])
   if (!fila) return null
-  const riesgos = await todas(conexion, 'SELECT riesgo_id FROM diagnosticos_riesgos WHERE diagnostico_id = ? ORDER BY id', [fila.id])
-  return { ...filaApi('diagnosticos', fila), riesgo_ids: riesgos.map((r) => r.riesgo_id) }
+  const riesgos = await leerSeleccion(conexion, { tabla: 'diagnosticos_riesgos', columnaDueno: 'diagnostico_id', duenoId: fila.id, columnaOpcion: 'riesgo_id' })
+  return { ...filaApi('diagnosticos', fila), riesgo_ids: riesgos.ids, riesgo_especificaciones: riesgos.especificaciones }
+}
+
+/** Reglas del diagnóstico adicional, iguales en pediátricos y adultos: acompaña al principal (no va
+ * solo) y no puede repetirlo; cada diagnóstico guarda su especificación solo si es un "Otro…". */
+export async function normalizarDiagnosticos(conexion, datos) {
+  if (datos.diagnostico_adicional_id && !datos.diagnostico_id) throw reglaNegocio('Registre primero el diagnóstico principal.')
+  if (datos.diagnostico_adicional_id && datos.diagnostico_adicional_id === datos.diagnostico_id) {
+    throw reglaNegocio('El diagnóstico adicional no puede ser el mismo diagnóstico principal.')
+  }
+  datos.diagnostico_otro = await especificacionDe(conexion, datos.diagnostico_id, datos.diagnostico_otro)
+  datos.diagnostico_adicional_otro = await especificacionDe(conexion, datos.diagnostico_adicional_id, datos.diagnostico_adicional_otro)
 }
 
 export async function guardarDiagnostico(conexion, usuario, pacienteId, cuerpo) {
   const v = new Validador(cuerpo)
   const datos = {
     diagnostico_id: v.id('diagnostico_id'),
+    diagnostico_otro: v.texto('diagnostico_otro'),
+    diagnostico_adicional_id: v.id('diagnostico_adicional_id'),
+    diagnostico_adicional_otro: v.texto('diagnostico_adicional_otro'),
     valvulopatia_id: v.id('valvulopatia_id'),
     rachs_id: v.id('rachs_id'),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   const riesgoIds = [...new Set(v.ids('riesgo_ids'))]
+  const riesgoEspecificaciones = v.especificaciones('riesgo_especificaciones')
   v.finalizar()
 
-  // Regla silenciosa: la valvulopatía solo aplica si el diagnóstico es Valvulopatías; si no, queda en N/A.
-  if ((await codigoDe(conexion, datos.diagnostico_id)) !== 'VALVULOPATIAS') {
+  await normalizarDiagnosticos(conexion, datos)
+  // Regla silenciosa: la valvulopatía solo aplica si el diagnóstico (principal o adicional) es
+  // Valvulopatías; si no, queda en N/A.
+  const codigos = [await codigoDe(conexion, datos.diagnostico_id), await codigoDe(conexion, datos.diagnostico_adicional_id)]
+  if (!codigos.includes('VALVULOPATIAS')) {
     datos.valvulopatia_id = await idPorCodigo(conexion, 'VALVULOPATIA', 'NA')
   }
   // Regla dura: "Ninguno" excluye cualquier otro factor de riesgo.
@@ -204,17 +362,10 @@ export async function guardarDiagnostico(conexion, usuario, pacienteId, cuerpo) 
     diagnosticoId = await insertar(conexion, usuario, 'diagnosticos', { paciente_id: pacienteId, ...datos, actualizado_por: usuario.id })
   }
 
-  // Reemplazo de la selección dentro de la misma transacción: se quita lo que sobra y se agrega lo nuevo.
-  const actuales = await todas(conexion, 'SELECT id, riesgo_id FROM diagnosticos_riesgos WHERE diagnostico_id = ?', [diagnosticoId])
-  for (const fila of actuales) {
-    if (!riesgoIds.includes(fila.riesgo_id)) await eliminarFila(conexion, usuario, 'diagnosticos_riesgos', fila.id)
-  }
-  const presentes = new Set(actuales.map((f) => f.riesgo_id))
-  for (const riesgoId of riesgoIds) {
-    if (!presentes.has(riesgoId)) {
-      await insertar(conexion, usuario, 'diagnosticos_riesgos', { diagnostico_id: diagnosticoId, riesgo_id: riesgoId }, { conAuditoriaUsuario: false })
-    }
-  }
+  await sincronizarSeleccion(conexion, usuario, {
+    tabla: 'diagnosticos_riesgos', columnaDueno: 'diagnostico_id', duenoId: diagnosticoId, columnaOpcion: 'riesgo_id',
+    ids: riesgoIds, especificaciones: riesgoEspecificaciones,
+  })
   return diagnosticoId
 }
 
@@ -225,23 +376,25 @@ export async function guardarDiagnostico(conexion, usuario, pacienteId, cuerpo) 
 export async function obtenerCirugia(conexion, pacienteId) {
   const fila = await una(conexion, 'SELECT * FROM cirugias WHERE paciente_id = ?', [pacienteId])
   if (!fila) return null
-  const procedimientos = await todas(conexion, 'SELECT procedimiento_id FROM cirugias_procedimientos WHERE cirugia_id = ? ORDER BY orden', [fila.id])
-  const complicaciones = await todas(conexion, 'SELECT complicacion_id FROM cirugias_complicaciones_intraqx WHERE cirugia_id = ? ORDER BY id', [fila.id])
+  const procedimientos = await leerProcedimientosGuardados(conexion, 'cirugias_procedimientos', fila.id)
+  const complicaciones = await leerSeleccion(conexion, { tabla: 'cirugias_complicaciones_intraqx', columnaDueno: 'cirugia_id', duenoId: fila.id, columnaOpcion: 'complicacion_id' })
   return {
     ...filaApi('cirugias', fila),
+    procedimientos,
     procedimiento_ids: procedimientos.map((p) => p.procedimiento_id),
-    complicacion_intraqx_ids: complicaciones.map((c) => c.complicacion_id),
+    complicacion_intraqx_ids: complicaciones.ids,
+    complicacion_intraqx_especificaciones: complicaciones.especificaciones,
   }
 }
 
 export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
   const v = new Validador(cuerpo)
+  // El implante ya no es de la cirugía sino de cada procedimiento: cirugias.implante_id y
+  // numero_implante quedan en desuso (ver migrarImplantePorProcedimiento en schema.mjs).
   const datos = {
     fecha_cirugia: v.fecha('fecha_cirugia'),
     fecha_procedimiento_2: v.fecha('fecha_procedimiento_2'),
     fecha_procedimiento_3: v.fecha('fecha_procedimiento_3'),
-    implante_id: v.id('implante_id'),
-    numero_implante: v.texto('numero_implante', { max: 100 }),
     uso_cec: v.opcion('uso_cec', ['SI', 'NO']),
     tiempo_cec_min: v.entero('tiempo_cec_min', { min: 0 }),
     tiempo_clamp_min: v.entero('tiempo_clamp_min', { min: 0 }),
@@ -249,20 +402,19 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
     extubacion_quirofano: v.opcion('extubacion_quirofano', ['SI', 'NO']),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
-  const procedimientoIds = v.ids('procedimiento_ids')
-  if (procedimientoIds.length > 3) v.error('procedimiento_ids', 'Solo se permiten hasta tres procedimientos.')
+  const procedimientos = leerProcedimientos(v, cuerpo)
+  if (procedimientos.length > 3) v.error('procedimientos', 'Solo se permiten hasta tres procedimientos.')
+  const procedimientoIds = procedimientos.map((p) => p.procedimientoId)
   const complicacionIntraqxIds = [...new Set(v.ids('complicacion_intraqx_ids'))]
+  const complicacionIntraqxEspecificaciones = v.especificaciones('complicacion_intraqx_especificaciones')
   v.finalizar()
 
   if (new Set(procedimientoIds).size !== procedimientoIds.length) throw reglaNegocio('Los procedimientos 1, 2 y 3 no pueden repetirse.')
+  await normalizarProcedimientos(conexion, procedimientos)
   // Regla silenciosa: sin CEC no hay tiempos de CEC ni de clamp.
   if (datos.uso_cec !== 'SI') {
     datos.tiempo_cec_min = null
     datos.tiempo_clamp_min = null
-  }
-  // Regla silenciosa: el número de implante solo aplica si se eligió un tipo de implante real.
-  if (!datos.implante_id || (await valorDe(conexion, datos.implante_id)) === 'N/A') {
-    datos.numero_implante = null
   }
   if (datos.tiempo_clamp_min !== null && (datos.tiempo_cec_min === null || datos.tiempo_clamp_min > datos.tiempo_cec_min)) {
     throw reglaNegocio('El tiempo de clamp de aorta no puede ser mayor que el tiempo de CEC.')
@@ -301,30 +453,11 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
     cirugiaId = await insertar(conexion, usuario, 'cirugias', { paciente_id: pacienteId, ...datos, actualizado_por: usuario.id })
   }
 
-  // El orden del arreglo es el orden 1..3. Primero se quita lo que cambió y luego se inserta (índices únicos).
-  const actuales = await todas(conexion, 'SELECT id, procedimiento_id, orden FROM cirugias_procedimientos WHERE cirugia_id = ?', [cirugiaId])
-  const claveNueva = new Set(procedimientoIds.map((p, i) => `${p}:${i + 1}`))
-  for (const fila of actuales) {
-    if (!claveNueva.has(`${fila.procedimiento_id}:${fila.orden}`)) await eliminarFila(conexion, usuario, 'cirugias_procedimientos', fila.id)
-  }
-  const claveActual = new Set(actuales.map((f) => `${f.procedimiento_id}:${f.orden}`))
-  for (const [i, procedimientoId] of procedimientoIds.entries()) {
-    if (!claveActual.has(`${procedimientoId}:${i + 1}`)) {
-      await insertar(conexion, usuario, 'cirugias_procedimientos', { cirugia_id: cirugiaId, procedimiento_id: procedimientoId, orden: i + 1 }, { conAuditoriaUsuario: false })
-    }
-  }
-
-  // Reemplazo de la selección, igual que diagnosticos_riesgos: se quita lo que sobra y se agrega lo nuevo.
-  const complicacionesActuales = await todas(conexion, 'SELECT id, complicacion_id FROM cirugias_complicaciones_intraqx WHERE cirugia_id = ?', [cirugiaId])
-  for (const fila of complicacionesActuales) {
-    if (!complicacionIntraqxIds.includes(fila.complicacion_id)) await eliminarFila(conexion, usuario, 'cirugias_complicaciones_intraqx', fila.id)
-  }
-  const complicacionesPresentes = new Set(complicacionesActuales.map((f) => f.complicacion_id))
-  for (const complicacionId of complicacionIntraqxIds) {
-    if (!complicacionesPresentes.has(complicacionId)) {
-      await insertar(conexion, usuario, 'cirugias_complicaciones_intraqx', { cirugia_id: cirugiaId, complicacion_id: complicacionId }, { conAuditoriaUsuario: false })
-    }
-  }
+  await sincronizarProcedimientos(conexion, usuario, 'cirugias_procedimientos', cirugiaId, procedimientos)
+  await sincronizarSeleccion(conexion, usuario, {
+    tabla: 'cirugias_complicaciones_intraqx', columnaDueno: 'cirugia_id', duenoId: cirugiaId, columnaOpcion: 'complicacion_id',
+    ids: complicacionIntraqxIds, especificaciones: complicacionIntraqxEspecificaciones,
+  })
   return cirugiaId
 }
 
@@ -335,8 +468,8 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
 export async function obtenerPostoperatorio(conexion, pacienteId) {
   const fila = await una(conexion, 'SELECT * FROM postoperatorio WHERE paciente_id = ?', [pacienteId])
   if (!fila) return null
-  const complicaciones = await todas(conexion, 'SELECT complicacion_id FROM postoperatorio_complicaciones_pop WHERE postoperatorio_id = ? ORDER BY id', [fila.id])
-  return { ...filaApi('postoperatorio', fila), complicacion_pop_ids: complicaciones.map((c) => c.complicacion_id) }
+  const complicaciones = await leerSeleccion(conexion, { tabla: 'postoperatorio_complicaciones_pop', columnaDueno: 'postoperatorio_id', duenoId: fila.id, columnaOpcion: 'complicacion_id' })
+  return { ...filaApi('postoperatorio', fila), complicacion_pop_ids: complicaciones.ids, complicacion_pop_especificaciones: complicaciones.especificaciones }
 }
 
 /** Condición de salida = Muerte => Módulo 5 "no aplica"; si se corrige, vuelve a pendiente. */
@@ -359,11 +492,14 @@ export async function guardarPostoperatorio(conexion, usuario, pacienteId, cuerp
     fecha_traslado_intermedio: v.fecha('fecha_traslado_intermedio'),
     fecha_salida: v.fecha('fecha_salida'),
     condicion_salida_id: v.id('condicion_salida_id'),
+    condicion_salida_otro: v.texto('condicion_salida_otro'),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   const complicacionPopIds = [...new Set(v.ids('complicacion_pop_ids'))]
+  const complicacionPopEspecificaciones = v.especificaciones('complicacion_pop_especificaciones')
   v.finalizar()
 
+  datos.condicion_salida_otro = await especificacionDe(conexion, datos.condicion_salida_id, datos.condicion_salida_otro)
   const cirugia = await una(conexion, 'SELECT fecha_cirugia FROM cirugias WHERE paciente_id = ?', [pacienteId])
   if (cirugia?.fecha_cirugia) {
     if (datos.fecha_traslado_intermedio && datos.fecha_traslado_intermedio < cirugia.fecha_cirugia) {
@@ -386,16 +522,10 @@ export async function guardarPostoperatorio(conexion, usuario, pacienteId, cuerp
     id = await insertar(conexion, usuario, 'postoperatorio', { paciente_id: pacienteId, ...datos, actualizado_por: usuario.id })
   }
 
-  const complicacionesActuales = await todas(conexion, 'SELECT id, complicacion_id FROM postoperatorio_complicaciones_pop WHERE postoperatorio_id = ?', [id])
-  for (const fila of complicacionesActuales) {
-    if (!complicacionPopIds.includes(fila.complicacion_id)) await eliminarFila(conexion, usuario, 'postoperatorio_complicaciones_pop', fila.id)
-  }
-  const complicacionesPresentes = new Set(complicacionesActuales.map((f) => f.complicacion_id))
-  for (const complicacionId of complicacionPopIds) {
-    if (!complicacionesPresentes.has(complicacionId)) {
-      await insertar(conexion, usuario, 'postoperatorio_complicaciones_pop', { postoperatorio_id: id, complicacion_id: complicacionId }, { conAuditoriaUsuario: false })
-    }
-  }
+  await sincronizarSeleccion(conexion, usuario, {
+    tabla: 'postoperatorio_complicaciones_pop', columnaDueno: 'postoperatorio_id', duenoId: id, columnaOpcion: 'complicacion_id',
+    ids: complicacionPopIds, especificaciones: complicacionPopEspecificaciones,
+  })
 
   await sincronizarSeguimiento(conexion, usuario, pacienteId, datos.condicion_salida_id)
   return id
@@ -407,6 +537,19 @@ export async function guardarPostoperatorio(conexion, usuario, pacienteId, cuerp
 
 export async function obtenerSeguimiento(conexion, pacienteId) {
   return filaApi('seguimientos', await una(conexion, 'SELECT * FROM seguimientos WHERE paciente_id = ?', [pacienteId]))
+}
+
+/** Reglas del Módulo 5 iguales en pediátricos y adultos: sin reingreso no hay fecha ni causa (con
+ * reingreso, las dos son obligatorias), y cada especificación solo si se eligió un "Otro…". */
+export async function normalizarReingresoYHerida(conexion, datos) {
+  if (datos.reingreso_30_dias !== 'SI') {
+    datos.fecha_reingreso = null
+    datos.causa_reingreso_id = null
+  } else if (!datos.fecha_reingreso || !datos.causa_reingreso_id) {
+    throw reglaNegocio('Si hubo reingreso, la fecha y la causa de reingreso son obligatorias.')
+  }
+  datos.estado_herida_otro = await especificacionDe(conexion, datos.estado_herida_id, datos.estado_herida_otro)
+  datos.causa_reingreso_otro = await especificacionDe(conexion, datos.causa_reingreso_id, datos.causa_reingreso_otro)
 }
 
 export async function guardarSeguimiento(conexion, usuario, pacienteId, cuerpo) {
@@ -421,23 +564,20 @@ export async function guardarSeguimiento(conexion, usuario, pacienteId, cuerpo) 
     fecha_control_cirugia: v.fecha('fecha_control_cirugia'),
     rehabilitacion_cardiaca: v.opcion('rehabilitacion_cardiaca', ['SI', 'NO', 'NA']),
     estado_herida_id: v.id('estado_herida_id'),
+    estado_herida_otro: v.texto('estado_herida_otro'),
     fecha_llamada_15_dias: v.fecha('fecha_llamada_15_dias'),
     persona_recibe_llamada: v.texto('persona_recibe_llamada'),
     reingreso_30_dias: v.opcion('reingreso_30_dias', ['SI', 'NO', 'NA']),
     fecha_reingreso: v.fecha('fecha_reingreso'),
     causa_reingreso_id: v.id('causa_reingreso_id'),
+    causa_reingreso_otro: v.texto('causa_reingreso_otro'),
     observaciones: v.texto('observaciones', { max: 5000 }),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   v.finalizar()
 
-  if (datos.reingreso_30_dias !== 'SI') {
-    datos.fecha_reingreso = null
-    datos.causa_reingreso_id = null
-  } else {
-    if (!datos.fecha_reingreso || !datos.causa_reingreso_id) {
-      throw reglaNegocio('Si hubo reingreso, la fecha y la causa de reingreso son obligatorias.')
-    }
+  await normalizarReingresoYHerida(conexion, datos)
+  if (datos.reingreso_30_dias === 'SI') {
     const salida = await una(conexion, 'SELECT fecha_salida FROM postoperatorio WHERE paciente_id = ?', [pacienteId])
     if (salida?.fecha_salida) {
       const dias = diasEntre(salida.fecha_salida, datos.fecha_reingreso)

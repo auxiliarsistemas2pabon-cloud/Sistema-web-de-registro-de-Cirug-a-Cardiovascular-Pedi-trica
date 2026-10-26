@@ -52,11 +52,17 @@ async function paciente({ nombre, nac, sexo, peso, talla, procedencia, municipio
     }
     if (cirugia) {
       await guardarCirugia(conexion, admin, id, {
-        fecha_cirugia: cirugia.fecha, implante_id: cirugia.implante ? op('IMPLANTE', cirugia.implante) : null,
+        fecha_cirugia: cirugia.fecha,
         uso_cec: cirugia.cec ? 'SI' : 'NO', tiempo_cec_min: cirugia.cec ?? null, tiempo_clamp_min: cirugia.clamp ?? null,
         complicacion_intraqx_ids: [op('COMPLICACION_INTRAQX', cirugia.complicacion ?? 'NINGUNA')],
         cierre_esternal_diferido: cirugia.cierreDiferido ? 'SI' : 'NO', extubacion_quirofano: cirugia.extubado ? 'SI' : 'NO',
-        procedimiento_ids: cirugia.procedimientos.map((p) => op('PROCEDIMIENTOS', p)), estado_modulo: 'completo',
+        // El implante (si lo hubo) va en el primer procedimiento; los demás quedan en "No aplica".
+        procedimientos: cirugia.procedimientos.map((p, i) => ({
+          procedimiento_id: op('PROCEDIMIENTOS', p),
+          implante: cirugia.implante && i === 0 ? 'SI' : 'NA',
+          tipo_implante_id: cirugia.implante && i === 0 ? op('IMPLANTE', cirugia.implante) : null,
+        })),
+        estado_modulo: 'completo',
       })
     }
     if (postop) {

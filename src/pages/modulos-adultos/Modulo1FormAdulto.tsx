@@ -5,11 +5,13 @@ import { useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
+import { CampoOpciones } from '../../components/CampoOpciones'
 import { MensajeError } from '../../components/Estados'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1Adulto } from '../../lib/completitud'
+import { sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
 import { edadMinimaIso, hoyIso } from '../../lib/fechas'
 import { formatearNumero, superficieCorporal } from '../../lib/estadisticas'
 import { api, mensajeDe } from '../../lib/api'
@@ -24,6 +26,7 @@ const esquema = z
       .min(1, 'La identificación es obligatoria')
       .regex(/^[0-9]+$/, 'Solo se permiten números'),
     sexo_id: z.string(),
+    sexo_otro: z.string(),
     fecha_nacimiento: z
       .string()
       .min(1, 'La fecha de nacimiento es obligatoria')
@@ -32,9 +35,11 @@ const esquema = z
     peso_kg: z.string(),
     talla_cm: z.string(),
     procedencia_id: z.string(),
+    procedencia_otro: z.string(),
     municipio_narino_id: z.string(),
     telefono: z.string(),
     eps_id: z.string(),
+    eps_otro: z.string(),
   })
   .superRefine((v, ctx) => {
     if (v.peso_kg && (Number(v.peso_kg) < 30 || Number(v.peso_kg) > 300)) {
@@ -52,13 +57,16 @@ function valoresIniciales(paciente: PacienteAdultoDetalle | null): Valores {
     nombre_completo: paciente?.nombre_completo ?? '',
     identificacion: paciente?.identificacion ?? '',
     sexo_id: paciente?.sexo_id ?? '',
+    sexo_otro: paciente?.sexo_otro ?? '',
     fecha_nacimiento: paciente?.fecha_nacimiento ?? '',
     peso_kg: paciente?.peso_kg?.toString() ?? '',
     talla_cm: paciente?.talla_cm?.toString() ?? '',
     procedencia_id: paciente?.procedencia_id ?? '',
+    procedencia_otro: paciente?.procedencia_otro ?? '',
     municipio_narino_id: paciente?.municipio_narino_id ?? '',
     telefono: paciente?.telefono ?? '',
     eps_id: paciente?.eps_id ?? '',
+    eps_otro: paciente?.eps_otro ?? '',
   }
 }
 
@@ -70,6 +78,7 @@ interface Props {
 export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
+  const esOtro = useEsOpcionOtro()
   const { data: opcionesProcedencia } = useOpciones('PROCEDENCIA')
   const [guardando, setGuardando] = useState(false)
   const [errorGuardado, setErrorGuardado] = useState<string | null>(null)
@@ -113,7 +122,17 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
     setGuardadoEn(null)
     setGuardando(true)
 
+    const especificar = {
+      sexo: esOtro('SEXO', valores.sexo_id),
+      procedencia: esOtro('PROCEDENCIA', valores.procedencia_id),
+      eps: esOtro('EPS', valores.eps_id),
+    }
     const { estado: estado_modulo, faltantes } = calcularEstadoModulo1Adulto({
+      sinEspecificar: sinEspecificar([
+        { etiqueta: 'Sexo', esOtro: especificar.sexo, texto: valores.sexo_otro },
+        { etiqueta: 'Procedencia', esOtro: especificar.procedencia, texto: valores.procedencia_otro },
+        { etiqueta: 'EPS', esOtro: especificar.eps, texto: valores.eps_otro },
+      ]),
       nombreCompleto: valores.nombre_completo,
       identificacion: valores.identificacion,
       fechaNacimiento: valores.fecha_nacimiento,
@@ -126,13 +145,16 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
       nombre_completo: valores.nombre_completo.trim(),
       identificacion: valores.identificacion.trim(),
       sexo_id: valores.sexo_id || null,
+      sexo_otro: especificar.sexo ? valores.sexo_otro.trim() || null : null,
       fecha_nacimiento: valores.fecha_nacimiento,
       peso_kg: valores.peso_kg ? Number(valores.peso_kg) : null,
       talla_cm: valores.talla_cm ? Number(valores.talla_cm) : null,
       procedencia_id: valores.procedencia_id || null,
+      procedencia_otro: especificar.procedencia ? valores.procedencia_otro.trim() || null : null,
       municipio_narino_id: procedenciaEsNarino ? valores.municipio_narino_id || null : null,
       telefono: valores.telefono.trim() || null,
       eps_id: valores.eps_id || null,
+      eps_otro: especificar.eps ? valores.eps_otro.trim() || null : null,
       estado_modulo,
     }
 
@@ -170,9 +192,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
                 <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
               </Campo>
 
-              <Campo etiqueta="Sexo">
-                <SelectOpciones categoria="SEXO" control={control} name="sexo_id" />
-              </Campo>
+              <CampoOpciones etiqueta="Sexo" categoria="SEXO" control={control} name="sexo_id" nameOtro="sexo_otro" />
 
               <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
                 <input type="date" max={edadMinimaIso(18)} {...register('fecha_nacimiento')} className={claseInput} />
@@ -182,9 +202,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
 
           <SeccionFormulario titulo="Salud y afiliación">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Campo etiqueta="EPS" className="sm:col-span-2 lg:col-span-1">
-                <SelectOpciones categoria="EPS" control={control} name="eps_id" />
-              </Campo>
+              <CampoOpciones etiqueta="EPS" categoria="EPS" control={control} name="eps_id" nameOtro="eps_otro" className="sm:col-span-2 lg:col-span-1" />
 
               <Campo etiqueta="Peso (kg)" error={errors.peso_kg?.message}>
                 <input type="number" min="30" max="300" step="0.1" {...register('peso_kg')} className={claseInput} />
@@ -207,9 +225,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
 
           <SeccionFormulario titulo="Procedencia y contacto">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Campo etiqueta="Procedencia">
-                <SelectOpciones categoria="PROCEDENCIA" control={control} name="procedencia_id" />
-              </Campo>
+              <CampoOpciones etiqueta="Procedencia" categoria="PROCEDENCIA" control={control} name="procedencia_id" nameOtro="procedencia_otro" />
 
               <Campo etiqueta="Municipio de Nariño" error={errors.municipio_narino_id?.message}>
                 <SelectOpciones

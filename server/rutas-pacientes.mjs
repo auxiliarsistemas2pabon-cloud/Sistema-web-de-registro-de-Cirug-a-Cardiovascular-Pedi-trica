@@ -4,6 +4,7 @@ import { asincrono, validacion } from './errores.mjs'
 import {
   actualizarPaciente, crearPaciente, filaApi, guardarCirugia, guardarDiagnostico, guardarPostoperatorio, guardarSeguimiento,
   marcarEliminado, obtenerCirugia, obtenerDiagnostico, obtenerPaciente, obtenerPostoperatorio, obtenerSeguimiento,
+  sqlDiasHospitalizacion, sqlDiasUci,
 } from './servicios.mjs'
 
 export const rutasPacientes = Router()
@@ -14,12 +15,8 @@ const SQL_RESUMEN = `
     DATEDIFF(?, p.fecha_nacimiento) AS edad_dias,
     c.fecha_cirugia,
     DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_cirugia_dias,
-    CASE
-      WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
-      WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia)
-      ELSE NULL
-    END AS dias_uci,
-    CASE WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) ELSE NULL END AS dias_hospitalizacion_posqx,
+    ${sqlDiasUci('c', 'po')} AS dias_uci,
+    ${sqlDiasHospitalizacion('c', 'po')} AS dias_hospitalizacion_posqx,
     p.estado_modulo AS estado_m1,
     COALESCE(d.estado_modulo, 'pendiente') AS estado_m2,
     COALESCE(c.estado_modulo, 'pendiente') AS estado_m3,

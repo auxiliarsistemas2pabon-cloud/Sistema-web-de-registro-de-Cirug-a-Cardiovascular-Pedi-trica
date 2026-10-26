@@ -3,9 +3,11 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
+import { CampoOpciones } from '../../components/CampoOpciones'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
-import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo5Adulto } from '../../lib/completitud'
+import { sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
+import { hoyIso } from '../../lib/fechas'
 import { api, mensajeDe } from '../../lib/api'
 import { AvisoInformativo, Cargando, MensajeError } from '../../components/Estados'
 
@@ -14,11 +16,14 @@ interface SeguimientoAdultoDetalle {
   fecha_control_cirugia: string | null
   rehabilitacion_cardiaca: 'SI' | 'NO' | 'NA' | null
   estado_herida_id: string | null
+  estado_herida_otro: string | null
   llamado_15_dias: 'SI' | 'NO' | null
+  fecha_llamada_15_dias: string | null
   persona_recibe_llamada: string | null
   reingreso_30_dias: 'SI' | 'NO' | null
   fecha_reingreso: string | null
   causa_reingreso_id: string | null
+  causa_reingreso_otro: string | null
   observaciones: string | null
 }
 
@@ -26,11 +31,14 @@ interface Valores {
   fecha_control_cirugia: string
   rehabilitacion_cardiaca: 'SI' | 'NO' | 'NA' | ''
   estado_herida_id: string
+  estado_herida_otro: string
   llamado_15_dias: 'SI' | 'NO' | ''
+  fecha_llamada_15_dias: string
   persona_recibe_llamada: string
   reingreso_30_dias: 'SI' | 'NO' | ''
   fecha_reingreso: string
   causa_reingreso_id: string
+  causa_reingreso_otro: string
   observaciones: string
 }
 
@@ -58,11 +66,14 @@ function valoresIniciales(s: SeguimientoAdultoDetalle | null): Valores {
     fecha_control_cirugia: s?.fecha_control_cirugia ?? '',
     rehabilitacion_cardiaca: s?.rehabilitacion_cardiaca ?? '',
     estado_herida_id: s?.estado_herida_id ?? '',
+    estado_herida_otro: s?.estado_herida_otro ?? '',
     llamado_15_dias: s?.llamado_15_dias ?? '',
+    fecha_llamada_15_dias: s?.fecha_llamada_15_dias ?? '',
     persona_recibe_llamada: s?.persona_recibe_llamada ?? '',
     reingreso_30_dias: s?.reingreso_30_dias ?? '',
     fecha_reingreso: s?.fecha_reingreso ?? '',
     causa_reingreso_id: s?.causa_reingreso_id ?? '',
+    causa_reingreso_otro: s?.causa_reingreso_otro ?? '',
     observaciones: s?.observaciones ?? '',
   }
 }
@@ -70,6 +81,7 @@ function valoresIniciales(s: SeguimientoAdultoDetalle | null): Valores {
 export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: string; episodioId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
+  const esOtro = useEsOpcionOtro()
   const { data, isLoading } = useSeguimientoAdulto(pacienteId, episodioId)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -122,6 +134,16 @@ export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     if (!perfil) return
     setGuardadoEn(null)
     setCamposFaltantes([])
+    if (valores.llamado_15_dias === 'SI' && valores.fecha_llamada_15_dias) {
+      if (valores.fecha_llamada_15_dias > hoyIso()) {
+        setError('La fecha de la llamada no puede ser futura: registre el día en que se hizo.')
+        return
+      }
+      if (data?.fechaSalida && valores.fecha_llamada_15_dias < data.fechaSalida) {
+        setError('La fecha de la llamada no puede ser anterior a la fecha de salida.')
+        return
+      }
+    }
     if (valores.reingreso_30_dias === 'SI' && (!valores.fecha_reingreso || !valores.causa_reingreso_id)) {
       setError('Si hubo reingreso, la fecha y la causa son obligatorias.')
       return
@@ -138,11 +160,20 @@ export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     setError(null)
     setGuardando(true)
 
+    const especificar = {
+      herida: esOtro('ESTADO_HERIDA', valores.estado_herida_id),
+      causa: valores.reingreso_30_dias === 'SI' && esOtro('CAUSA_REINGRESO', valores.causa_reingreso_id),
+    }
     const { estado: estado_modulo, faltantes } = calcularEstadoModulo5Adulto({
+      sinEspecificar: sinEspecificar([
+        { etiqueta: 'Estado de la herida quirúrgica', esOtro: especificar.herida, texto: valores.estado_herida_otro },
+        { etiqueta: 'Causa de reingreso', esOtro: especificar.causa, texto: valores.causa_reingreso_otro },
+      ]),
       fechaControl: valores.fecha_control_cirugia,
       rehabilitacionCardiaca: valores.rehabilitacion_cardiaca,
       estadoHeridaId: valores.estado_herida_id,
       llamado15Dias: valores.llamado_15_dias,
+      fechaLlamada15Dias: valores.fecha_llamada_15_dias,
       personaRecibeLlamada: valores.persona_recibe_llamada,
       reingreso: valores.reingreso_30_dias,
       fechaReingreso: valores.fecha_reingreso,
@@ -155,17 +186,21 @@ export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
         fecha_control_cirugia: valores.fecha_control_cirugia || null,
         rehabilitacion_cardiaca: valores.rehabilitacion_cardiaca || null,
         estado_herida_id: valores.estado_herida_id || null,
+        estado_herida_otro: especificar.herida ? valores.estado_herida_otro.trim() || null : null,
         llamado_15_dias: valores.llamado_15_dias || null,
+        fecha_llamada_15_dias: valores.llamado_15_dias === 'SI' ? valores.fecha_llamada_15_dias || null : null,
         persona_recibe_llamada: valores.llamado_15_dias === 'SI' ? valores.persona_recibe_llamada.trim() || null : null,
         reingreso_30_dias: valores.reingreso_30_dias || null,
         fecha_reingreso: valores.reingreso_30_dias === 'SI' ? valores.fecha_reingreso || null : null,
         causa_reingreso_id: valores.reingreso_30_dias === 'SI' ? valores.causa_reingreso_id || null : null,
+        causa_reingreso_otro: especificar.causa ? valores.causa_reingreso_otro.trim() || null : null,
         observaciones: valores.observaciones.trim() || null,
         estado_modulo,
       })
       queryClient.invalidateQueries({ queryKey: ['seguimiento-adulto', episodioId] })
       queryClient.invalidateQueries({ queryKey: ['pacientes-adultos'] })
       queryClient.invalidateQueries({ queryKey: ['paciente-adulto-resumen', pacienteId] })
+      queryClient.invalidateQueries({ queryKey: ['episodios-adulto', pacienteId] })
       setGuardadoEn(new Date())
     } catch (causa) {
       setError(mensajeDe(causa, 'No se pudo guardar el Módulo 5.'))
@@ -179,7 +214,7 @@ export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
       <fieldset className="space-y-5">
         <div className="space-y-5">
           <SeccionFormulario titulo="Control posterior">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Campo etiqueta="Fecha de control por cirugía cardiovascular *">
                 <input type="date" {...register('fecha_control_cirugia')} className={claseInput} />
               </Campo>
@@ -193,9 +228,14 @@ export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
                 </select>
               </Campo>
 
-              <Campo etiqueta="Estado de la herida quirúrgica *" className="sm:col-span-2 lg:col-span-1">
-                <SelectOpciones categoria="ESTADO_HERIDA" control={control} name="estado_herida_id" />
-              </Campo>
+              <CampoOpciones
+                etiqueta="Estado de la herida quirúrgica *"
+                categoria="ESTADO_HERIDA"
+                control={control}
+                name="estado_herida_id"
+                nameOtro="estado_herida_otro"
+                className="sm:col-span-2 lg:col-span-1"
+              />
             </div>
           </SeccionFormulario>
 
@@ -209,14 +249,26 @@ export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
                 </select>
               </Campo>
 
-              <Campo etiqueta="Persona que recibe la llamada *" className="sm:col-span-2">
+              {/* El día en que de verdad se hizo la llamada (pedido del 23-oct): solo si se hizo. */}
+              <Campo etiqueta="Fecha de la llamada *">
+                <input
+                  type="date"
+                  disabled={llamado !== 'SI'}
+                  min={data.fechaSalida ?? undefined}
+                  max={hoyIso()}
+                  {...register('fecha_llamada_15_dias')}
+                  className={claseInput}
+                />
+              </Campo>
+
+              <Campo etiqueta="Persona que recibe la llamada *">
                 <input disabled={llamado !== 'SI'} {...register('persona_recibe_llamada')} className={claseInput} />
               </Campo>
             </div>
           </SeccionFormulario>
 
           <SeccionFormulario titulo="Reingreso a la institución en los primeros 30 días">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Campo etiqueta="¿Hubo reingreso? *">
                 <select {...register('reingreso_30_dias')} className={claseInput}>
                   <option value="">Seleccione…</option>
@@ -234,13 +286,15 @@ export function Modulo5FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
                   className={claseInput}
                 />
               </Campo>
-              <Campo etiqueta="Causa de reingreso" className="sm:col-span-2 lg:col-span-1">
-                <SelectOpciones
-                  categoria="CAUSA_REINGRESO"
-                  control={control} name="causa_reingreso_id"
-                  disabled={reingreso !== 'SI'}
-                />
-              </Campo>
+              <CampoOpciones
+                etiqueta="Causa de reingreso"
+                categoria="CAUSA_REINGRESO"
+                control={control}
+                name="causa_reingreso_id"
+                nameOtro="causa_reingreso_otro"
+                disabled={reingreso !== 'SI'}
+                className="sm:col-span-2 lg:col-span-1"
+              />
             </div>
           </SeccionFormulario>
 
