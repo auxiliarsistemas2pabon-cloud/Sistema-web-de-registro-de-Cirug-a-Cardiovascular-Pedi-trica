@@ -3,9 +3,10 @@ import { useEffect, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
+import { CampoOpciones } from '../../components/CampoOpciones'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
-import { SelectOpciones } from '../../components/SelectOpciones'
 import { calcularEstadoModulo5 } from '../../lib/completitud'
+import { sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
 import { hoyIso } from '../../lib/fechas'
 import { api, mensajeDe } from '../../lib/api'
 import { AvisoInformativo, Cargando, MensajeAdvertencia, MensajeError } from '../../components/Estados'
@@ -15,11 +16,13 @@ interface SeguimientoDetalle {
   fecha_control_cirugia: string | null
   rehabilitacion_cardiaca: 'SI' | 'NO' | 'NA' | null
   estado_herida_id: string | null
+  estado_herida_otro: string | null
   fecha_llamada_15_dias: string | null
   persona_recibe_llamada: string | null
   reingreso_30_dias: 'SI' | 'NO' | 'NA' | null
   fecha_reingreso: string | null
   causa_reingreso_id: string | null
+  causa_reingreso_otro: string | null
   observaciones: string | null
 }
 
@@ -27,11 +30,13 @@ interface Valores {
   fecha_control_cirugia: string
   rehabilitacion_cardiaca: 'SI' | 'NO' | 'NA' | ''
   estado_herida_id: string
+  estado_herida_otro: string
   fecha_llamada_15_dias: string
   persona_recibe_llamada: string
   reingreso_30_dias: 'SI' | 'NO' | 'NA' | ''
   fecha_reingreso: string
   causa_reingreso_id: string
+  causa_reingreso_otro: string
   observaciones: string
 }
 
@@ -59,11 +64,13 @@ function valoresIniciales(s: SeguimientoDetalle | null, fechaSalida: string | nu
     fecha_control_cirugia: s?.fecha_control_cirugia ?? '',
     rehabilitacion_cardiaca: s?.rehabilitacion_cardiaca ?? '',
     estado_herida_id: s?.estado_herida_id ?? '',
+    estado_herida_otro: s?.estado_herida_otro ?? '',
     fecha_llamada_15_dias: s?.fecha_llamada_15_dias ?? (fechaSalida ? sumarDias(fechaSalida, 15) : ''),
     persona_recibe_llamada: s?.persona_recibe_llamada ?? '',
     reingreso_30_dias: s?.reingreso_30_dias ?? '',
     fecha_reingreso: s?.fecha_reingreso ?? '',
     causa_reingreso_id: s?.causa_reingreso_id ?? '',
+    causa_reingreso_otro: s?.causa_reingreso_otro ?? '',
     observaciones: s?.observaciones ?? '',
   }
 }
@@ -71,6 +78,7 @@ function valoresIniciales(s: SeguimientoDetalle | null, fechaSalida: string | nu
 export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
   const { perfil } = useAuth()
   const queryClient = useQueryClient()
+  const esOtro = useEsOpcionOtro()
   const { data, isLoading } = useSeguimiento(pacienteId)
   const [guardando, setGuardando] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -143,7 +151,15 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
     setError(null)
     setGuardando(true)
 
+    const especificar = {
+      herida: esOtro('ESTADO_HERIDA', valores.estado_herida_id),
+      causa: valores.reingreso_30_dias === 'SI' && esOtro('CAUSA_REINGRESO', valores.causa_reingreso_id),
+    }
     const { estado: estado_modulo, faltantes } = calcularEstadoModulo5({
+      sinEspecificar: sinEspecificar([
+        { etiqueta: 'Estado de la herida quirúrgica', esOtro: especificar.herida, texto: valores.estado_herida_otro },
+        { etiqueta: 'Causa de reingreso', esOtro: especificar.causa, texto: valores.causa_reingreso_otro },
+      ]),
       fechaControl: valores.fecha_control_cirugia,
       rehabilitacionCardiaca: valores.rehabilitacion_cardiaca,
       estadoHeridaId: valores.estado_herida_id,
@@ -160,11 +176,13 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
         fecha_control_cirugia: valores.fecha_control_cirugia || null,
         rehabilitacion_cardiaca: valores.rehabilitacion_cardiaca || null,
         estado_herida_id: valores.estado_herida_id || null,
+        estado_herida_otro: especificar.herida ? valores.estado_herida_otro.trim() || null : null,
         fecha_llamada_15_dias: valores.fecha_llamada_15_dias || null,
         persona_recibe_llamada: valores.persona_recibe_llamada.trim() || null,
         reingreso_30_dias: valores.reingreso_30_dias || null,
         fecha_reingreso: valores.reingreso_30_dias === 'SI' ? valores.fecha_reingreso || null : null,
         causa_reingreso_id: valores.reingreso_30_dias === 'SI' ? valores.causa_reingreso_id || null : null,
+        causa_reingreso_otro: especificar.causa ? valores.causa_reingreso_otro.trim() || null : null,
         observaciones: valores.observaciones.trim() || null,
         estado_modulo,
       })
@@ -185,7 +203,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
       <fieldset className="space-y-5">
         <div className="space-y-5">
           <SeccionFormulario titulo="Control posterior">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Campo etiqueta="Fecha de control por cirugía cardiovascular *">
                 <input type="date" {...register('fecha_control_cirugia')} className={claseInput} />
               </Campo>
@@ -199,9 +217,14 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
                 </select>
               </Campo>
 
-              <Campo etiqueta="Estado de la herida quirúrgica *" className="sm:col-span-2 lg:col-span-1">
-                <SelectOpciones categoria="ESTADO_HERIDA" control={control} name="estado_herida_id" />
-              </Campo>
+              <CampoOpciones
+                etiqueta="Estado de la herida quirúrgica *"
+                categoria="ESTADO_HERIDA"
+                control={control}
+                name="estado_herida_id"
+                nameOtro="estado_herida_otro"
+                className="sm:col-span-2 lg:col-span-1"
+              />
             </div>
           </SeccionFormulario>
 
@@ -223,7 +246,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
           </SeccionFormulario>
 
           <SeccionFormulario titulo="Reingreso en los primeros 30 días">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:items-end lg:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <Campo etiqueta="¿Hubo reingreso? *">
                 <select {...register('reingreso_30_dias')} className={claseInput}>
                   <option value="">Seleccione…</option>
@@ -242,13 +265,15 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
                   className={claseInput}
                 />
               </Campo>
-              <Campo etiqueta="Causa de reingreso" className="sm:col-span-2 lg:col-span-1">
-                <SelectOpciones
-                  categoria="CAUSA_REINGRESO"
-                  control={control} name="causa_reingreso_id"
-                  disabled={reingreso !== 'SI'}
-                />
-              </Campo>
+              <CampoOpciones
+                etiqueta="Causa de reingreso"
+                categoria="CAUSA_REINGRESO"
+                control={control}
+                name="causa_reingreso_id"
+                nameOtro="causa_reingreso_otro"
+                disabled={reingreso !== 'SI'}
+                className="sm:col-span-2 lg:col-span-1"
+              />
             </div>
           </SeccionFormulario>
 

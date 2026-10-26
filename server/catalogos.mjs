@@ -245,11 +245,13 @@ export const opciones = {
     { codigo: null, valor: "Valvuloplastia tricuspídea", orden: 320 },
     { codigo: null, valor: "Otro", orden: 330 },
   ],
+  // Sin "N/A": que un procedimiento no lleve implante se responde en "¿lleva implante?" (Sí / No / No
+  // aplica), y este tipo solo se pide cuando sí lleva. En las bases que ya lo tenían, se desactiva al
+  // migrar el implante a cada procedimiento (ver migrarImplantePorProcedimiento en schema.mjs).
   IMPLANTE: [
     { codigo: null, valor: "Autólogo", orden: 10 },
     { codigo: null, valor: "Biológico", orden: 20 },
     { codigo: null, valor: "Mecánico", orden: 30 },
-    { codigo: null, valor: "N/A", orden: 40 },
   ],
   COMPLICACION_INTRAQX: [
     { codigo: 'NINGUNA', valor: "Ninguna", orden: 10 },

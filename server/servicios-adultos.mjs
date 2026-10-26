@@ -5,9 +5,26 @@
 import { hoyBogota, todas, una } from './db.mjs'
 import { ErrorApi, noEncontrado, reglaNegocio } from './errores.mjs'
 import { Validador, diasEntre } from './validar.mjs'
-import { actualizar, codigoDe, eliminarFila, filaApi, idPorCodigo, insertar, valorDe } from './servicios.mjs'
+import {
+  actualizar, codigoDe, especificacionDe, filaApi, idPorCodigo, insertar, leerProcedimientos, leerProcedimientosGuardados,
+  leerSeleccion, normalizarDatosPaciente, normalizarDiagnosticos, normalizarProcedimientos, normalizarReingresoYHerida,
+  sincronizarProcedimientos, sincronizarSeleccion,
+} from './servicios.mjs'
 
 const ESTADOS = ['pendiente', 'completo']
+
+/** Columnas que el pedido del 23-oct quitó de la ficha (estado preoperatorio, antecedentes y
+ * comorbilidades del formato FR-GCC-21, la transfusión intraoperatoria, los días escritos a mano y el
+ * implante de la cirugía entera): siguen en la base con lo ya registrado, pero la API no las devuelve. */
+const CAMPOS_RETIRADOS = [
+  'estado_preoperatorio', 'antecedentes_quirurgicos', 'comorbilidades', 'transfusion_intraoperatoria',
+  'dias_estancia_uci', 'dias_hospitalizacion_total', 'implante_id', 'numero_implante',
+]
+
+function sinCamposRetirados(fila) {
+  for (const campo of CAMPOS_RETIRADOS) delete fila[campo]
+  return fila
+}
 
 /** Fecha (aaaa-mm-dd) de hace exactamente `anios` años, para validar la edad mínima del módulo de adultos. */
 function haceAnios(anios) {
@@ -31,13 +48,16 @@ function leerPacienteAdulto(cuerpo) {
     nombre_completo: v.texto('nombre_completo', { obligatorio: true }),
     identificacion: v.texto('identificacion', { obligatorio: true, max: 50 }),
     sexo_id: v.id('sexo_id'),
+    sexo_otro: v.texto('sexo_otro'),
     fecha_nacimiento: v.fecha('fecha_nacimiento', { obligatoria: true }),
     peso_kg: v.decimal('peso_kg', { min: 30, max: 300 }),
     talla_cm: v.entero('talla_cm', { min: 120, max: 230 }),
     procedencia_id: v.id('procedencia_id'),
+    procedencia_otro: v.texto('procedencia_otro'),
     municipio_narino_id: v.id('municipio_narino_id'),
     telefono: v.texto('telefono', { max: 50 }),
     eps_id: v.id('eps_id'),
+    eps_otro: v.texto('eps_otro'),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   if (datos.identificacion && !/^\d+$/.test(datos.identificacion)) v.error('identificacion', 'Solo se permiten números.')
@@ -50,14 +70,8 @@ function leerPacienteAdulto(cuerpo) {
   return datos
 }
 
-async function normalizarPacienteAdulto(conexion, datos) {
-  // Misma regla silenciosa que el módulo pediátrico: el municipio solo aplica si la procedencia es Nariño.
-  if ((await codigoDe(conexion, datos.procedencia_id)) !== 'NARINO') datos.municipio_narino_id = null
-  return datos
-}
-
 export async function crearPacienteAdulto(conexion, usuario, cuerpo, extras = {}) {
-  const datos = await normalizarPacienteAdulto(conexion, leerPacienteAdulto(cuerpo))
+  const datos = await normalizarDatosPaciente(conexion, leerPacienteAdulto(cuerpo))
   const pacienteId = await insertar(conexion, usuario, 'pacientes_adultos', { ...datos, ...extras, actualizado_por: usuario.id })
   // La primera intervención se crea junto con el paciente: así el flujo de hoy (llenar los
   // módulos 2-5 en cualquier orden, sin un paso extra) no cambia para el caso común de una sola
@@ -78,8 +92,22 @@ export async function obtenerEpisodioAdulto(conexion, pacienteId, episodioId) {
   return fila
 }
 
+/** Las intervenciones del paciente, cada una con lo que la ficha necesita para mostrarla al elegirla:
+ * su fecha de cirugía, su diagnóstico y el estado de sus módulos 2 a 5 (cada intervención tiene los
+ * suyos; el Módulo 1 es del paciente y vale para todas). */
 export async function listarEpisodiosAdultos(conexion, pacienteId) {
-  return todas(conexion, 'SELECT * FROM episodios_adultos WHERE paciente_id = ? ORDER BY numero_episodio', [pacienteId])
+  return todas(conexion, `
+    SELECT e.id, e.paciente_id, e.numero_episodio, e.creado_en, c.fecha_cirugia, dg.valor AS diagnostico_valor,
+      COALESCE(d.estado_modulo, 'pendiente') AS estado_m2, COALESCE(c.estado_modulo, 'pendiente') AS estado_m3,
+      COALESCE(po.estado_modulo, 'pendiente') AS estado_m4, COALESCE(s.estado_modulo, 'pendiente') AS estado_m5
+    FROM episodios_adultos e
+    LEFT JOIN diagnosticos_adultos d ON d.episodio_id = e.id
+    LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
+    LEFT JOIN cirugias_adultos c ON c.episodio_id = e.id
+    LEFT JOIN postoperatorio_adultos po ON po.episodio_id = e.id
+    LEFT JOIN seguimientos_adultos s ON s.episodio_id = e.id
+    WHERE e.paciente_id = ?
+    ORDER BY e.numero_episodio`, [pacienteId])
 }
 
 export async function crearEpisodioAdulto(conexion, usuario, pacienteId) {
@@ -90,7 +118,7 @@ export async function crearEpisodioAdulto(conexion, usuario, pacienteId) {
 
 export async function actualizarPacienteAdulto(conexion, usuario, id, cuerpo) {
   await obtenerPacienteAdulto(conexion, id)
-  const datos = await normalizarPacienteAdulto(conexion, leerPacienteAdulto(cuerpo))
+  const datos = await normalizarDatosPaciente(conexion, leerPacienteAdulto(cuerpo))
   await actualizar(conexion, usuario, 'pacientes_adultos', id, datos)
   return id
 }
@@ -122,26 +150,30 @@ async function diagnosticoMencionaValvulopatia(conexion, diagnosticoId) {
 export async function obtenerDiagnosticoAdulto(conexion, episodioId) {
   const fila = await una(conexion, 'SELECT * FROM diagnosticos_adultos WHERE episodio_id = ?', [episodioId])
   if (!fila) return null
-  const riesgos = await todas(conexion, 'SELECT riesgo_id FROM diagnosticos_adultos_riesgos WHERE diagnostico_id = ? ORDER BY id', [fila.id])
-  return { ...filaApi('diagnosticos_adultos', fila), riesgo_ids: riesgos.map((r) => r.riesgo_id) }
+  const riesgos = await leerSeleccion(conexion, { tabla: 'diagnosticos_adultos_riesgos', columnaDueno: 'diagnostico_id', duenoId: fila.id, columnaOpcion: 'riesgo_id' })
+  return { ...sinCamposRetirados(filaApi('diagnosticos_adultos', fila)), riesgo_ids: riesgos.ids, riesgo_especificaciones: riesgos.especificaciones }
 }
 
 export async function guardarDiagnosticoAdulto(conexion, usuario, episodioId, cuerpo) {
   const v = new Validador(cuerpo)
   const datos = {
     diagnostico_id: v.id('diagnostico_id'),
+    diagnostico_otro: v.texto('diagnostico_otro'),
+    diagnostico_adicional_id: v.id('diagnostico_adicional_id'),
+    diagnostico_adicional_otro: v.texto('diagnostico_adicional_otro'),
     valvulopatia_id: v.id('valvulopatia_id'),
     euroscore: v.decimal('euroscore', { min: 0, max: 100 }),
-    estado_preoperatorio: v.texto('estado_preoperatorio', { max: 5000 }),
-    antecedentes_quirurgicos: v.texto('antecedentes_quirurgicos', { max: 5000 }),
-    comorbilidades: v.texto('comorbilidades', { max: 5000 }),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   const riesgoIds = [...new Set(v.ids('riesgo_ids'))]
+  const riesgoEspecificaciones = v.especificaciones('riesgo_especificaciones')
   v.finalizar()
 
-  // Regla silenciosa: la valvulopatía solo aplica si el diagnóstico la menciona; si no, queda en N/A.
-  if (!(await diagnosticoMencionaValvulopatia(conexion, datos.diagnostico_id))) {
+  await normalizarDiagnosticos(conexion, datos)
+  // Regla silenciosa: la valvulopatía solo aplica si el diagnóstico (principal o adicional) la
+  // menciona; si no, queda en N/A.
+  if (!(await diagnosticoMencionaValvulopatia(conexion, datos.diagnostico_id)) &&
+      !(await diagnosticoMencionaValvulopatia(conexion, datos.diagnostico_adicional_id))) {
     datos.valvulopatia_id = await idPorCodigo(conexion, 'VALVULOPATIA', 'NA')
   }
   // Regla dura: "Ninguno" excluye cualquier otro factor de riesgo.
@@ -159,16 +191,10 @@ export async function guardarDiagnosticoAdulto(conexion, usuario, episodioId, cu
     diagnosticoId = await insertar(conexion, usuario, 'diagnosticos_adultos', { episodio_id: episodioId, ...datos, actualizado_por: usuario.id })
   }
 
-  const actuales = await todas(conexion, 'SELECT id, riesgo_id FROM diagnosticos_adultos_riesgos WHERE diagnostico_id = ?', [diagnosticoId])
-  for (const fila of actuales) {
-    if (!riesgoIds.includes(fila.riesgo_id)) await eliminarFila(conexion, usuario, 'diagnosticos_adultos_riesgos', fila.id)
-  }
-  const presentes = new Set(actuales.map((f) => f.riesgo_id))
-  for (const riesgoId of riesgoIds) {
-    if (!presentes.has(riesgoId)) {
-      await insertar(conexion, usuario, 'diagnosticos_adultos_riesgos', { diagnostico_id: diagnosticoId, riesgo_id: riesgoId }, { conAuditoriaUsuario: false })
-    }
-  }
+  await sincronizarSeleccion(conexion, usuario, {
+    tabla: 'diagnosticos_adultos_riesgos', columnaDueno: 'diagnostico_id', duenoId: diagnosticoId, columnaOpcion: 'riesgo_id',
+    ids: riesgoIds, especificaciones: riesgoEspecificaciones,
+  })
   return diagnosticoId
 }
 
@@ -179,12 +205,14 @@ export async function guardarDiagnosticoAdulto(conexion, usuario, episodioId, cu
 export async function obtenerCirugiaAdulto(conexion, episodioId) {
   const fila = await una(conexion, 'SELECT * FROM cirugias_adultos WHERE episodio_id = ?', [episodioId])
   if (!fila) return null
-  const procedimientos = await todas(conexion, 'SELECT procedimiento_id FROM cirugias_adultos_procedimientos WHERE cirugia_id = ? ORDER BY orden', [fila.id])
-  const complicaciones = await todas(conexion, 'SELECT complicacion_id FROM cirugias_adultos_complicaciones_intraqx WHERE cirugia_id = ? ORDER BY id', [fila.id])
+  const procedimientos = await leerProcedimientosGuardados(conexion, 'cirugias_adultos_procedimientos', fila.id)
+  const complicaciones = await leerSeleccion(conexion, { tabla: 'cirugias_adultos_complicaciones_intraqx', columnaDueno: 'cirugia_id', duenoId: fila.id, columnaOpcion: 'complicacion_id' })
   return {
-    ...filaApi('cirugias_adultos', fila),
+    ...sinCamposRetirados(filaApi('cirugias_adultos', fila)),
+    procedimientos,
     procedimiento_ids: procedimientos.map((p) => p.procedimiento_id),
-    complicacion_intraqx_ids: complicaciones.map((c) => c.complicacion_id),
+    complicacion_intraqx_ids: complicaciones.ids,
+    complicacion_intraqx_especificaciones: complicaciones.especificaciones,
   }
 }
 
@@ -192,9 +220,6 @@ export async function guardarCirugiaAdulto(conexion, usuario, episodioId, cuerpo
   const v = new Validador(cuerpo)
   const datos = {
     fecha_cirugia: v.fecha('fecha_cirugia'),
-    implante_id: v.id('implante_id'),
-    numero_implante: v.texto('numero_implante', { max: 100 }),
-    transfusion_intraoperatoria: v.texto('transfusion_intraoperatoria', { max: 5000 }),
     uso_cec: v.opcion('uso_cec', ['SI', 'NO']),
     tiempo_cec_min: v.entero('tiempo_cec_min', { min: 0 }),
     tiempo_clamp_min: v.entero('tiempo_clamp_min', { min: 0 }),
@@ -202,20 +227,19 @@ export async function guardarCirugiaAdulto(conexion, usuario, episodioId, cuerpo
     extubacion_quirofano: v.opcion('extubacion_quirofano', ['SI', 'NO']),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
-  const procedimientoIds = v.ids('procedimiento_ids')
-  if (procedimientoIds.length > 3) v.error('procedimiento_ids', 'Solo se permiten hasta tres procedimientos.')
+  const procedimientos = leerProcedimientos(v, cuerpo)
+  if (procedimientos.length > 3) v.error('procedimientos', 'Solo se permiten hasta tres procedimientos.')
+  const procedimientoIds = procedimientos.map((p) => p.procedimientoId)
   const complicacionIntraqxIds = [...new Set(v.ids('complicacion_intraqx_ids'))]
+  const complicacionIntraqxEspecificaciones = v.especificaciones('complicacion_intraqx_especificaciones')
   v.finalizar()
 
   if (new Set(procedimientoIds).size !== procedimientoIds.length) throw reglaNegocio('Los procedimientos 1, 2 y 3 no pueden repetirse.')
+  await normalizarProcedimientos(conexion, procedimientos)
   // Regla silenciosa: sin CEC no hay tiempos de CEC ni de clamp.
   if (datos.uso_cec !== 'SI') {
     datos.tiempo_cec_min = null
     datos.tiempo_clamp_min = null
-  }
-  // Regla silenciosa: el número de implante solo aplica si se eligió un tipo de implante real.
-  if (!datos.implante_id || (await valorDe(conexion, datos.implante_id)) === 'N/A') {
-    datos.numero_implante = null
   }
   if (datos.tiempo_clamp_min !== null && (datos.tiempo_cec_min === null || datos.tiempo_clamp_min > datos.tiempo_cec_min)) {
     throw reglaNegocio('El tiempo de clamp de aorta no puede ser mayor que el tiempo de CEC.')
@@ -235,28 +259,11 @@ export async function guardarCirugiaAdulto(conexion, usuario, episodioId, cuerpo
     cirugiaId = await insertar(conexion, usuario, 'cirugias_adultos', { episodio_id: episodioId, ...datos, actualizado_por: usuario.id })
   }
 
-  const actuales = await todas(conexion, 'SELECT id, procedimiento_id, orden FROM cirugias_adultos_procedimientos WHERE cirugia_id = ?', [cirugiaId])
-  const claveNueva = new Set(procedimientoIds.map((p, i) => `${p}:${i + 1}`))
-  for (const fila of actuales) {
-    if (!claveNueva.has(`${fila.procedimiento_id}:${fila.orden}`)) await eliminarFila(conexion, usuario, 'cirugias_adultos_procedimientos', fila.id)
-  }
-  const claveActual = new Set(actuales.map((f) => `${f.procedimiento_id}:${f.orden}`))
-  for (const [i, procedimientoId] of procedimientoIds.entries()) {
-    if (!claveActual.has(`${procedimientoId}:${i + 1}`)) {
-      await insertar(conexion, usuario, 'cirugias_adultos_procedimientos', { cirugia_id: cirugiaId, procedimiento_id: procedimientoId, orden: i + 1 }, { conAuditoriaUsuario: false })
-    }
-  }
-
-  const complicacionesActuales = await todas(conexion, 'SELECT id, complicacion_id FROM cirugias_adultos_complicaciones_intraqx WHERE cirugia_id = ?', [cirugiaId])
-  for (const fila of complicacionesActuales) {
-    if (!complicacionIntraqxIds.includes(fila.complicacion_id)) await eliminarFila(conexion, usuario, 'cirugias_adultos_complicaciones_intraqx', fila.id)
-  }
-  const complicacionesPresentes = new Set(complicacionesActuales.map((f) => f.complicacion_id))
-  for (const complicacionId of complicacionIntraqxIds) {
-    if (!complicacionesPresentes.has(complicacionId)) {
-      await insertar(conexion, usuario, 'cirugias_adultos_complicaciones_intraqx', { cirugia_id: cirugiaId, complicacion_id: complicacionId }, { conAuditoriaUsuario: false })
-    }
-  }
+  await sincronizarProcedimientos(conexion, usuario, 'cirugias_adultos_procedimientos', cirugiaId, procedimientos)
+  await sincronizarSeleccion(conexion, usuario, {
+    tabla: 'cirugias_adultos_complicaciones_intraqx', columnaDueno: 'cirugia_id', duenoId: cirugiaId, columnaOpcion: 'complicacion_id',
+    ids: complicacionIntraqxIds, especificaciones: complicacionIntraqxEspecificaciones,
+  })
   return cirugiaId
 }
 
@@ -267,8 +274,12 @@ export async function guardarCirugiaAdulto(conexion, usuario, episodioId, cuerpo
 export async function obtenerPostoperatorioAdulto(conexion, episodioId) {
   const fila = await una(conexion, 'SELECT * FROM postoperatorio_adultos WHERE episodio_id = ?', [episodioId])
   if (!fila) return null
-  const complicaciones = await todas(conexion, 'SELECT complicacion_id FROM postoperatorio_adultos_complicaciones_pop WHERE postoperatorio_id = ? ORDER BY id', [fila.id])
-  return { ...filaApi('postoperatorio_adultos', fila), complicacion_pop_ids: complicaciones.map((c) => c.complicacion_id) }
+  const complicaciones = await leerSeleccion(conexion, { tabla: 'postoperatorio_adultos_complicaciones_pop', columnaDueno: 'postoperatorio_id', duenoId: fila.id, columnaOpcion: 'complicacion_id' })
+  return {
+    ...sinCamposRetirados(filaApi('postoperatorio_adultos', fila)),
+    complicacion_pop_ids: complicaciones.ids,
+    complicacion_pop_especificaciones: complicaciones.especificaciones,
+  }
 }
 
 /** Condición de salida = Muerte => Módulo 5 "no aplica"; si se corrige, vuelve a pendiente. */
@@ -288,16 +299,19 @@ export async function guardarPostoperatorioAdulto(conexion, usuario, episodioId,
   const datos = {
     unidad_pop_id: v.id('unidad_pop_id'),
     horas_ventilacion_mecanica: v.entero('horas_ventilacion_mecanica', { min: 0 }),
+    // Los días de UCI y de hospitalización ya no se escriben: se calculan de estas fechas y la de
+    // cirugía (sqlDiasUci / sqlDiasHospitalizacion en servicios.mjs).
     fecha_traslado_intermedio: v.fecha('fecha_traslado_intermedio'),
-    dias_estancia_uci: v.entero('dias_estancia_uci', { min: 0 }),
     fecha_salida: v.fecha('fecha_salida'),
-    dias_hospitalizacion_total: v.entero('dias_hospitalizacion_total', { min: 0 }),
     condicion_salida_id: v.id('condicion_salida_id'),
+    condicion_salida_otro: v.texto('condicion_salida_otro'),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   const complicacionPopIds = [...new Set(v.ids('complicacion_pop_ids'))]
+  const complicacionPopEspecificaciones = v.especificaciones('complicacion_pop_especificaciones')
   v.finalizar()
 
+  datos.condicion_salida_otro = await especificacionDe(conexion, datos.condicion_salida_id, datos.condicion_salida_otro)
   const cirugia = await una(conexion, 'SELECT fecha_cirugia FROM cirugias_adultos WHERE episodio_id = ?', [episodioId])
   if (cirugia?.fecha_cirugia) {
     if (datos.fecha_traslado_intermedio && datos.fecha_traslado_intermedio < cirugia.fecha_cirugia) {
@@ -320,16 +334,10 @@ export async function guardarPostoperatorioAdulto(conexion, usuario, episodioId,
     id = await insertar(conexion, usuario, 'postoperatorio_adultos', { episodio_id: episodioId, ...datos, actualizado_por: usuario.id })
   }
 
-  const complicacionesActuales = await todas(conexion, 'SELECT id, complicacion_id FROM postoperatorio_adultos_complicaciones_pop WHERE postoperatorio_id = ?', [id])
-  for (const fila of complicacionesActuales) {
-    if (!complicacionPopIds.includes(fila.complicacion_id)) await eliminarFila(conexion, usuario, 'postoperatorio_adultos_complicaciones_pop', fila.id)
-  }
-  const complicacionesPresentes = new Set(complicacionesActuales.map((f) => f.complicacion_id))
-  for (const complicacionId of complicacionPopIds) {
-    if (!complicacionesPresentes.has(complicacionId)) {
-      await insertar(conexion, usuario, 'postoperatorio_adultos_complicaciones_pop', { postoperatorio_id: id, complicacion_id: complicacionId }, { conAuditoriaUsuario: false })
-    }
-  }
+  await sincronizarSeleccion(conexion, usuario, {
+    tabla: 'postoperatorio_adultos_complicaciones_pop', columnaDueno: 'postoperatorio_id', duenoId: id, columnaOpcion: 'complicacion_id',
+    ids: complicacionPopIds, especificaciones: complicacionPopEspecificaciones,
+  })
 
   await sincronizarSeguimientoAdulto(conexion, usuario, episodioId, datos.condicion_salida_id)
   return id
@@ -355,28 +363,35 @@ export async function guardarSeguimientoAdulto(conexion, usuario, episodioId, cu
     fecha_control_cirugia: v.fecha('fecha_control_cirugia'),
     rehabilitacion_cardiaca: v.opcion('rehabilitacion_cardiaca', ['SI', 'NO', 'NA']),
     estado_herida_id: v.id('estado_herida_id'),
+    estado_herida_otro: v.texto('estado_herida_otro'),
     llamado_15_dias: v.opcion('llamado_15_dias', ['SI', 'NO']),
+    fecha_llamada_15_dias: v.fecha('fecha_llamada_15_dias'),
     persona_recibe_llamada: v.texto('persona_recibe_llamada'),
     reingreso_30_dias: v.opcion('reingreso_30_dias', ['SI', 'NO']),
     fecha_reingreso: v.fecha('fecha_reingreso'),
     causa_reingreso_id: v.id('causa_reingreso_id'),
+    causa_reingreso_otro: v.texto('causa_reingreso_otro'),
     observaciones: v.texto('observaciones', { max: 5000 }),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
   v.finalizar()
 
-  if (datos.reingreso_30_dias !== 'SI') {
-    datos.fecha_reingreso = null
-    datos.causa_reingreso_id = null
-  } else {
-    if (!datos.fecha_reingreso || !datos.causa_reingreso_id) {
-      throw reglaNegocio('Si hubo reingreso, la fecha y la causa de reingreso son obligatorias.')
+  await normalizarReingresoYHerida(conexion, datos)
+  const salida = await una(conexion, 'SELECT fecha_salida FROM postoperatorio_adultos WHERE episodio_id = ?', [episodioId])
+  // Regla silenciosa: si la llamada no se hizo, no hay fecha ni persona que la recibiera. Si se hizo,
+  // su fecha es la del día en que se llamó: no puede ser futura ni anterior al egreso.
+  if (datos.llamado_15_dias !== 'SI') {
+    datos.fecha_llamada_15_dias = null
+    datos.persona_recibe_llamada = null
+  } else if (datos.fecha_llamada_15_dias) {
+    if (datos.fecha_llamada_15_dias > hoyBogota()) throw reglaNegocio('La fecha de la llamada no puede ser futura: registre el día en que se hizo.')
+    if (salida?.fecha_salida && datos.fecha_llamada_15_dias < salida.fecha_salida) {
+      throw reglaNegocio('La fecha de la llamada no puede ser anterior a la fecha de salida.')
     }
-    const salida = await una(conexion, 'SELECT fecha_salida FROM postoperatorio_adultos WHERE episodio_id = ?', [episodioId])
-    if (salida?.fecha_salida) {
-      const dias = diasEntre(salida.fecha_salida, datos.fecha_reingreso)
-      if (dias < 0 || dias > 30) throw reglaNegocio('La fecha de reingreso debe estar dentro de los 30 días posteriores a la fecha de salida.')
-    }
+  }
+  if (datos.reingreso_30_dias === 'SI' && salida?.fecha_salida) {
+    const dias = diasEntre(salida.fecha_salida, datos.fecha_reingreso)
+    if (dias < 0 || dias > 30) throw reglaNegocio('La fecha de reingreso debe estar dentro de los 30 días posteriores a la fecha de salida.')
   }
   await actualizar(conexion, usuario, 'seguimientos_adultos', existente.id, datos)
   return existente.id

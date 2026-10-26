@@ -154,6 +154,7 @@ export function TooltipGrafico({
   formatoValor,
   detalle,
   interactivo = false,
+  textoClic = 'Clic para filtrar el tablero',
   seleccion,
 }: {
   active?: boolean
@@ -163,6 +164,8 @@ export function TooltipGrafico({
   formatoValor?: (valor: number) => string
   detalle?: (dato: Dato & Record<string, unknown>) => string | null
   interactivo?: boolean
+  /** Qué hace el clic en una categoría con pacientes (por defecto, filtrar el tablero). */
+  textoClic?: string
   seleccion?: string | null
 }) {
   if (!active || !payload?.length) return null
@@ -171,7 +174,7 @@ export function TooltipGrafico({
   const titulo = String(label ?? dato?.etiqueta ?? payload[0].name ?? '')
   const extra = dato && detalle ? detalle(dato) : null
   const elegida = dato !== undefined && seleccion !== null && seleccion !== undefined && claveDe(dato) === seleccion
-  const pista = !interactivo || !dato ? null : elegida ? 'Clic para quitar el filtro' : tienePacientes(dato) ? 'Clic para filtrar el tablero' : null
+  const pista = !interactivo || !dato ? null : elegida ? 'Clic para quitar el filtro' : tienePacientes(dato) ? textoClic : null
   return (
     <div className="rounded-md border border-slate-200 bg-white px-3 py-2 text-xs shadow-lg">
       <p className="text-sm font-semibold text-slate-900">{formatoValor ? formatoValor(valor) : `${valor}${sufijoValor}`}</p>

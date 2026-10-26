@@ -1,5 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { claseBotonTexto, claseInput } from '../components/Campo'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
@@ -29,7 +29,9 @@ import { api } from '../lib/api'
 import { hoyIso } from '../lib/fechas'
 import { COLOR_SIN_DATO, esSinDato, type Dato, type PropsSeleccion } from '../lib/graficos'
 import { useGrupoActivo, type GrupoActivo } from '../lib/grupoActivo'
+import { DetalleIndicador } from './indicadores/DetalleIndicador'
 import { NOMBRE_CAMPO, type CampoFiltro, type Filtro } from './indicadores/filtros'
+import { esIndicadorClave, type IndicadorClave } from './indicadores/indicadoresClave'
 import { MatrizResumen, type Estadisticas, type PacienteMatriz } from './indicadores/MatrizResumen'
 
 const MESES = ['', 'Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic']
@@ -78,28 +80,30 @@ const aDatos = (conteo: Conteo) => conteo.map((d) => ({ etiqueta: d.categoria, v
 type ConteoMultiple = { pacientes: number; con_alguno: number; conteo: Conteo }
 const aMultiple = (m: ConteoMultiple) => ({ pacientes: m.pacientes, conAlguno: m.con_alguno, datos: aDatos(m.conteo) })
 
-/** Indicadores clave de un trimestre: casos de cada desenlace sobre las cirugías del trimestre. */
-type Trimestre = {
-  trimestre: string
+/** Indicadores clave de un mes: casos de cada desenlace sobre las cirugías del mes. */
+type MesTasas = {
+  mes: string
   total_cirugias: number
   fallecidos: number
   complicacion_intraqx: number
   complicacion_pop: number
   reingresos: number
 }
-type CasosTrimestre = Exclude<keyof Trimestre, 'trimestre' | 'total_cirugias'>
+type CasosMes = Exclude<keyof MesTasas, 'mes' | 'total_cirugias'>
 
-/** Tasa (%) de un desenlace por trimestre, con sus casos y total para el tooltip. La clave
- * ("2026-T1") es la que entiende el filtro del servidor. */
-function tasasTrimestre(trimestres: Trimestre[], casos: CasosTrimestre): DatoTasa[] {
-  return trimestres.map((t) => {
-    const [anio, q] = t.trimestre.split('-')
+/** Tasa (%) de un desenlace mes a mes (pedido del 23-oct: mensual, no trimestral), con sus casos y su
+ * total para el tooltip. La clave ("2026-05") es el mes cuyos casos se abren al hacer clic, así que
+ * un mes sin casos no se puede elegir: no tendría a nadie que mostrar. */
+function tasasMes(meses: MesTasas[], casos: CasosMes): DatoTasa[] {
+  return meses.map((m) => {
+    const [anio, mes] = m.mes.split('-').map(Number)
     return {
-      etiqueta: `${q} ${anio}`,
-      clave: t.trimestre,
-      valor: t.total_cirugias ? Math.round((1000 * t[casos]) / t.total_cirugias) / 10 : 0,
-      casos: t[casos],
-      total: t.total_cirugias,
+      etiqueta: `${MESES[mes]} ${anio}`,
+      clave: m.mes,
+      valor: m.total_cirugias ? Math.round((1000 * m[casos]) / m.total_cirugias) / 10 : 0,
+      casos: m[casos],
+      total: m.total_cirugias,
+      n: m[casos],
     }
   })
 }
@@ -153,7 +157,7 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         >
         por_mes: { anio: number; mes: number; total_cirugias: number }[]
         por_anio: Conteo
-        por_trimestre: Trimestre[]
+        tasas_por_mes: MesTasas[]
         por_complicacion_intraqx: ConteoMultiple
         por_complicacion_pop: ConteoMultiple
         por_reingreso: Conteo
@@ -161,7 +165,7 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         por_condicion_salida: Conteo
         por_valvulopatia: Conteo
         por_factor_riesgo: ConteoMultiple
-        por_implante: Conteo
+        por_implante: ConteoMultiple
         por_uso_cec: Conteo
         por_tiempo_cec: Conteo
         por_tiempo_clamp: Conteo
@@ -172,7 +176,7 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         por_rehabilitacion: Conteo
         por_edad: Conteo
         por_municipio: Conteo
-        por_diagnostico: { diagnostico: string; total_cirugias: number }[]
+        por_diagnostico: ConteoMultiple
         por_procedimiento: { procedimiento: string; total_cirugias: number }[]
         por_rachs?: ({ rachs: string } & ConteoRiesgo)[]
         por_euroscore?: ({ categoria: string } & ConteoRiesgo)[]
@@ -197,7 +201,7 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         estadisticas: r.estadisticas,
         porMes: mesesContinuos(r.por_mes),
         porAnio: aDatos(r.por_anio),
-        porTrimestre: r.por_trimestre,
+        tasasPorMes: r.tasas_por_mes,
         porComplicacionIntraqx: aMultiple(r.por_complicacion_intraqx),
         porComplicacionPop: aMultiple(r.por_complicacion_pop),
         porReingreso: aDatos(r.por_reingreso),
@@ -205,7 +209,7 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         porCondicionSalida: aDatos(r.por_condicion_salida),
         porValvulopatia: aDatos(r.por_valvulopatia),
         porFactorRiesgo: aMultiple(r.por_factor_riesgo),
-        porImplante: aDatos(r.por_implante),
+        porImplante: aMultiple(r.por_implante),
         porUsoCec: aDatos(r.por_uso_cec),
         porTiempoCec: aDatos(r.por_tiempo_cec),
         porTiempoClamp: aDatos(r.por_tiempo_clamp),
@@ -216,7 +220,7 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         porRehabilitacion: aDatos(r.por_rehabilitacion),
         porEdad: aDatos(r.por_edad),
         porMunicipio: aDatos(r.por_municipio),
-        porDiagnostico: r.por_diagnostico.map((d) => ({ etiqueta: d.diagnostico, valor: d.total_cirugias })),
+        porDiagnostico: aMultiple(r.por_diagnostico),
         porProcedimiento: r.por_procedimiento.map((d) => ({ etiqueta: d.procedimiento, valor: d.total_cirugias })),
         porRiesgoTotal: riesgo.map((d) => ({ etiqueta: d.etiqueta, clave: d.clave, valor: d.total_cirugias })),
         porRiesgoMortalidad: riesgo.map((d) => ({
@@ -339,41 +343,64 @@ function useVista(): [Vista, (vista: Vista) => void] {
   const [params, setParams] = useSearchParams()
   const vista = PESTANAS.find((p) => p.clave === params.get('vista'))?.clave ?? 'resumen'
   // replace: cambiar de pestaña no deja una entrada por cada clic en el historial del navegador.
+  // También cierra el detalle de un indicador, si estaba abierto.
   return [vista, (nueva) => setParams({ vista: nueva }, { replace: true })]
 }
 
-/** Los cuatro indicadores clave con tasa: cada uno con su tendencia por trimestre y su tasa del periodo. */
+/** El detalle de un indicador abierto (?detalle=mortalidad&mes=2026-05), en la URL como la pestaña:
+ * así sobrevive a una recarga y el botón Atrás del navegador vuelve al tablero. */
+function useDetalleIndicador(vista: Vista) {
+  const [params, setParams] = useSearchParams()
+  const detalle = params.get('detalle')
+  const mes = params.get('mes')
+  return {
+    indicador: esIndicadorClave(detalle) ? detalle : null,
+    mes: mes && /^d{4}-(0[1-9]|1[0-2])$/.test(mes) ? mes : null,
+    abrir: (indicador: IndicadorClave, mesElegido?: string) => {
+      setParams({ vista, detalle: indicador, ...(mesElegido ? { mes: mesElegido } : {}) })
+      window.scrollTo({ top: 0 })
+    },
+    cerrar: () => setParams({ vista }, { replace: true }),
+  }
+}
+
+/** Los cuatro indicadores clave con tasa: cada uno con su tendencia mes a mes y su tasa del periodo. */
 const INDICADORES_CLAVE: {
+  indicador: IndicadorClave
   titulo: string
   descripcion: string
-  casos: CasosTrimestre
+  casos: CasosMes
   global: 'mortalidad_hospitalaria_pct' | 'tasa_complicacion_intraqx_pct' | 'tasa_complicacion_pop_pct' | 'tasa_reingreso_30d_pct'
   nombreCasos: [string, string]
 }[] = [
   {
+    indicador: 'mortalidad',
     titulo: 'Mortalidad hospitalaria',
-    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos fallecieron antes del egreso.',
+    descripcion: 'De cada 100 pacientes operados en el mes, cuántos fallecieron antes del egreso.',
     casos: 'fallecidos',
     global: 'mortalidad_hospitalaria_pct',
     nombreCasos: ['fallecido', 'fallecidos'],
   },
   {
+    indicador: 'complicacion_intraqx',
     titulo: 'Complicación intraquirúrgica',
-    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos tuvieron una complicación en quirófano.',
+    descripcion: 'De cada 100 pacientes operados en el mes, cuántos tuvieron una complicación en quirófano.',
     casos: 'complicacion_intraqx',
     global: 'tasa_complicacion_intraqx_pct',
     nombreCasos: ['paciente con complicación', 'pacientes con complicación'],
   },
   {
-    titulo: 'Complicación postoperatoria',
-    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos tuvieron una complicación después de la cirugía.',
+    indicador: 'complicacion_pop',
+    titulo: 'Complicación en postoperatorio',
+    descripcion: 'De cada 100 pacientes operados en el mes, cuántos tuvieron una complicación después de la cirugía.',
     casos: 'complicacion_pop',
     global: 'tasa_complicacion_pop_pct',
     nombreCasos: ['paciente con complicación', 'pacientes con complicación'],
   },
   {
-    titulo: 'Reingreso a 30 días',
-    descripcion: 'De cada 100 pacientes operados en el trimestre, cuántos volvieron a la institución en los 30 días siguientes al egreso.',
+    indicador: 'reingreso',
+    titulo: 'Reingreso a la institución en los primeros 30 días',
+    descripcion: 'De cada 100 pacientes operados en el mes, cuántos volvieron a la institución en los 30 días siguientes al egreso.',
     casos: 'reingresos',
     global: 'tasa_reingreso_30d_pct',
     nombreCasos: ['reingreso', 'reingresos'],
@@ -382,6 +409,41 @@ const INDICADORES_CLAVE: {
 
 /** Base de una tasa, bajo la cifra: "9 de 71 pacientes". */
 const deTotal = (casos: number, total: number) => `${casos} de ${total} ${total === 1 ? 'paciente' : 'pacientes'}`
+
+/** Cuántos casos tiene cada indicador en el resumen del periodo. */
+const CASOS_DEL_RESUMEN = {
+  mortalidad: 'fallecidos',
+  complicacion_intraqx: 'con_complicacion_intraqx',
+  complicacion_pop: 'con_complicacion_pop',
+  reingreso: 'reingresos',
+} as const satisfies Record<IndicadorClave, keyof Resumen>
+
+/** Las tarjetas de los cuatro indicadores clave. Con casos, un clic abre el detalle de esos pacientes
+ * con todos sus datos (pedido del 23-oct: de "Mortalidad 7 %" a los pacientes fallecidos). */
+function TarjetasIndicadores({ resumen, onAbrir }: { resumen: Resumen; onAbrir: (indicador: IndicadorClave) => void }) {
+  const tarjetas: { indicador: IndicadorClave; etiqueta: string; pct: number | null; icono: ReactNode; critico?: boolean }[] = [
+    { indicador: 'mortalidad', etiqueta: 'Mortalidad hospitalaria', pct: resumen.mortalidad_hospitalaria_pct, icono: <IconoAlerta className="h-4 w-4" />, critico: true },
+    { indicador: 'complicacion_intraqx', etiqueta: 'Complicación intraquirúrgica', pct: resumen.tasa_complicacion_intraqx_pct, icono: <IconoEscudo className="h-4 w-4" /> },
+    { indicador: 'complicacion_pop', etiqueta: 'Complicación postoperatoria', pct: resumen.tasa_complicacion_pop_pct, icono: <IconoEscudo className="h-4 w-4" /> },
+    { indicador: 'reingreso', etiqueta: 'Reingreso a 30 días', pct: resumen.tasa_reingreso_30d_pct, icono: <IconoRegresar className="h-4 w-4" /> },
+  ]
+  return tarjetas.map(({ indicador, etiqueta, pct, icono, critico }) => {
+    const casos = resumen[CASOS_DEL_RESUMEN[indicador]]
+    return (
+      <TarjetaKpi
+        key={indicador}
+        etiqueta={etiqueta}
+        valor={`${num(pct)}%`}
+        tono={critico ? 'critico' : 'normal'}
+        detalle={deTotal(casos, resumen.total_cirugias)}
+        icono={icono}
+        onClick={casos > 0 ? () => onAbrir(indicador) : undefined}
+        accion="Ver los pacientes"
+        titulo={casos > 0 ? `Ver el detalle de los ${casos} pacientes` : undefined}
+      />
+    )
+  })
+}
 
 /** Mediana junto al título de un gráfico de distribución (nada si no hay datos). */
 function Mediana({ valor, unidad, decimales = 1 }: { valor: number | null | undefined; unidad: string; decimales?: number }) {
@@ -404,6 +466,7 @@ export function IndicadoresPage() {
   const [hasta, setHasta] = useState(hoyIso())
   const [preset, setPreset] = useState<Preset>('personalizado')
   const [vista, setVista] = useVista()
+  const detalle = useDetalleIndicador(vista)
   // Cada grupo guarda sus propios filtros: sus categorías no son las mismas (RACHS-1 / EuroSCORE,
   // rangos de peso de niños / adultos), así que al cambiar de grupo no se arrastran.
   const [filtrosPorGrupo, setFiltrosPorGrupo] = useState<Record<GrupoActivo, Filtro[]>>({ pediatricos: [], adultos: [] })
@@ -560,10 +623,23 @@ export function IndicadoresPage() {
         ))}
       </div>
 
-      {isLoading && <Cargando />}
-      {error && <MensajeError>No se pudieron cargar los indicadores.</MensajeError>}
+      {/* El detalle de un indicador ocupa el lugar de la pestaña: los mismos filtros y fechas de arriba. */}
+      {detalle.indicador && (
+        <DetalleIndicador
+          grupo={grupo}
+          desde={desde}
+          hasta={hasta}
+          filtros={filtros}
+          indicador={detalle.indicador}
+          mes={detalle.mes}
+          onVolver={detalle.cerrar}
+        />
+      )}
 
-      {data && (
+      {!detalle.indicador && isLoading && <Cargando />}
+      {!detalle.indicador && error && <MensajeError>No se pudieron cargar los indicadores.</MensajeError>}
+
+      {!detalle.indicador && data && (
         // Mientras llegan los datos de un rango o un filtro nuevo se ven los anteriores, atenuados:
         // sin parpadeo ni saltos de diseño.
         <div className={`transition-opacity ${isPlaceholderData ? 'opacity-60' : ''}`}>
@@ -579,31 +655,7 @@ export function IndicadoresPage() {
                     icono={<IconoCorazon className="h-4 w-4" />}
                   />
                 </div>
-                <TarjetaKpi
-                  etiqueta="Mortalidad hospitalaria"
-                  valor={`${num(data.resumen.mortalidad_hospitalaria_pct)}%`}
-                  tono="critico"
-                  detalle={deTotal(data.resumen.fallecidos, data.resumen.total_cirugias)}
-                  icono={<IconoAlerta className="h-4 w-4" />}
-                />
-                <TarjetaKpi
-                  etiqueta="Complicación intraquirúrgica"
-                  valor={`${num(data.resumen.tasa_complicacion_intraqx_pct)}%`}
-                  detalle={deTotal(data.resumen.con_complicacion_intraqx, data.resumen.total_cirugias)}
-                  icono={<IconoEscudo className="h-4 w-4" />}
-                />
-                <TarjetaKpi
-                  etiqueta="Complicación postoperatoria"
-                  valor={`${num(data.resumen.tasa_complicacion_pop_pct)}%`}
-                  detalle={deTotal(data.resumen.con_complicacion_pop, data.resumen.total_cirugias)}
-                  icono={<IconoEscudo className="h-4 w-4" />}
-                />
-                <TarjetaKpi
-                  etiqueta="Reingreso a 30 días"
-                  valor={`${num(data.resumen.tasa_reingreso_30d_pct)}%`}
-                  detalle={deTotal(data.resumen.reingresos, data.resumen.total_cirugias)}
-                  icono={<IconoRegresar className="h-4 w-4" />}
-                />
+                <TarjetasIndicadores resumen={data.resumen} onAbrir={(indicador) => detalle.abrir(indicador)} />
               </div>
 
               {/* El mes muestra la tendencia; el año, el volumen comparable entre años. */}
@@ -650,22 +702,40 @@ export function IndicadoresPage() {
             </div>
           )}
 
-          {/* Los indicadores clave del servicio: primero cómo evoluciona cada tasa (por trimestre, con
-              sus casos y su total en el tooltip), luego de qué está hecha (tipos y causas). */}
+          {/* Los indicadores clave del servicio: su tasa del periodo (un clic abre sus pacientes), cómo
+              evoluciona mes a mes (con sus casos y su total en el tooltip; un clic en un mes abre los
+              pacientes de ese mes) y luego de qué está hecha cada una (tipos y causas). */}
           {vista === 'clave' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <TarjetasIndicadores resumen={data.resumen} onAbrir={(indicador) => detalle.abrir(indicador)} />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
                 {INDICADORES_CLAVE.map((indicador) => (
-                  <Tarjeta key={indicador.casos} titulo={`${indicador.titulo} por trimestre (%)`} descripcion={indicador.descripcion}>
+                  <Tarjeta
+                    key={indicador.casos}
+                    titulo={`${indicador.titulo} por mes (%)`}
+                    descripcion={indicador.descripcion}
+                    acciones={
+                      data.resumen[CASOS_DEL_RESUMEN[indicador.indicador]] > 0 && (
+                        <button type="button" onClick={() => detalle.abrir(indicador.indicador)} className={`${claseBotonTexto} text-xs`}>
+                          Ver los {data.resumen[CASOS_DEL_RESUMEN[indicador.indicador]]} pacientes
+                        </button>
+                      )
+                    }
+                  >
                     <GraficoPuntos
-                      datos={tasasTrimestre(data.porTrimestre, indicador.casos)}
+                      datos={tasasMes(data.tasasPorMes, indicador.casos)}
                       nombreCasos={indicador.nombreCasos}
                       referencia={
                         data.resumen[indicador.global] === null
                           ? undefined
                           : { valor: data.resumen[indicador.global] ?? 0, etiqueta: `Promedio del periodo ${num(data.resumen[indicador.global])}%` }
                       }
-                      {...interaccion('trimestre')}
+                      textoClic={`Clic para ver los pacientes del mes`}
+                      seleccion={null}
+                      onSeleccionar={(mes) => detalle.abrir(indicador.indicador, mes)}
                     />
                   </Tarjeta>
                 ))}
@@ -763,8 +833,11 @@ export function IndicadoresPage() {
                 </Tarjeta>
               </div>
 
-              <Tarjeta titulo="Cirugías por diagnóstico" descripcion="Cuántos pacientes operados tienen cada diagnóstico.">
-                <GraficoBarras datos={data.porDiagnostico} {...interaccion('diagnostico')} />
+              <Tarjeta titulo="Cirugías por diagnóstico" descripcion="Cuántos pacientes operados tienen cada diagnóstico, como principal o como adicional.">
+                <GraficoBarras datos={data.porDiagnostico.datos} {...interaccion('diagnostico')} />
+                <p className="mt-3 text-xs text-slate-500">
+                  Un paciente con diagnóstico adicional cuenta en sus dos diagnósticos: las barras suman más que los {data.porDiagnostico.pacientes} pacientes.
+                </p>
               </Tarjeta>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -793,8 +866,14 @@ export function IndicadoresPage() {
               </Tarjeta>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Tarjeta titulo="Tipo de implante" descripcion="Cuántas cirugías usaron cada tipo de implante (sin contar las que no llevaron, N/A).">
-                  <GraficoBarras datos={data.porImplante} conPorcentaje {...interaccion('implante')} />
+                <Tarjeta titulo="Tipo de implante" descripcion="Cuántas cirugías llevaron cada tipo de implante en alguno de sus procedimientos.">
+                  <GraficoBarras
+                    datos={data.porImplante.datos}
+                    conPorcentaje
+                    totalPorcentaje={data.porImplante.pacientes}
+                    {...interaccion('implante')}
+                  />
+                  <NotaMultiple {...data.porImplante} ninguno="sin implante registrado" />
                 </Tarjeta>
                 <Tarjeta titulo="Uso de circulación extracorpórea" descripcion="¿La cirugía se hizo con circulación extracorpórea (CEC)?">
                   <GraficoSiNo segmentos={segmentosSiNo(data.porUsoCec)} significado="con circulación extracorpórea" {...interaccion('uso_cec')} />

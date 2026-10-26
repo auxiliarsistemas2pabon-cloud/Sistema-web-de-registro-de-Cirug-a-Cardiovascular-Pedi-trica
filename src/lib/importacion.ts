@@ -353,10 +353,12 @@ export function normalizarFilaImportacion(
 
   const fechaCirugia = fechaIso(valorDe(datosOriginales, 'fecha_cirugia'), 'Fecha de cirugía', errores)
   if (fechaCirugia && nacimiento && fechaCirugia < nacimiento) errores.push('Fecha de cirugía no puede ser anterior al nacimiento.')
-  const implanteId = opcionId(opciones, 'IMPLANTE', valorDe(datosOriginales, 'implante'), 'Tipo de implante', errores)
-  // El N/A de IMPLANTE nunca tuvo un `codigo` estable (ver catalogos.mjs), así que se detecta por texto.
-  const implanteEsNA = opcionPorId(opciones, 'IMPLANTE', implanteId)?.valor === 'N/A'
-  const numeroImplante = implanteEsNA ? null : texto(valorDe(datosOriginales, 'numero_implante')) || null
+  // El archivo trae un solo "Tipo de implante" por cirugía; el implante ahora es de cada procedimiento
+  // (pedido del 23-oct): "N/A" deja todos los procedimientos en "No aplica" y un tipo real va al
+  // procedimiento 1, igual que la migración de los datos que ya estaban (schema.mjs).
+  const implanteTexto = valorDe(datosOriginales, 'implante')
+  const implanteEsNA = esNa(implanteTexto)
+  const implanteId = implanteEsNA ? null : opcionId(opciones, 'IMPLANTE', implanteTexto, 'Tipo de implante', errores)
   const usoCec = siNo(valorDe(datosOriginales, 'uso_cec'), 'Uso de CEC', errores)
   const tiempoCec = numero(valorDe(datosOriginales, 'tiempo_cec_min'), 'Tiempo de CEC', errores, true)
   const tiempoClamp = numero(valorDe(datosOriginales, 'tiempo_clamp_min'), 'Tiempo de clamp', errores, true)
@@ -374,11 +376,13 @@ export function normalizarFilaImportacion(
   ])
     ? {
         fecha_cirugia: fechaCirugia,
-        procedimiento_ids: procedimientoIds,
+        procedimientos: procedimientoIds.map((procedimientoId, i) => ({
+          procedimiento_id: procedimientoId,
+          implante: implanteEsNA ? 'NA' : implanteId && i === 0 ? 'SI' : null,
+          tipo_implante_id: implanteId && i === 0 ? implanteId : null,
+        })),
         fecha_procedimiento_2: procedimientoIds.length >= 2 ? fechaProcedimiento2 : null,
         fecha_procedimiento_3: procedimientoIds.length >= 3 ? fechaProcedimiento3 : null,
-        implante_id: implanteId,
-        numero_implante: numeroImplante,
         uso_cec: usoCec === 'NA' ? null : usoCec,
         tiempo_cec_min: usoCec === 'SI' ? tiempoCec : null,
         tiempo_clamp_min: usoCec === 'SI' ? tiempoClamp : null,
@@ -406,6 +410,7 @@ export function normalizarFilaImportacion(
     cirugia.estado_modulo = calcularEstadoModulo3({
       fechaCirugia: fechaCirugia ?? '',
       procedimiento1Id: procedimientoIds[0] ?? '',
+      procedimientos: cirugia.procedimientos.map((p) => ({ implante: p.implante ?? '', tipoImplanteId: p.tipo_implante_id ?? '' })),
       usoCec: usoCec === 'SI' || usoCec === 'NO' ? usoCec : '',
       tiempoCecMin: tiempoCec?.toString() ?? '',
     }).estado
@@ -515,43 +520,76 @@ export function marcarIdentificacionesDuplicadas(filas: FilaImportacion[]): Fila
   })
 }
 
-export const ENCABEZADOS_EXPORTACION = [
-  ['numero_paciente', 'N° paciente'], ['nombre_completo', 'Nombre completo'], ['identificacion', 'Identificación'], ['sexo', 'Sexo'],
-  ['fecha_nacimiento', 'Fecha de nacimiento'], ['peso_kg', 'Peso (kg)'], ['talla_cm', 'Talla (cm)'], ['procedencia', 'Procedencia'],
-  ['municipio_narino', 'Municipio de Nariño'], ['telefonos', 'Teléfonos'], ['sin_telefono', 'Sin teléfono'], ['eps', 'EPS'],
-  ['diagnostico', 'Diagnóstico'], ['valvulopatia', 'Tipo de valvulopatía'], ['riesgos', 'Factores de riesgo'], ['rachs', 'RACHS-1'],
-  ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'],
-  ['numero_implante', 'Número de implante'], ['uso_cec', 'Uso de CEC'],
-  ['tiempo_cec_min', 'Tiempo CEC (min)'], ['tiempo_clamp_min', 'Tiempo clamp (min)'], ['complicacion_intraqx', 'Complicación intraquirúrgica'],
-  ['cierre_esternal_diferido', 'Cierre esternal diferido'], ['extubacion_quirofano', 'Extubación en quirófano'], ['unidad_pop', 'Unidad postoperatoria'],
-  ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica'], ['complicacion_pop', 'Complicación postoperatoria'],
-  ['fecha_traslado_intermedio', 'Fecha de traslado a intermedio'], ['fecha_salida', 'Fecha de salida'], ['condicion_salida', 'Condición de salida'],
-  ['fecha_control_cirugia', 'Fecha de control por cirugía cardiovascular'], ['rehabilitacion_cardiaca', 'Terapia de rehabilitación cardíaca'],
-  ['estado_herida', 'Estado de la herida quirúrgica'], ['fecha_llamada_15_dias', 'Fecha de llamada de los 15 días'],
-  ['persona_recibe_llamada', 'Persona que recibe la llamada'], ['reingreso_30_dias', 'Reingreso a la institución en los primeros 30 días'],
-  ['fecha_reingreso', 'Fecha de reingreso'], ['causa_reingreso', 'Causa de reingreso'], ['observaciones', 'Observaciones'],
-] as const
+/** Una columna de la exportación: la clave en la fila que envía el servidor (ver filasExportacion en
+ * server/rutas-consultas.mjs), su encabezado y el módulo de la ficha al que pertenece (las hojas
+ * "Módulo 1" a "Módulo 5" del Excel salen de ahí). Los encabezados son el formato canónico que también
+ * reconoce la importación. */
+export type ColumnaExportacion = readonly [clave: string, etiqueta: string, modulo: 1 | 2 | 3 | 4 | 5]
 
-// Mismo formato plano que ENCABEZADOS_EXPORTACION, para el módulo de adultos: sin RACHS-1 (es
-// pediátrico) pero con EuroSCORE; un solo teléfono en vez de una lista; "Llamado 15 días" (Sí/No)
-// en vez de una fecha de llamada; y días de estancia en UCI/hospitalización propios (en el módulo
-// de adultos se escriben a mano, no se calculan). Ver server/rutas-pacientes-adultos.mjs.
-export const ENCABEZADOS_EXPORTACION_ADULTOS = [
-  ['numero_paciente', 'N° paciente'], ['numero_episodio', 'N° intervención'], ['nombre_completo', 'Nombre completo'], ['identificacion', 'Identificación'], ['sexo', 'Sexo'],
-  ['fecha_nacimiento', 'Fecha de nacimiento'], ['peso_kg', 'Peso (kg)'], ['talla_cm', 'Talla (cm)'], ['procedencia', 'Procedencia'],
-  ['municipio_narino', 'Municipio de Nariño'], ['telefono', 'Teléfono'], ['eps', 'EPS'],
-  ['diagnostico', 'Diagnóstico'], ['valvulopatia', 'Tipo de valvulopatía'], ['euroscore', 'Escala EuroSCORE (%)'], ['riesgos', 'Factores de riesgo'],
-  ['estado_preoperatorio', 'Estado preoperatorio'], ['antecedentes_quirurgicos', 'Antecedentes quirúrgicos'], ['comorbilidades', 'Comorbilidades'],
-  ['fecha_cirugia', 'Fecha de cirugía'], ['procedimientos', 'Procedimientos quirúrgicos'], ['implante', 'Tipo de implante'],
-  ['numero_implante', 'Número de implante'], ['uso_cec', 'Uso de CEC'],
-  ['tiempo_cec_min', 'Tiempo CEC (min)'], ['tiempo_clamp_min', 'Tiempo clamp (min)'], ['complicacion_intraqx', 'Complicación intraquirúrgica'],
-  ['cierre_esternal_diferido', 'Cierre esternal diferido'], ['extubacion_quirofano', 'Extubación en quirófano'],
-  ['transfusion_intraoperatoria', 'Transfusión intraoperatoria'], ['unidad_pop', 'Unidad postoperatoria'],
-  ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica'], ['complicacion_pop', 'Complicación postoperatoria'],
-  ['fecha_traslado_intermedio', 'Fecha de traslado a intermedio'], ['dias_estancia_uci', 'Días de estancia en UCI'],
-  ['fecha_salida', 'Fecha de salida'], ['dias_hospitalizacion_total', 'Días totales de hospitalización'], ['condicion_salida', 'Condición de salida'],
-  ['fecha_control_cirugia', 'Fecha de control por cirugía cardiovascular'], ['rehabilitacion_cardiaca', 'Terapia de rehabilitación cardíaca'],
-  ['estado_herida', 'Estado de la herida quirúrgica'], ['llamado_15_dias', 'Llamado 15 días'],
-  ['persona_recibe_llamada', 'Persona que recibe la llamada'], ['reingreso_30_dias', 'Reingreso a la institución en los primeros 30 días'],
-  ['fecha_reingreso', 'Fecha de reingreso'], ['causa_reingreso', 'Causa de reingreso'], ['observaciones', 'Observaciones'],
-] as const
+/** Los tres procedimientos, cada uno con su especificación ("Otro…") y su implante; en pediátricos el 2 y
+ * el 3 llevan además su propia fecha (son otra intervención). */
+function columnasProcedimientos(conFechaPropia: boolean): ColumnaExportacion[] {
+  return ([1, 2, 3] as const).flatMap((n): ColumnaExportacion[] => [
+    ...(conFechaPropia && n > 1 ? [[`fecha_procedimiento_${n}`, `Fecha del procedimiento ${n}`, 3] as const] : []),
+    [`procedimiento_${n}`, `Procedimiento quirúrgico ${n}`, 3],
+    [`procedimiento_${n}_otro`, `Procedimiento quirúrgico ${n} (especifique)`, 3],
+    [`implante_${n}`, `¿Lleva implante? (procedimiento ${n})`, 3],
+    [`tipo_implante_${n}`, `Tipo de implante (procedimiento ${n})`, 3],
+  ])
+}
+
+export const ENCABEZADOS_EXPORTACION: readonly ColumnaExportacion[] = [
+  ['numero_paciente', 'N° paciente', 1], ['nombre_completo', 'Nombre completo', 1], ['identificacion', 'Identificación', 1],
+  ['sexo', 'Sexo', 1], ['sexo_otro', 'Sexo (especifique)', 1], ['fecha_nacimiento', 'Fecha de nacimiento', 1],
+  ['peso_kg', 'Peso (kg)', 1], ['talla_cm', 'Talla (cm)', 1], ['superficie_corporal', 'Superficie corporal (m²)', 1],
+  ['procedencia', 'Procedencia', 1], ['procedencia_otro', 'Procedencia (especifique)', 1], ['municipio_narino', 'Municipio de Nariño', 1],
+  ['telefonos', 'Teléfonos', 1], ['sin_telefono', 'Sin teléfono', 1], ['eps', 'EPS', 1], ['eps_otro', 'EPS (especifique)', 1],
+  ['diagnostico', 'Diagnóstico', 2], ['diagnostico_otro', 'Diagnóstico (especifique)', 2],
+  ['diagnostico_adicional', 'Diagnóstico adicional', 2], ['diagnostico_adicional_otro', 'Diagnóstico adicional (especifique)', 2],
+  ['valvulopatia', 'Tipo de valvulopatía', 2], ['riesgos', 'Factores de riesgo', 2], ['rachs', 'RACHS-1', 2],
+  ['fecha_cirugia', 'Fecha de cirugía', 3], ...columnasProcedimientos(true),
+  ['uso_cec', 'Uso de CEC', 3], ['tiempo_cec_min', 'Tiempo CEC (min)', 3], ['tiempo_clamp_min', 'Tiempo clamp (min)', 3],
+  ['complicacion_intraqx', 'Complicación intraquirúrgica', 3], ['cierre_esternal_diferido', 'Cierre esternal diferido', 3],
+  ['extubacion_quirofano', 'Extubación en quirófano', 3],
+  ['unidad_pop', 'Unidad postoperatoria', 4], ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica', 4],
+  ['complicacion_pop', 'Complicación postoperatoria', 4], ['fecha_traslado_intermedio', 'Fecha de traslado a intermedio', 4],
+  ['dias_uci', 'Días de estancia en UCI', 4], ['fecha_salida', 'Fecha de salida', 4],
+  ['dias_hospitalizacion', 'Días totales de hospitalización', 4], ['condicion_salida', 'Condición de salida', 4],
+  ['condicion_salida_otro', 'Condición de salida (especifique)', 4],
+  ['fecha_control_cirugia', 'Fecha de control por cirugía cardiovascular', 5], ['rehabilitacion_cardiaca', 'Terapia de rehabilitación cardíaca', 5],
+  ['estado_herida', 'Estado de la herida quirúrgica', 5], ['estado_herida_otro', 'Estado de la herida quirúrgica (especifique)', 5],
+  ['fecha_llamada_15_dias', 'Fecha de llamada de los 15 días', 5], ['persona_recibe_llamada', 'Persona que recibe la llamada', 5],
+  ['reingreso_30_dias', 'Reingreso a la institución en los primeros 30 días', 5], ['fecha_reingreso', 'Fecha de reingreso', 5],
+  ['causa_reingreso', 'Causa de reingreso', 5], ['causa_reingreso_otro', 'Causa de reingreso (especifique)', 5],
+  ['observaciones', 'Observaciones', 5],
+]
+
+// Mismo formato plano que ENCABEZADOS_EXPORTACION, para el módulo de adultos: una fila por intervención,
+// sin RACHS-1 (es pediátrico) pero con EuroSCORE; un solo teléfono en vez de una lista; y "Llamado 15
+// días" (Sí/No) junto con la fecha en que se hizo. Ver server/rutas-pacientes-adultos.mjs.
+export const ENCABEZADOS_EXPORTACION_ADULTOS: readonly ColumnaExportacion[] = [
+  ['numero_paciente', 'N° paciente', 1], ['numero_episodio', 'N° intervención', 1], ['nombre_completo', 'Nombre completo', 1],
+  ['identificacion', 'Identificación', 1], ['sexo', 'Sexo', 1], ['sexo_otro', 'Sexo (especifique)', 1],
+  ['fecha_nacimiento', 'Fecha de nacimiento', 1], ['peso_kg', 'Peso (kg)', 1], ['talla_cm', 'Talla (cm)', 1],
+  ['superficie_corporal', 'Superficie corporal (m²)', 1], ['procedencia', 'Procedencia', 1], ['procedencia_otro', 'Procedencia (especifique)', 1],
+  ['municipio_narino', 'Municipio de Nariño', 1], ['telefono', 'Teléfono', 1], ['eps', 'EPS', 1], ['eps_otro', 'EPS (especifique)', 1],
+  ['diagnostico', 'Diagnóstico', 2], ['diagnostico_otro', 'Diagnóstico (especifique)', 2],
+  ['diagnostico_adicional', 'Diagnóstico adicional', 2], ['diagnostico_adicional_otro', 'Diagnóstico adicional (especifique)', 2],
+  ['valvulopatia', 'Tipo de valvulopatía', 2], ['euroscore', 'Escala EuroSCORE (%)', 2], ['riesgos', 'Factores de riesgo', 2],
+  ['fecha_cirugia', 'Fecha de cirugía', 3], ...columnasProcedimientos(false),
+  ['uso_cec', 'Uso de CEC', 3], ['tiempo_cec_min', 'Tiempo CEC (min)', 3], ['tiempo_clamp_min', 'Tiempo clamp (min)', 3],
+  ['complicacion_intraqx', 'Complicación intraquirúrgica', 3], ['cierre_esternal_diferido', 'Cierre esternal diferido', 3],
+  ['extubacion_quirofano', 'Extubación en quirófano', 3],
+  ['unidad_pop', 'Unidad postoperatoria', 4], ['horas_ventilacion_mecanica', 'Horas de ventilación mecánica', 4],
+  ['complicacion_pop', 'Complicación postoperatoria', 4], ['fecha_traslado_intermedio', 'Fecha de traslado a intermedio', 4],
+  ['dias_uci', 'Días de estancia en UCI', 4], ['fecha_salida', 'Fecha de salida', 4],
+  ['dias_hospitalizacion', 'Días totales de hospitalización', 4], ['condicion_salida', 'Condición de salida', 4],
+  ['condicion_salida_otro', 'Condición de salida (especifique)', 4],
+  ['fecha_control_cirugia', 'Fecha de control por cirugía cardiovascular', 5], ['rehabilitacion_cardiaca', 'Terapia de rehabilitación cardíaca', 5],
+  ['estado_herida', 'Estado de la herida quirúrgica', 5], ['estado_herida_otro', 'Estado de la herida quirúrgica (especifique)', 5],
+  ['llamado_15_dias', 'Llamado 15 días', 5], ['fecha_llamada_15_dias', 'Fecha de la llamada de los 15 días', 5],
+  ['persona_recibe_llamada', 'Persona que recibe la llamada', 5],
+  ['reingreso_30_dias', 'Reingreso a la institución en los primeros 30 días', 5], ['fecha_reingreso', 'Fecha de reingreso', 5],
+  ['causa_reingreso', 'Causa de reingreso', 5], ['causa_reingreso_otro', 'Causa de reingreso (especifique)', 5],
+  ['observaciones', 'Observaciones', 5],
+]

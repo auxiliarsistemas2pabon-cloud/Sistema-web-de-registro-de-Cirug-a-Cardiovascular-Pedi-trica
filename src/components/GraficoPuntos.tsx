@@ -28,6 +28,8 @@ interface Props extends PropsSeleccion {
   /** Línea horizontal de comparación (p. ej. la tasa de todo el periodo): deja ver de un vistazo
    * qué categorías quedan por encima y cuáles por debajo. */
   referencia?: { valor: number; etiqueta: string }
+  /** Qué hace el clic en un punto, para el tooltip (por defecto, filtrar el tablero). */
+  textoClic?: string
 }
 
 const ANCHO_EJE_Y = 40
@@ -35,15 +37,15 @@ const MARGEN = { top: 24, right: 8, bottom: 0, left: 0 }
 
 /** Tasa (%) por categoría ordenada, p. ej. mortalidad por RACHS-1. Rojo de estado crítico: el
  * valor significa un desenlace malo, no es solo "otra serie". */
-export function GraficoPuntos({ datos: tasas, nombreCasos, referencia, seleccion, onSeleccionar }: Props) {
+export function GraficoPuntos({ datos: tasas, nombreCasos, referencia, textoClic, seleccion, onSeleccionar }: Props) {
   const [modoTabla, setModoTabla] = useState(false)
   const [ref, ancho] = useAnchoContenedor()
 
   if (tasas.length === 0) return <SinDatosGrafico />
 
   // Una tasa de 0 % también tiene pacientes (los de su total): esos son los que cuentan para poder
-  // elegirla como filtro.
-  const datos = tasas.map((d) => ({ ...d, n: d.total }))
+  // elegirla como filtro. Si el clic abre los casos (no filtra), cuentan los casos: `n` viene puesto.
+  const datos = tasas.map((d) => ({ ...d, n: d.n ?? d.total }))
   const maxCaracteres = caracteresPorCategoria(ancho, datos.length, ANCHO_EJE_Y + MARGEN.left + MARGEN.right)
   const dosLineas = datos.some((d) => partirEtiqueta(d.etiqueta, maxCaracteres).length > 1)
   const altoEjeX = dosLineas ? 38 : 24
@@ -100,7 +102,7 @@ export function GraficoPuntos({ datos: tasas, nombreCasos, referencia, seleccion
               tick={{ fontSize: 12, fill: 'var(--chart-texto-secundario)' }}
             />
             <Tooltip
-              content={<TooltipGrafico sufijoValor="%" detalle={describir} interactivo={Boolean(onSeleccionar)} seleccion={seleccion} />}
+              content={<TooltipGrafico sufijoValor="%" detalle={describir} interactivo={Boolean(onSeleccionar)} textoClic={textoClic} seleccion={seleccion} />}
               cursor={{ fill: 'var(--chart-grid)', opacity: 0.4 }}
             />
             {referencia && (

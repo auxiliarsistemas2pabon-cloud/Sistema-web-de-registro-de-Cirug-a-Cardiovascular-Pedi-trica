@@ -312,6 +312,8 @@ const tablas = [
     FOREIGN KEY (cirugia_id) REFERENCES cirugias_adultos(id),
     ${opcion('complicacion_id')}
   )`,
+  // dias_estancia_uci y dias_hospitalizacion_total se escribían a mano; desde el pedido del 23-oct se
+  // calculan de las fechas (ver sqlDiasUci en servicios.mjs) y estas columnas quedan en desuso.
   `CREATE TABLE IF NOT EXISTS postoperatorio_adultos (
     id CHAR(36) PRIMARY KEY,
     paciente_id CHAR(36) NOT NULL UNIQUE,
@@ -356,6 +358,11 @@ const tablas = [
     FOREIGN KEY (paciente_id) REFERENCES pacientes_adultos(id),
     ${opcion('estado_herida_id')}, ${opcion('causa_reingreso_id')}
   )`,
+  // Migraciones de datos que deben correr una sola vez por base (ver migrarUnaVez más abajo).
+  `CREATE TABLE IF NOT EXISTS migraciones_datos (
+    nombre VARCHAR(100) PRIMARY KEY,
+    aplicada_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
 ]
 
 // Columnas y restricciones que se agregaron después de la creación inicial de las tablas: `CREATE TABLE
@@ -367,8 +374,9 @@ const alteraciones = [
   ['cirugias', 'fecha_procedimiento_3', `ALTER TABLE cirugias ADD COLUMN fecha_procedimiento_3 DATE NULL AFTER fecha_procedimiento_2`],
   ['cirugias', 'numero_implante', `ALTER TABLE cirugias ADD COLUMN numero_implante VARCHAR(100) NULL AFTER implante_id`],
   ['cirugias_adultos', 'numero_implante', `ALTER TABLE cirugias_adultos ADD COLUMN numero_implante VARCHAR(100) NULL AFTER implante_id`],
-  // Columnas del formato original del hospital (FR-GCC-21) que no tenían campo propio: se agregan
-  // como texto libre, sin validar, igual que `observaciones` en seguimientos(_adultos).
+  // Columnas del formato original del hospital (FR-GCC-21) que no tenían campo propio: se agregaron
+  // como texto libre. En desuso desde el pedido del 23-oct, que las quitó de la ficha, del detalle y
+  // de la exportación: las columnas se conservan con lo que el servicio ya había registrado.
   ['diagnosticos_adultos', 'estado_preoperatorio', `ALTER TABLE diagnosticos_adultos ADD COLUMN estado_preoperatorio TEXT NULL`],
   ['diagnosticos_adultos', 'antecedentes_quirurgicos', `ALTER TABLE diagnosticos_adultos ADD COLUMN antecedentes_quirurgicos TEXT NULL AFTER estado_preoperatorio`],
   ['diagnosticos_adultos', 'comorbilidades', `ALTER TABLE diagnosticos_adultos ADD COLUMN comorbilidades TEXT NULL AFTER antecedentes_quirurgicos`],
@@ -382,6 +390,54 @@ const alteraciones = [
   ['cirugias_adultos', 'episodio_id', `ALTER TABLE cirugias_adultos ADD COLUMN episodio_id CHAR(36) NULL`],
   ['postoperatorio_adultos', 'episodio_id', `ALTER TABLE postoperatorio_adultos ADD COLUMN episodio_id CHAR(36) NULL`],
   ['seguimientos_adultos', 'episodio_id', `ALTER TABLE seguimientos_adultos ADD COLUMN episodio_id CHAR(36) NULL`],
+
+  // Pedido del 23-oct. Al elegir una opción "Otro…" se escribe cuál: una columna de texto por campo de
+  // selección única y, en los de selección múltiple y en los procedimientos, en la fila de la tabla
+  // puente (puede haber más de una opción "otro" elegida a la vez).
+  ['pacientes', 'sexo_otro', `ALTER TABLE pacientes ADD COLUMN sexo_otro VARCHAR(255) NULL AFTER sexo_id`],
+  ['pacientes', 'procedencia_otro', `ALTER TABLE pacientes ADD COLUMN procedencia_otro VARCHAR(255) NULL AFTER procedencia_id`],
+  ['pacientes', 'eps_otro', `ALTER TABLE pacientes ADD COLUMN eps_otro VARCHAR(255) NULL AFTER eps_id`],
+  ['pacientes_adultos', 'sexo_otro', `ALTER TABLE pacientes_adultos ADD COLUMN sexo_otro VARCHAR(255) NULL AFTER sexo_id`],
+  ['pacientes_adultos', 'procedencia_otro', `ALTER TABLE pacientes_adultos ADD COLUMN procedencia_otro VARCHAR(255) NULL AFTER procedencia_id`],
+  ['pacientes_adultos', 'eps_otro', `ALTER TABLE pacientes_adultos ADD COLUMN eps_otro VARCHAR(255) NULL AFTER eps_id`],
+  ['diagnosticos', 'diagnostico_otro', `ALTER TABLE diagnosticos ADD COLUMN diagnostico_otro VARCHAR(255) NULL AFTER diagnostico_id`],
+  ['diagnosticos_adultos', 'diagnostico_otro', `ALTER TABLE diagnosticos_adultos ADD COLUMN diagnostico_otro VARCHAR(255) NULL AFTER diagnostico_id`],
+  ['diagnosticos_riesgos', 'especificacion', `ALTER TABLE diagnosticos_riesgos ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['diagnosticos_adultos_riesgos', 'especificacion', `ALTER TABLE diagnosticos_adultos_riesgos ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['cirugias_procedimientos', 'especificacion', `ALTER TABLE cirugias_procedimientos ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['cirugias_adultos_procedimientos', 'especificacion', `ALTER TABLE cirugias_adultos_procedimientos ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['cirugias_complicaciones_intraqx', 'especificacion', `ALTER TABLE cirugias_complicaciones_intraqx ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['cirugias_adultos_complicaciones_intraqx', 'especificacion', `ALTER TABLE cirugias_adultos_complicaciones_intraqx ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['postoperatorio', 'condicion_salida_otro', `ALTER TABLE postoperatorio ADD COLUMN condicion_salida_otro VARCHAR(255) NULL AFTER condicion_salida_id`],
+  ['postoperatorio_adultos', 'condicion_salida_otro', `ALTER TABLE postoperatorio_adultos ADD COLUMN condicion_salida_otro VARCHAR(255) NULL AFTER condicion_salida_id`],
+  ['postoperatorio_complicaciones_pop', 'especificacion', `ALTER TABLE postoperatorio_complicaciones_pop ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['postoperatorio_adultos_complicaciones_pop', 'especificacion', `ALTER TABLE postoperatorio_adultos_complicaciones_pop ADD COLUMN especificacion VARCHAR(255) NULL`],
+  ['seguimientos', 'estado_herida_otro', `ALTER TABLE seguimientos ADD COLUMN estado_herida_otro VARCHAR(255) NULL AFTER estado_herida_id`],
+  ['seguimientos', 'causa_reingreso_otro', `ALTER TABLE seguimientos ADD COLUMN causa_reingreso_otro VARCHAR(255) NULL AFTER causa_reingreso_id`],
+  ['seguimientos_adultos', 'estado_herida_otro', `ALTER TABLE seguimientos_adultos ADD COLUMN estado_herida_otro VARCHAR(255) NULL AFTER estado_herida_id`],
+  ['seguimientos_adultos', 'causa_reingreso_otro', `ALTER TABLE seguimientos_adultos ADD COLUMN causa_reingreso_otro VARCHAR(255) NULL AFTER causa_reingreso_id`],
+  // Un segundo diagnóstico, de la misma lista que el principal.
+  ['diagnosticos', 'diagnostico_adicional_id', `ALTER TABLE diagnosticos ADD COLUMN diagnostico_adicional_id CHAR(36) NULL AFTER diagnostico_otro`],
+  ['diagnosticos', 'diagnostico_adicional_otro', `ALTER TABLE diagnosticos ADD COLUMN diagnostico_adicional_otro VARCHAR(255) NULL AFTER diagnostico_adicional_id`],
+  ['diagnosticos_adultos', 'diagnostico_adicional_id', `ALTER TABLE diagnosticos_adultos ADD COLUMN diagnostico_adicional_id CHAR(36) NULL AFTER diagnostico_otro`],
+  ['diagnosticos_adultos', 'diagnostico_adicional_otro', `ALTER TABLE diagnosticos_adultos ADD COLUMN diagnostico_adicional_otro VARCHAR(255) NULL AFTER diagnostico_adicional_id`],
+  // El implante pasa de uno por cirugía a uno por procedimiento: "¿lleva implante?" (Sí / No / No
+  // aplica) y, solo si lleva, su tipo. cirugias(_adultos).implante_id y numero_implante quedan en
+  // desuso (ver migrarImplantePorProcedimiento).
+  ['cirugias_procedimientos', 'implante', `ALTER TABLE cirugias_procedimientos ADD COLUMN implante ENUM('SI','NO','NA') NULL`],
+  ['cirugias_procedimientos', 'tipo_implante_id', `ALTER TABLE cirugias_procedimientos ADD COLUMN tipo_implante_id CHAR(36) NULL AFTER implante`],
+  ['cirugias_adultos_procedimientos', 'implante', `ALTER TABLE cirugias_adultos_procedimientos ADD COLUMN implante ENUM('SI','NO','NA') NULL`],
+  ['cirugias_adultos_procedimientos', 'tipo_implante_id', `ALTER TABLE cirugias_adultos_procedimientos ADD COLUMN tipo_implante_id CHAR(36) NULL AFTER implante`],
+  // Adultos solo guardaban si se hizo la llamada (Sí/No); ahora también el día en que se hizo.
+  ['seguimientos_adultos', 'fecha_llamada_15_dias', `ALTER TABLE seguimientos_adultos ADD COLUMN fecha_llamada_15_dias DATE NULL AFTER llamado_15_dias`],
+]
+
+// Llaves foráneas de las columnas de lista agregadas arriba (las de las tablas originales van en su CREATE TABLE).
+const llavesForaneas = [
+  ['fk_diag_adicional', 'diagnosticos', 'FOREIGN KEY (diagnostico_adicional_id) REFERENCES opciones_lista(id)'],
+  ['fk_diagad_adicional', 'diagnosticos_adultos', 'FOREIGN KEY (diagnostico_adicional_id) REFERENCES opciones_lista(id)'],
+  ['fk_cp_tipo_implante', 'cirugias_procedimientos', 'FOREIGN KEY (tipo_implante_id) REFERENCES opciones_lista(id)'],
+  ['fk_cpad_tipo_implante', 'cirugias_adultos_procedimientos', 'FOREIGN KEY (tipo_implante_id) REFERENCES opciones_lista(id)'],
 ]
 
 const restricciones = [
@@ -527,6 +583,40 @@ async function finalizarEpisodioAdultoSiListo(pool, tabla, nombreUnico, nombreFk
   await quitarColumnaSiExiste(pool, tabla, 'paciente_id')
 }
 
+/** Corre una migración de datos una sola vez por base. A diferencia de las de arriba (seguras de repetir
+ * por construcción), estas copian datos a campos que luego se editan o se dejan vacíos a propósito en la
+ * ficha: repetirlas en cada arranque pisaría esos cambios. La marca y los cambios van en la misma
+ * transacción (solo DML: un ALTER haría commit implícito), así que si algo falla no queda marcada y se
+ * reintenta en el próximo arranque. */
+async function migrarUnaVez(pool, nombre, migrar) {
+  const conexion = await pool.getConnection()
+  try {
+    await conexion.beginTransaction()
+    const [resultado] = await conexion.query('INSERT IGNORE INTO migraciones_datos (nombre) VALUES (?)', [nombre])
+    if (resultado.affectedRows === 1) await migrar(conexion)
+    await conexion.commit()
+  } catch (err) {
+    await conexion.rollback()
+    throw err
+  } finally {
+    conexion.release()
+  }
+}
+
+/** El implante era uno por cirugía (cirugias(_adultos).implante_id) y pasa a ser uno por procedimiento.
+ * "N/A" quería decir que la cirugía no llevó implante: todos sus procedimientos quedan en "No aplica".
+ * Un tipo real va al procedimiento 1, el único seguro cuando hubo más de uno (los demás quedan vacíos,
+ * para revisarlos en la ficha). Una cirugía con implante y sin procedimientos conserva el dato viejo. */
+async function migrarImplantePorProcedimiento(conexion, tablaCirugias, tablaProcedimientos) {
+  await conexion.query(`
+    UPDATE ${tablaProcedimientos} cp
+    JOIN ${tablaCirugias} c ON c.id = cp.cirugia_id
+    JOIN opciones_lista o ON o.id = c.implante_id
+    SET cp.implante = IF(o.valor = 'N/A', 'NA', 'SI'),
+        cp.tipo_implante_id = IF(o.valor = 'N/A', NULL, c.implante_id)
+    WHERE cp.implante IS NULL AND (o.valor = 'N/A' OR cp.orden = 1)`)
+}
+
 const EPISODIO_ADULTO_TABLAS = [
   ['diagnosticos_adultos', 'uq_diagad_episodio', 'fk_diagad_episodio'],
   ['cirugias_adultos', 'uq_cirad_episodio', 'fk_cirad_episodio'],
@@ -539,6 +629,7 @@ export async function inicializarBase(pool, admin) {
   for (const sentencia of tablas) await pool.query(sentencia)
   for (const [tabla, columna, sentencia] of alteraciones) await agregarColumnaSiNoExiste(pool, tabla, columna, sentencia)
   for (const [nombre, tabla, definicion] of restricciones) await agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion)
+  for (const [nombre, tabla, definicion] of llavesForaneas) await agregarRestriccionNombradaSiNoExiste(pool, nombre, tabla, definicion)
   await migrarComplicacionesSiExisteColumna(pool, 'cirugias', 'complicacion_intraqx_id', 'cirugias_complicaciones_intraqx', 'cirugia_id')
   await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio', 'complicacion_pop_id', 'postoperatorio_complicaciones_pop', 'postoperatorio_id')
   await migrarComplicacionesSiExisteColumna(pool, 'cirugias_adultos', 'complicacion_intraqx_id', 'cirugias_adultos_complicaciones_intraqx', 'cirugia_id')
@@ -551,6 +642,15 @@ export async function inicializarBase(pool, admin) {
   for (const [tabla, nombreUnico, nombreFk] of EPISODIO_ADULTO_TABLAS) {
     await finalizarEpisodioAdultoSiListo(pool, tabla, nombreUnico, nombreFk)
   }
+
+  await migrarUnaVez(pool, 'implante_por_procedimiento', async (conexion) => {
+    await migrarImplantePorProcedimiento(conexion, 'cirugias', 'cirugias_procedimientos')
+    await migrarImplantePorProcedimiento(conexion, 'cirugias_adultos', 'cirugias_adultos_procedimientos')
+    // "No aplica" ahora es una respuesta de "¿lleva implante?": como tipo de implante ya no tiene sentido.
+    await conexion.query(`
+      UPDATE opciones_lista o JOIN categorias_lista c ON c.id = o.categoria_id
+      SET o.activo = 0 WHERE c.codigo = 'IMPLANTE' AND o.valor = 'N/A'`)
+  })
 
   for (const [tabla, columna] of columnasRetiradas) await quitarColumnaSiExiste(pool, tabla, columna)
 

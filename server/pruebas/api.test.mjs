@@ -104,6 +104,35 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.deepEqual(d.riesgo_ids, [porValor('RIESGOS', 'Obesidad')])
     })
 
+    it('Módulo 2: diagnóstico adicional y especificación de las opciones "Otro…"', async () => {
+      const otras = porValor('DIAGNOSTICO', 'Otras cardiopatías congénitas')
+      const valvulopatias = porCodigo('DIAGNOSTICO', 'VALVULOPATIAS')
+      const otraCondicion = porValor('RIESGOS', 'Otra condición relevante')
+      const obesidad = porValor('RIESGOS', 'Obesidad')
+      const base = { diagnostico_id: otras, diagnostico_otro: 'Síndrome de Shone', rachs_id: porValor('RACHS', 'II'), riesgo_ids: [otraCondicion, obesidad], estado_modulo: 'completo' }
+      // El adicional no puede repetir el principal ni ir sin él.
+      assert.equal((await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...base, diagnostico_adicional_id: otras } })).estado, 422)
+      assert.equal((await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...base, diagnostico_id: null, diagnostico_adicional_id: valvulopatias } })).estado, 422)
+      const ok = await api('PUT', `/pacientes/${id}/diagnostico`, {
+        token: admin,
+        cuerpo: {
+          ...base, diagnostico_adicional_id: valvulopatias, diagnostico_adicional_otro: 'no aplica: no es un "Otro…"',
+          valvulopatia_id: porValor('VALVULOPATIA', 'Estenosis'),
+          riesgo_especificaciones: { [otraCondicion]: 'Hipotiroidismo', [obesidad]: 'se descarta' },
+        },
+      })
+      assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
+      const d = (await api('GET', `/pacientes/${id}/diagnostico`, { token: admin })).datos
+      assert.equal(d.diagnostico_otro, 'Síndrome de Shone')
+      assert.equal(d.diagnostico_adicional_otro, null)
+      // Con Valvulopatías como diagnóstico adicional, el tipo de valvulopatía sí aplica.
+      assert.equal(d.valvulopatia_id, porValor('VALVULOPATIA', 'Estenosis'))
+      assert.deepEqual(d.riesgo_especificaciones, { [otraCondicion]: 'Hipotiroidismo' })
+      // Quien no envía las especificaciones (p. ej. la importación) no borra las guardadas.
+      await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...base, diagnostico_adicional_id: valvulopatias } })
+      assert.deepEqual((await api('GET', `/pacientes/${id}/diagnostico`, { token: admin })).datos.riesgo_especificaciones, { [otraCondicion]: 'Hipotiroidismo' })
+    })
+
     it('Módulo 3: fechas, CEC y procedimientos', async () => {
       const base = { fecha_cirugia: '2023-06-01', uso_cec: 'SI', tiempo_cec_min: 80, tiempo_clamp_min: 40, procedimiento_ids: [porValor('PROCEDIMIENTOS', 'Cirugía de coartación de aorta')], estado_modulo: 'completo' }
       assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_cirugia: '2022-01-01' } })).estado, 422)
@@ -135,6 +164,32 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.equal(sinP2.estado, 200, JSON.stringify(sinP2.datos))
       const c2 = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
       assert.equal(c2.fecha_procedimiento_2, null)
+    })
+
+    it('Módulo 3: implante y especificación por procedimiento', async () => {
+      const coartacion = porValor('PROCEDIMIENTOS', 'Cirugía de coartación de aorta')
+      const otro = porValor('PROCEDIMIENTOS', 'Otro')
+      const mecanico = porValor('IMPLANTE', 'Mecánico')
+      const cuerpo = {
+        fecha_cirugia: '2023-06-01', fecha_procedimiento_2: '2023-06-15', estado_modulo: 'completo',
+        procedimientos: [
+          { procedimiento_id: coartacion, implante: 'NA', tipo_implante_id: mecanico, especificacion: 'se descarta' },
+          { procedimiento_id: otro, implante: 'SI', tipo_implante_id: mecanico, especificacion: 'Plastia de arco' },
+        ],
+      }
+      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...cuerpo, procedimientos: [{ implante: 'SI' }] } })).estado, 400)
+      const ok = await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo })
+      assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
+      const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
+      assert.deepEqual(c.procedimientos, [
+        { procedimiento_id: coartacion, especificacion: null, implante: 'NA', tipo_implante_id: null },
+        { procedimiento_id: otro, especificacion: 'Plastia de arco', implante: 'SI', tipo_implante_id: mecanico },
+      ])
+      // La forma anterior (solo los ids) conserva el implante y la especificación de cada procedimiento.
+      await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2023-06-01', fecha_procedimiento_2: '2023-06-15', procedimiento_ids: [coartacion, otro], estado_modulo: 'completo' } })
+      assert.deepEqual((await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos.procedimientos, c.procedimientos)
+      // Deja la cirugía como la esperan las pruebas siguientes: un solo procedimiento.
+      await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2023-06-01', procedimientos: [{ procedimiento_id: coartacion, implante: 'NA' }], estado_modulo: 'completo' } })
     })
 
     it('Módulo 5 exige Módulo 4; Muerte bloquea el Módulo 5 y se revierte', async () => {
@@ -189,8 +244,13 @@ describe('API cirugía cardiovascular pediátrica', () => {
     assert.ok(Array.isArray((await api('GET', '/alertas', { token: admin })).datos))
     const i = (await api('GET', '/indicadores?desde=2000-01-01&hasta=2100-01-01', { token: admin })).datos
     assert.ok(i.resumen.total_cirugias >= 1)
-    for (const k of ['por_mes', 'por_diagnostico', 'por_procedimiento', 'por_rachs', 'por_eps', 'por_procedencia',
+    for (const k of ['por_mes', 'tasas_por_mes', 'por_procedimiento', 'por_rachs', 'por_eps', 'por_procedencia',
       'por_sexo', 'por_peso', 'por_talla', 'por_superficie_corporal', 'por_dias_uci', 'por_horas_vm', 'por_estado_herida']) assert.ok(Array.isArray(i[k]), k)
+    // Diagnóstico (principal y adicional) e implante (por procedimiento): un paciente puede contar en varios.
+    for (const k of ['por_diagnostico', 'por_implante', 'por_factor_riesgo']) assert.ok(Array.isArray(i[k].conteo) && Number.isInteger(i[k].pacientes), k)
+    // Las tasas mensuales suman las mismas cirugías que el total.
+    assert.equal(i.tasas_por_mes.reduce((suma, m) => suma + m.total_cirugias, 0), i.resumen.total_cirugias)
+    assert.ok(i.tasas_por_mes.every((m) => /^\d{4}-\d{2}$/.test(m.mes)))
     // Las distribuciones por rango traen todos los rangos (también los vacíos) y suman el total de cirugías.
     const sumaPeso = i.por_peso.reduce((suma, r) => suma + r.total_cirugias, 0)
     assert.equal(sumaPeso, i.resumen.total_cirugias)
@@ -218,6 +278,42 @@ describe('API cirugía cardiovascular pediátrica', () => {
     const filtradas = (await api('GET', `/indicadores/pacientes?desde=2000-01-01&hasta=2100-01-01&filtros=${filtros}`, { token: admin })).datos.pacientes
     assert.ok(filtradas.length === sexo.total_cirugias && filtradas.every((p) => p.etiquetas.sexo === sexo.categoria))
     assert.equal((await api('GET', '/indicadores', { token: admin })).estado, 400)
+    // Detalle de un indicador: los casos son los que cuenta su tasa, con todos sus datos.
+    const casos = (await api('GET', '/indicadores/casos?desde=2000-01-01&hasta=2100-01-01&indicador=mortalidad', { token: admin })).datos
+    assert.equal(casos.total, i.resumen.total_cirugias)
+    assert.equal(casos.casos.length, i.resumen.fallecidos)
+    assert.ok(casos.casos.every((c) => c.fallecido && 'nombre_completo' in c && Array.isArray(c.procedimientos)))
+    assert.equal((await api('GET', '/indicadores/casos?desde=2000-01-01&hasta=2100-01-01&indicador=otro', { token: admin })).estado, 400)
+    // La matriz en Excel trae todos los campos de los mismos pacientes que la matriz.
+    const exportados = (await api('GET', '/indicadores/exportar?desde=2000-01-01&hasta=2100-01-01', { token: admin })).datos.filas
+    assert.equal(exportados.length, pacientes.length)
+    assert.ok(exportados.every((f) => 'nombre_completo' in f && 'procedimiento_1' in f && 'dias_uci' in f))
+  })
+
+  it('adultos: la fecha de la llamada de los 15 días solo va si la llamada se hizo, y no puede ser futura', async () => {
+    const r = await api('POST', '/pacientes-adultos', {
+      token: admin,
+      cuerpo: { nombre_completo: `Paciente Prueba ${sufijo}`, identificacion: `8${sufijo}`, fecha_nacimiento: '1970-03-01', estado_modulo: 'completo' },
+    })
+    assert.equal(r.estado, 201, JSON.stringify(r.datos))
+    const [episodio] = (await api('GET', `/pacientes-adultos/${r.datos.id}/episodios`, { token: admin })).datos
+    const ruta = `/pacientes-adultos/${r.datos.id}/episodios/${episodio.id}`
+    assert.equal((await api('PUT', `${ruta}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2026-01-05', estado_modulo: 'pendiente' } })).estado, 200)
+    const pop = await api('PUT', `${ruta}/postoperatorio`, { token: admin, cuerpo: { fecha_traslado_intermedio: '2026-01-08', fecha_salida: '2026-01-12', condicion_salida_id: porValor('CONDICION_SALIDA', 'Estable'), estado_modulo: 'pendiente' } })
+    assert.equal(pop.estado, 200, JSON.stringify(pop.datos))
+    const seg = { llamado_15_dias: 'SI', fecha_llamada_15_dias: '2026-01-27', persona_recibe_llamada: 'Hija', reingreso_30_dias: 'NO', estado_modulo: 'pendiente' }
+    assert.equal((await api('PUT', `${ruta}/seguimiento`, { token: admin, cuerpo: { ...seg, fecha_llamada_15_dias: '2026-01-10' } })).estado, 422)
+    assert.equal((await api('PUT', `${ruta}/seguimiento`, { token: admin, cuerpo: { ...seg, fecha_llamada_15_dias: '2999-01-01' } })).estado, 422)
+    assert.equal((await api('PUT', `${ruta}/seguimiento`, { token: admin, cuerpo: seg })).estado, 200)
+    assert.equal((await api('GET', `${ruta}/seguimiento`, { token: admin })).datos.fecha_llamada_15_dias, '2026-01-27')
+    await api('PUT', `${ruta}/seguimiento`, { token: admin, cuerpo: { ...seg, llamado_15_dias: 'NO' } })
+    const sinLlamada = (await api('GET', `${ruta}/seguimiento`, { token: admin })).datos
+    assert.equal(sinLlamada.fecha_llamada_15_dias, null)
+    assert.equal(sinLlamada.persona_recibe_llamada, null)
+    // Los días de UCI y de hospitalización salen de las fechas: 3 días hasta el traslado y 7 hasta la salida.
+    const resumen = (await api('GET', `/pacientes-adultos/${r.datos.id}/resumen`, { token: admin })).datos
+    assert.equal(resumen.dias_uci, 3)
+    assert.equal(resumen.dias_hospitalizacion_posqx, 7)
   })
 
   it('protege el código de las opciones al editar listas', async () => {
@@ -228,6 +324,6 @@ describe('API cirugía cardiovascular pediátrica', () => {
   it('exportación plana', async () => {
     const filas = (await api('GET', '/exportacion/pacientes', { token: admin })).datos
     assert.ok(filas.length >= 1)
-    assert.ok('nombre_completo' in filas[0] && 'procedimientos' in filas[0])
+    assert.ok('nombre_completo' in filas[0] && 'procedimiento_1' in filas[0] && 'implante_1' in filas[0] && 'dias_hospitalizacion' in filas[0])
   })
 })

@@ -23,14 +23,17 @@ export interface PacienteDetalle {
   nombre_completo: string
   identificacion: string
   sexo_id: string | null
+  sexo_otro: string | null
   fecha_nacimiento: string
   peso_kg: number | null
   talla_cm: number | null
   procedencia_id: string | null
+  procedencia_otro: string | null
   municipio_narino_id: string | null
   telefonos: string[] | null
   sin_telefono: boolean
   eps_id: string | null
+  eps_otro: string | null
   estado_modulo: EstadoModulo
   eliminado: boolean
 }
@@ -57,6 +60,10 @@ export interface DiagnosticoDetalle {
   id: string
   paciente_id: string
   diagnostico_id: string | null
+  diagnostico_otro: string | null
+  /** Un segundo diagnóstico, de la misma lista que el principal (pedido del 23-oct). */
+  diagnostico_adicional_id: string | null
+  diagnostico_adicional_otro: string | null
   valvulopatia_id: string | null
   rachs_id: string | null
   estado_modulo: EstadoModulo
@@ -98,13 +105,16 @@ export interface PacienteAdultoDetalle {
   nombre_completo: string
   identificacion: string
   sexo_id: string | null
+  sexo_otro: string | null
   fecha_nacimiento: string
   peso_kg: number | null
   talla_cm: number | null
   procedencia_id: string | null
+  procedencia_otro: string | null
   municipio_narino_id: string | null
   telefono: string | null
   eps_id: string | null
+  eps_otro: string | null
   estado_modulo: EstadoModulo
   eliminado: boolean
 }
@@ -113,11 +123,11 @@ export interface DiagnosticoAdultoDetalle {
   id: string
   episodio_id: string
   diagnostico_id: string | null
+  diagnostico_otro: string | null
+  diagnostico_adicional_id: string | null
+  diagnostico_adicional_otro: string | null
   valvulopatia_id: string | null
   euroscore: number | null
-  estado_preoperatorio: string | null
-  antecedentes_quirurgicos: string | null
-  comorbilidades: string | null
   estado_modulo: EstadoModulo
 }
 
@@ -149,10 +159,27 @@ export interface PacienteAdultoResumen {
 }
 
 /** Una intervención quirúrgica de un paciente adulto. La mayoría de los pacientes tiene solo una
- * (numero_episodio = 1, creada junto con el paciente); una reintervención agrega la siguiente. */
+ * (numero_episodio = 1, creada junto con el paciente); una reintervención agrega la siguiente. Trae
+ * su fecha de cirugía, su diagnóstico y el estado de sus módulos 2 a 5, para que la ficha muestre los
+ * de la intervención elegida. */
 export interface EpisodioAdulto {
   id: string
   paciente_id: string
   numero_episodio: number
   creado_en: string
+  fecha_cirugia: string | null
+  diagnostico_valor: string | null
+  estado_m2: EstadoModulo
+  estado_m3: EstadoModulo
+  estado_m4: EstadoModulo
+  estado_m5: EstadoModulo
+}
+
+/** Un procedimiento guardado de una cirugía (en orden, 1 a 3): su especificación si es un "Otro…" y si
+ * llevó implante (Sí / No / No aplica), con su tipo solo cuando sí lo llevó. */
+export interface ProcedimientoGuardado {
+  procedimiento_id: string
+  especificacion: string | null
+  implante: 'SI' | 'NO' | 'NA' | null
+  tipo_implante_id: string | null
 }

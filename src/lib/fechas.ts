@@ -17,6 +17,23 @@ export function formatearEdad(dias: number | null | undefined): string {
   return `${anios} ${anios === 1 ? 'año' : 'años'}`
 }
 
+/** Días entre dos fechas ISO (yyyy-mm-dd), sin que el horario de verano o la hora del día los mueva. */
+export function diasEntre(desde: string, hasta: string): number {
+  return Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000)
+}
+
+/** Días en UCI (de la cirugía al traslado a cuidados intermedios o, sin traslado, a la salida) y días
+ * totales de hospitalización (de la cirugía al egreso). La misma cuenta que sqlDiasUci y
+ * sqlDiasHospitalizacion en server/servicios.mjs, para verla en la ficha mientras se escriben las fechas. */
+export function diasEstancia({ fechaCirugia, fechaTraslado, fechaSalida }: { fechaCirugia: string | null; fechaTraslado: string; fechaSalida: string }) {
+  if (!fechaCirugia) return { uci: null, hospitalizacion: null }
+  const finUci = fechaTraslado || fechaSalida
+  return {
+    uci: finUci ? diasEntre(fechaCirugia, finUci) : null,
+    hospitalizacion: fechaSalida ? diasEntre(fechaCirugia, fechaSalida) : null,
+  }
+}
+
 /** Fecha de hoy en formato yyyy-mm-dd (para atributos max de <input type="date">). */
 export function hoyIso(): string {
   return new Date().toLocaleDateString('en-CA')

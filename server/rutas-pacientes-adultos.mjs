@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { conTransaccion, hoyBogota, pool, todas, una } from './db.mjs'
 import { asincrono, validacion } from './errores.mjs'
-import { filaApi } from './servicios.mjs'
+import { filaApi, sqlDiasHospitalizacion, sqlDiasUci } from './servicios.mjs'
 import {
   actualizarPacienteAdulto, crearEpisodioAdulto, crearPacienteAdulto, guardarCirugiaAdulto, guardarDiagnosticoAdulto,
   guardarPostoperatorioAdulto, guardarSeguimientoAdulto, listarEpisodiosAdultos, marcarEliminadoAdulto, obtenerCirugiaAdulto,
@@ -18,8 +18,8 @@ const SQL_RESUMEN = `
     DATEDIFF(?, p.fecha_nacimiento) AS edad_dias,
     c.fecha_cirugia,
     DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_cirugia_dias,
-    po.dias_estancia_uci AS dias_uci,
-    po.dias_hospitalizacion_total AS dias_hospitalizacion_posqx,
+    ${sqlDiasUci('c', 'po')} AS dias_uci,
+    ${sqlDiasHospitalizacion('c', 'po')} AS dias_hospitalizacion_posqx,
     p.estado_modulo AS estado_m1,
     COALESCE(d.estado_modulo, 'pendiente') AS estado_m2,
     COALESCE(c.estado_modulo, 'pendiente') AS estado_m3,

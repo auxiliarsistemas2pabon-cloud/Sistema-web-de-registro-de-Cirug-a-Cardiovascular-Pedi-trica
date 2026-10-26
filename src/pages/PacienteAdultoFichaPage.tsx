@@ -68,13 +68,18 @@ export function PacienteAdultoFichaPage() {
   if (!esNuevo && isLoading) return <Cargando etiqueta="Cargando paciente…" />
   if (!esNuevo && error) return <MensajeError>No se pudo cargar el paciente.</MensajeError>
 
+  // Los módulos 2 a 5 (y su diagnóstico) son de la intervención elegida, no de la última: con una
+  // reintervención, ver la primera debe mostrar los estados y el diagnóstico de la primera.
+  const episodio = episodios?.find((e) => e.id === episodioId)
+  const varias = (episodios?.length ?? 0) > 1
   const estados = {
     1: paciente?.estado_modulo,
-    2: resumen?.estado_m2,
-    3: resumen?.estado_m3,
-    4: resumen?.estado_m4,
-    5: resumen?.estado_m5,
+    2: episodio?.estado_m2 ?? resumen?.estado_m2,
+    3: episodio?.estado_m3 ?? resumen?.estado_m3,
+    4: episodio?.estado_m4 ?? resumen?.estado_m4,
+    5: episodio?.estado_m5 ?? resumen?.estado_m5,
   }
+  const diagnostico = episodio ? episodio.diagnostico_valor : resumen?.diagnostico_valor
 
   return (
     <FichaPaciente
@@ -89,13 +94,23 @@ export function PacienteAdultoFichaPage() {
           ? [
               { etiqueta: 'Identificación', valor: paciente.identificacion },
               { etiqueta: 'Edad', valor: formatearEdad(resumen?.edad_dias) || '—' },
-              { etiqueta: 'Diagnóstico', valor: resumen?.diagnostico_valor ?? 'Sin diagnóstico', ancho: true },
+              {
+                etiqueta: varias && episodio ? `Diagnóstico (intervención ${episodio.numero_episodio})` : 'Diagnóstico',
+                valor: diagnostico ?? 'Sin diagnóstico',
+                ancho: true,
+              },
             ]
           : undefined
       }
       estados={estados}
       pestanaActiva={pestanaActiva}
       onCambiarPestana={setPestanaActiva}
+      intervenciones={
+        paciente && episodios && (
+          <SelectorEpisodiosAdulto pacienteId={paciente.id} episodios={episodios} episodioId={episodioId} onSeleccionar={setEpisodioId} />
+        )
+      }
+      contexto={varias && episodio && pestanaActiva !== 1 ? `Intervención ${episodio.numero_episodio}` : undefined}
     >
       {pestanaActiva === 1 && (
         <Modulo1FormAdulto
@@ -104,9 +119,6 @@ export function PacienteAdultoFichaPage() {
             if (esNuevo) navigate(`/adultos/${pacienteId}`, { replace: true })
           }}
         />
-      )}
-      {pestanaActiva !== 1 && paciente && episodios && (
-        <SelectorEpisodiosAdulto pacienteId={paciente.id} episodios={episodios} episodioId={episodioId} onSeleccionar={setEpisodioId} />
       )}
       {pestanaActiva === 2 && paciente && episodioId && <Modulo2FormAdulto pacienteId={paciente.id} episodioId={episodioId} />}
       {pestanaActiva === 3 && paciente && episodioId && <Modulo3FormAdulto pacienteId={paciente.id} episodioId={episodioId} />}

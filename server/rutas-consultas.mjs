@@ -2,6 +2,7 @@
 import { Router } from 'express'
 import { hoyBogota, pool, todas, una } from './db.mjs'
 import { asincrono, noEncontrado, validacion } from './errores.mjs'
+import { sqlDiasHospitalizacion, sqlDiasUci } from './servicios.mjs'
 import { esFechaIso } from './validar.mjs'
 
 export const rutasAlertas = Router()
@@ -222,17 +223,27 @@ const edadDecimal = (f) => (f.edad_dias === null || f.edad_dias === undefined ? 
 // postoperatorio y seguimientos tienen paciente_id UNIQUE), así que contar filas es contar pacientes.
 // ---------------------------------------------------------------------------------------------
 
-/** Campos de selección múltiple: un paciente puede tener varios valores (varios procedimientos,
- * factores de riesgo o complicaciones), así que cuenta en cada barra que le corresponda. */
-const CAMPOS_MULTIPLES = ['procedimiento', 'factor_riesgo', 'complicacion_intraqx', 'complicacion_pop']
+/** Campos de selección múltiple: un paciente puede tener varios valores (diagnóstico principal y
+ * adicional, varios procedimientos, cada uno con su implante, factores de riesgo o complicaciones), así
+ * que cuenta en cada barra que le corresponda. */
+const CAMPOS_MULTIPLES = ['diagnostico', 'procedimiento', 'implante', 'factor_riesgo', 'complicacion_intraqx', 'complicacion_pop']
 
 /** Campos filtrables: uno por gráfico, y el filtro usa exactamente la etiqueta que ese gráfico muestra. */
 const CAMPOS_FILTRO = [
-  'mes', 'anio', 'trimestre', 'riesgo', 'diagnostico', 'valvulopatia', 'eps', 'procedencia', 'municipio', 'sexo', 'edad',
-  'peso', 'talla', 'superficie', 'implante', 'uso_cec', 'tiempo_cec', 'tiempo_clamp', 'cierre_esternal', 'extubacion',
+  'mes', 'anio', 'riesgo', 'valvulopatia', 'eps', 'procedencia', 'municipio', 'sexo', 'edad',
+  'peso', 'talla', 'superficie', 'uso_cec', 'tiempo_cec', 'tiempo_clamp', 'cierre_esternal', 'extubacion',
   'unidad_pop', 'dias_uci', 'horas_vm', 'dias_hosp', 'condicion_salida', 'rehabilitacion', 'estado_herida', 'herida_grupo',
   'reingreso', 'causa_reingreso', ...CAMPOS_MULTIPLES,
 ]
+
+/** Los indicadores clave con tasa, y qué pacientes son sus casos: al hacer clic en uno se ve el detalle
+ * de esos pacientes (ver /casos más abajo). */
+const INDICADORES = {
+  mortalidad: (f) => Boolean(f.muerte),
+  complicacion_intraqx: (f) => Boolean(f.comp_intraqx),
+  complicacion_pop: (f) => Boolean(f.comp_pop),
+  reingreso: (f) => Boolean(f.reingreso),
+}
 
 function leerFiltros(texto) {
   if (texto === undefined || texto === '') return []
@@ -248,10 +259,24 @@ function leerFiltros(texto) {
   return filtros.map(({ campo, valor }) => ({ campo, valor }))
 }
 
+/** Rango de fechas y filtros del tablero; para el detalle de un indicador, también cuál y, si se hizo
+ * clic en un mes de su gráfico, ese mes ("2026-05"). */
 function leerConsulta(req) {
-  const { desde, hasta, filtros } = req.query
+  const { desde, hasta, filtros, indicador, mes } = req.query
   if (!esFechaIso(desde) || !esFechaIso(hasta)) throw validacion('Indique desde y hasta con formato aaaa-mm-dd.')
-  return { desde, hasta, filtros: leerFiltros(filtros) }
+  if (indicador !== undefined && !Object.hasOwn(INDICADORES, indicador)) throw validacion('Indicador no válido.')
+  if (mes !== undefined && !/^\d{4}-(0[1-9]|1[0-2])$/.test(mes)) throw validacion('Indique el mes con formato aaaa-mm.')
+  return { desde, hasta, filtros: leerFiltros(filtros), indicador, mes }
+}
+
+/** Los pacientes de una lista (no de un gráfico): con todos los filtros, del mes elegido y, si se pidió
+ * un indicador, solo sus casos — en orden de fecha de cirugía. */
+function seleccionarPacientes(filas, { filtros, indicador, mes }) {
+  return filas
+    .filter((f) => filtros.every((filtro) => cumple(f, filtro)))
+    .filter((f) => !mes || f.etiquetas.mes === mes)
+    .filter((f) => !indicador || INDICADORES[indicador](f))
+    .sort((a, b) => a.fecha_cirugia.localeCompare(b.fecha_cirugia) || a.numero_paciente - b.numero_paciente)
 }
 
 /** Etiqueta del rango donde cae un valor, con el mismo corte que distribucion() (o "Sin dato"). */
@@ -281,21 +306,18 @@ function etiquetarFila(f, rangos) {
   // Los tiempos de CEC y de clamp solo se cuentan en las cirugías con circulación extracorpórea: en
   // las demás no es un dato faltante, es que no aplica.
   const conCec = f.uso_cec !== 'NO'
-  const [anio, mes] = f.fecha_cirugia.split('-').map(Number)
   return {
     ...f,
     superficie,
     // Etiqueta null: el paciente no entra en ese gráfico (p. ej. el municipio de quien no es de Nariño).
     etiquetas: {
       mes: f.fecha_cirugia.slice(0, 7),
-      anio: String(anio),
-      trimestre: `${anio}-T${Math.ceil(mes / 3)}`,
+      anio: f.fecha_cirugia.slice(0, 4),
       riesgo: f.riesgo,
-      diagnostico: f.diagnostico ?? 'Sin diagnóstico',
-      // "N/A" en el tipo de valvulopatía o de implante es que no hubo: no se grafica. Para saber si el
-      // diagnóstico es una valvulopatía, el mismo criterio que la ficha: su texto.
+      // "N/A" en el tipo de valvulopatía es que no hubo: no se grafica. Para saber si el diagnóstico
+      // (principal o adicional) es una valvulopatía, el mismo criterio que la ficha: su texto.
       valvulopatia: noAplica(f.valvulopatia)
-        ? (/valvulopat/i.test(f.diagnostico ?? '') ? 'Sin tipo registrado' : null)
+        ? (/valvulopat/i.test(`${f.diagnostico ?? ''} ${f.diagnostico_adicional ?? ''}`) ? 'Sin tipo registrado' : null)
         : f.valvulopatia,
       eps: f.eps ?? 'Sin EPS',
       procedencia: f.procedencia ?? 'Sin procedencia',
@@ -305,7 +327,6 @@ function etiquetarFila(f, rangos) {
       peso: etiquetaRango(f.peso_kg, rangos.peso),
       talla: etiquetaRango(f.talla_cm, rangos.talla),
       superficie: etiquetaRango(superficie, rangos.superficie),
-      implante: noAplica(f.implante) && f.implante ? null : (f.implante ?? 'Sin dato'),
       uso_cec: textoSiNo(f.uso_cec),
       tiempo_cec: conCec ? etiquetaRango(f.tiempo_cec_min, RANGOS_CEC) : null,
       tiempo_clamp: conCec ? etiquetaRango(f.tiempo_clamp_min, RANGOS_CLAMP) : null,
@@ -354,7 +375,7 @@ function conteoMultiple(filas, campo) {
   const conteo = new Map()
   for (const f of filas) for (const v of f.multiples[campo]) conteo.set(v, (conteo.get(v) ?? 0) + 1)
   return [...conteo.entries()]
-    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
+    .sort((a, b) => esVacia(a[0]) - esVacia(b[0]) || b[1] - a[1] || a[0].localeCompare(b[0], 'es'))
     .map(([categoria, total_cirugias]) => ({ categoria, total_cirugias }))
 }
 
@@ -363,14 +384,15 @@ function conteoMultiple(filas, campo) {
 const CODIGOS_NINGUNO = new Set(['NINGUNO', 'NINGUNA', 'NO'])
 
 /**
- * Valores de las listas de selección múltiple (id del dueño → Set de textos): procedimientos por
- * cirugía, factores de riesgo por diagnóstico y complicaciones por cirugía o postoperatorio. Son
- * tablas pequeñas, así que se leen completas. Los nombres de tabla son fijos, nunca vienen de la petición.
+ * Valores de las listas de selección múltiple (id del dueño → Set de textos): procedimientos e
+ * implantes por cirugía, factores de riesgo por diagnóstico y complicaciones por cirugía o
+ * postoperatorio. Son tablas pequeñas, así que se leen completas. Los nombres de tabla son fijos,
+ * nunca vienen de la petición.
  */
 async function valoresMultiples(tablas) {
-  const leer = async (tabla, dueno, opcion) => {
+  const leer = async (tabla, dueno, opcion, condicion = '') => {
     const pares = await todas(pool, `
-      SELECT t.${dueno} AS id, o.valor, o.codigo FROM ${tabla} t JOIN opciones_lista o ON o.id = t.${opcion}`)
+      SELECT t.${dueno} AS id, o.valor, o.codigo FROM ${tabla} t JOIN opciones_lista o ON o.id = t.${opcion} ${condicion}`)
     const mapa = new Map()
     for (const { id, valor, codigo } of pares) {
       if (CODIGOS_NINGUNO.has(codigo)) continue
@@ -379,40 +401,45 @@ async function valoresMultiples(tablas) {
     }
     return mapa
   }
-  const [procedimiento, factor_riesgo, complicacion_intraqx, complicacion_pop] = await Promise.all([
+  const [procedimiento, implante, factor_riesgo, complicacion_intraqx, complicacion_pop] = await Promise.all([
     leer(tablas.procedimientos, 'cirugia_id', 'procedimiento_id'),
+    // El tipo de implante de cada procedimiento que sí lo llevó.
+    leer(tablas.procedimientos, 'cirugia_id', 'tipo_implante_id', "WHERE t.implante = 'SI'"),
     leer(tablas.riesgos, 'diagnostico_id', 'riesgo_id'),
     leer(tablas.complicacionesIntraqx, 'cirugia_id', 'complicacion_id'),
     leer(tablas.complicacionesPop, 'postoperatorio_id', 'complicacion_id'),
   ])
   const vacio = new Set()
   return (f) => ({
+    // El diagnóstico principal y el adicional cuentan los dos; sin ninguno, va en "Sin diagnóstico".
+    diagnostico: new Set(f.diagnostico ? [f.diagnostico, f.diagnostico_adicional].filter(Boolean) : ['Sin diagnóstico']),
     procedimiento: procedimiento.get(f.cirugia_id) ?? vacio,
+    implante: implante.get(f.cirugia_id) ?? vacio,
     factor_riesgo: factor_riesgo.get(f.diagnostico_fila_id) ?? vacio,
     complicacion_intraqx: complicacion_intraqx.get(f.cirugia_id) ?? vacio,
     complicacion_pop: complicacion_pop.get(f.postoperatorio_id) ?? vacio,
   })
 }
 
-/** Las tasas de los indicadores clave en cada trimestre con cirugías. Por trimestre y no por mes:
- * con pocas cirugías al mes, una sola muerte hace saltar la tasa de 0 % a 50 % y la tendencia no se
- * lee. Un trimestre sin cirugías no tiene tasa (no es un 0 %), así que no aparece. */
-function tasasPorTrimestre(filas) {
-  const trimestres = new Map()
+/** Las tasas de los indicadores clave en cada mes con cirugías (pedido del 23-oct: mensuales, no
+ * trimestrales). Con pocas cirugías al mes una sola muerte mueve mucho la tasa, por eso cada mes lleva
+ * sus casos y su total. Un mes sin cirugías no tiene tasa (no es un 0 %), así que no aparece. */
+function tasasPorMes(filas) {
+  const meses = new Map()
   for (const f of filas) {
-    if (!trimestres.has(f.etiquetas.trimestre)) trimestres.set(f.etiquetas.trimestre, [])
-    trimestres.get(f.etiquetas.trimestre).push(f)
+    if (!meses.has(f.etiquetas.mes)) meses.set(f.etiquetas.mes, [])
+    meses.get(f.etiquetas.mes).push(f)
   }
-  return [...trimestres.keys()].sort().map((trimestre) => {
-    const delTrimestre = trimestres.get(trimestre)
-    const cuenta = (fn) => delTrimestre.filter(fn).length
+  return [...meses.keys()].sort().map((mes) => {
+    const delMes = meses.get(mes)
+    const cuenta = (fn) => delMes.filter(fn).length
     return {
-      trimestre,
-      total_cirugias: delTrimestre.length,
-      fallecidos: cuenta((f) => f.muerte),
-      complicacion_intraqx: cuenta((f) => f.comp_intraqx),
-      complicacion_pop: cuenta((f) => f.comp_pop),
-      reingresos: cuenta((f) => f.reingreso),
+      mes,
+      total_cirugias: delMes.length,
+      fallecidos: cuenta(INDICADORES.mortalidad),
+      complicacion_intraqx: cuenta(INDICADORES.complicacion_intraqx),
+      complicacion_pop: cuenta(INDICADORES.complicacion_pop),
+      reingresos: cuenta(INDICADORES.reingreso),
     }
   })
 }
@@ -490,19 +517,19 @@ function calcularIndicadores({ filas, filtros, rangos, ordenEdad, formatearRiesg
     },
     por_mes: [...porMes.values()].sort((a, b) => a.anio - b.anio || a.mes - b.mes),
     por_anio: conteoCampo(filtradas('anio'), 'anio').sort((a, b) => a.categoria.localeCompare(b.categoria)),
-    // Indicadores clave: sus tasas trimestre a trimestre, y el detalle de cada uno.
-    por_trimestre: tasasPorTrimestre(filtradas('trimestre')),
+    // Indicadores clave: sus tasas mes a mes, y el detalle de cada uno.
+    tasas_por_mes: tasasPorMes(filtradas('mes')),
     por_complicacion_intraqx: multiple('complicacion_intraqx'),
     por_complicacion_pop: multiple('complicacion_pop'),
     por_reingreso: conteoEnOrden(filtradas('reingreso'), 'reingreso', ORDEN_SI_NO),
     por_causa_reingreso: conteoCampo(filtradas('causa_reingreso'), 'causa_reingreso'),
     por_condicion_salida: conteoCampo(filtradas('condicion_salida'), 'condicion_salida'),
-    por_diagnostico: contarEtiquetas(filtradas('diagnostico'), 'diagnostico').map(([diagnostico, n]) => ({ diagnostico, total_cirugias: n })),
+    por_diagnostico: multiple('diagnostico'),
     por_valvulopatia: conteoCampo(filtradas('valvulopatia'), 'valvulopatia'),
     por_factor_riesgo: multiple('factor_riesgo'),
     por_procedimiento: conteoMultiple(filtradas('procedimiento'), 'procedimiento')
       .map(({ categoria, total_cirugias }) => ({ procedimiento: categoria, total_cirugias })),
-    por_implante: conteoCampo(filtradas('implante'), 'implante'),
+    por_implante: multiple('implante'),
     por_uso_cec: conteoEnOrden(filtradas('uso_cec'), 'uso_cec', ORDEN_SI_NO),
     por_tiempo_cec: distribucion(columna(tiempoCec, 'tiempo_cec_min'), RANGOS_CEC),
     por_tiempo_clamp: distribucion(columna(tiempoClamp, 'tiempo_clamp_min'), RANGOS_CLAMP),
@@ -557,9 +584,7 @@ const formatearRiesgoPediatrico = (riesgo) => ({
  */
 function listarPacientes(filas, filtros) {
   const campos = ['sexo', 'procedencia', 'peso', 'talla', 'superficie', 'dias_uci', 'horas_vm', 'estado_herida']
-  return filas
-    .filter((f) => filtros.every((filtro) => cumple(f, filtro)))
-    .sort((a, b) => a.fecha_cirugia.localeCompare(b.fecha_cirugia) || a.numero_paciente - b.numero_paciente)
+  return seleccionarPacientes(filas, { filtros })
     .map((f) => ({
       paciente_id: f.paciente_id,
       cirugia_id: f.cirugia_id,
@@ -585,9 +610,7 @@ function listarPacientes(filas, filtros) {
 async function cargarPediatricos(desde, hasta) {
   const crudas = await todas(pool, `
     SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, c.id AS cirugia_id, c.fecha_cirugia, c.tiempo_cec_min, c.tiempo_clamp_min,
-      CASE WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
-           WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_uci,
-      CASE WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_hosp,
+      ${sqlDiasUci('c', 'po')} AS dias_uci, ${sqlDiasHospitalizacion('c', 'po')} AS dias_hosp,
       po.horas_ventilacion_mecanica AS horas_vm,
       (cs.codigo = 'MUERTE') AS muerte,
       EXISTS (
@@ -599,13 +622,13 @@ async function cargarPediatricos(desde, hasta) {
         WHERE cpp.postoperatorio_id = po.id AND (o.codigo IS NULL OR o.codigo <> 'NO')
       ) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
-      dg.valor AS diagnostico, rc.valor AS rachs, eps.valor AS eps, pr.valor AS procedencia,
+      dg.valor AS diagnostico, dga.valor AS diagnostico_adicional, rc.valor AS rachs, eps.valor AS eps, pr.valor AS procedencia,
       p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica,
       d.id AS diagnostico_fila_id, po.id AS postoperatorio_id,
       DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_dias,
       TIMESTAMPDIFF(MONTH, p.fecha_nacimiento, c.fecha_cirugia) AS edad_meses,
       TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, c.fecha_cirugia) AS edad_anios,
-      pr.codigo AS procedencia_codigo, mu.valor AS municipio, va.valor AS valvulopatia, im.valor AS implante,
+      pr.codigo AS procedencia_codigo, mu.valor AS municipio, va.valor AS valvulopatia,
       c.uso_cec, c.cierre_esternal_diferido, c.extubacion_quirofano, up.valor AS unidad_pop, cs.valor AS condicion_salida,
       s.rehabilitacion_cardiaca, s.reingreso_30_dias, cr.valor AS causa_reingreso
     FROM cirugias c
@@ -622,7 +645,7 @@ async function cargarPediatricos(desde, hasta) {
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     LEFT JOIN opciones_lista mu ON mu.id = p.municipio_narino_id
     LEFT JOIN opciones_lista va ON va.id = d.valvulopatia_id
-    LEFT JOIN opciones_lista im ON im.id = c.implante_id
+    LEFT JOIN opciones_lista dga ON dga.id = d.diagnostico_adicional_id
     LEFT JOIN opciones_lista up ON up.id = po.unidad_pop_id
     LEFT JOIN opciones_lista cr ON cr.id = s.causa_reingreso_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
@@ -651,10 +674,9 @@ rutasIndicadores.get('/pacientes', asincrono(async (req, res) => {
 }))
 
 // ---------------------------------------------------------------------------------------------
-// Indicadores · módulo de adultos. Mismo cálculo que arriba sobre las tablas *_adultos, con dos
-// diferencias: días de UCI/hospitalización se leen directo de postoperatorio_adultos (se escriben
-// a mano, no se calculan con DATEDIFF) y no hay escala categórica como RACHS-1 — el EuroSCORE es un
-// porcentaje continuo, así que se agrupa en las categorías de riesgo estándar de la literatura.
+// Indicadores · módulo de adultos. Mismo cálculo que arriba sobre las tablas *_adultos (un paciente
+// puede tener varias intervenciones: cada una es una fila), sin escala categórica como RACHS-1: el
+// EuroSCORE es un porcentaje continuo, así que se agrupa en las categorías de riesgo estándar.
 // ---------------------------------------------------------------------------------------------
 
 const ORDEN_EUROSCORE = ['Bajo (<2%)', 'Intermedio (2-5%)', 'Alto (5-10%)', 'Muy alto (≥10%)', 'Sin EuroSCORE']
@@ -673,22 +695,11 @@ const formatearRiesgoAdultos = (riesgo) => ({
   }),
 })
 
-/**
- * Días de UCI y de hospitalización de adultos: se escriben a mano en la ficha, pero muchas fichas
- * (las importadas del Excel del servicio) solo traen las fechas. Sin el número, se calcula de las
- * fechas igual que en pediátricos (traslado a intermedio o salida, menos la fecha de cirugía) — el
- * mismo valor que trae la columna del Excel.
- */
-const DIAS_ADULTOS = `
-      COALESCE(po.dias_estancia_uci, CASE WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
-           WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END) AS dias_uci,
-      COALESCE(po.dias_hospitalizacion_total, DATEDIFF(po.fecha_salida, c.fecha_cirugia)) AS dias_hosp`
-
 /** Pacientes adultos operados en el periodo, cada uno con sus etiquetas para filtrar. */
 async function cargarAdultos(desde, hasta) {
   const crudas = await todas(pool, `
     SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, c.id AS cirugia_id, c.fecha_cirugia, c.tiempo_cec_min, c.tiempo_clamp_min,
-      ${DIAS_ADULTOS},
+      ${sqlDiasUci('c', 'po')} AS dias_uci, ${sqlDiasHospitalizacion('c', 'po')} AS dias_hosp,
       po.horas_ventilacion_mecanica AS horas_vm,
       (cs.codigo = 'MUERTE') AS muerte,
       EXISTS (
@@ -700,13 +711,13 @@ async function cargarAdultos(desde, hasta) {
         WHERE cpp.postoperatorio_id = po.id AND (o.codigo IS NULL OR o.codigo <> 'NO')
       ) AS comp_pop,
       (s.reingreso_30_dias = 'SI') AS reingreso,
-      dg.valor AS diagnostico, d.euroscore, eps.valor AS eps, pr.valor AS procedencia,
+      dg.valor AS diagnostico, dga.valor AS diagnostico_adicional, d.euroscore, eps.valor AS eps, pr.valor AS procedencia,
       p.peso_kg, p.talla_cm, sx.valor AS sexo, eh.valor AS estado_herida, (s.no_aplica = 1) AS seguimiento_no_aplica,
       d.id AS diagnostico_fila_id, po.id AS postoperatorio_id,
       DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_dias,
       TIMESTAMPDIFF(MONTH, p.fecha_nacimiento, c.fecha_cirugia) AS edad_meses,
       TIMESTAMPDIFF(YEAR, p.fecha_nacimiento, c.fecha_cirugia) AS edad_anios,
-      pr.codigo AS procedencia_codigo, mu.valor AS municipio, va.valor AS valvulopatia, im.valor AS implante,
+      pr.codigo AS procedencia_codigo, mu.valor AS municipio, va.valor AS valvulopatia,
       c.uso_cec, c.cierre_esternal_diferido, c.extubacion_quirofano, up.valor AS unidad_pop, cs.valor AS condicion_salida,
       s.rehabilitacion_cardiaca, s.reingreso_30_dias, cr.valor AS causa_reingreso
     FROM cirugias_adultos c
@@ -723,7 +734,7 @@ async function cargarAdultos(desde, hasta) {
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
     LEFT JOIN opciones_lista mu ON mu.id = p.municipio_narino_id
     LEFT JOIN opciones_lista va ON va.id = d.valvulopatia_id
-    LEFT JOIN opciones_lista im ON im.id = c.implante_id
+    LEFT JOIN opciones_lista dga ON dga.id = d.diagnostico_adicional_id
     LEFT JOIN opciones_lista up ON up.id = po.unidad_pop_id
     LEFT JOIN opciones_lista cr ON cr.id = s.causa_reingreso_id
     WHERE p.eliminado = 0 AND c.fecha_cirugia IS NOT NULL AND c.fecha_cirugia BETWEEN ? AND ?`, [desde, hasta])
@@ -759,20 +770,25 @@ rutasIndicadores.get('/adultos/pacientes', asincrono(async (req, res) => {
 }))
 
 // ---------------------------------------------------------------------------------------------
-// Detalle de un paciente para la matriz de resumen: al buscarlo por documento se ve todo lo que se
-// le hizo, módulo por módulo, con el texto de cada lista (no su id) y sin nombre ni teléfonos, igual
-// que la matriz. Entre pediátricos y adultos cambian las tablas (fijas, nunca vienen de la petición)
-// y las pocas columnas propias de cada grupo.
+// Detalle de un paciente: todo lo que se le hizo, módulo por módulo, con el texto de cada lista (no
+// su id). Lo muestra la matriz de resumen al buscar un documento y el detalle de un indicador (los
+// fallecidos, los reingresos…). Entre pediátricos y adultos cambian las tablas (fijas, nunca vienen de
+// la petición) y las pocas columnas propias de cada grupo.
 // ---------------------------------------------------------------------------------------------
+
+/** Una opción con su especificación entre paréntesis si es un "Otro…": "Otro país (Perú)". */
+const conEspecificacion = (valor, especificacion) => `CONCAT(${valor}, IF(${especificacion} IS NULL, '', CONCAT(' (', ${especificacion}, ')')))`
+
+/** Las opciones de una selección múltiple en un solo texto, en el orden de la lista y cada "Otro…" con
+ * su especificación: "Obesidad | Otra condición relevante (hipotiroidismo)". */
+const listaConEspecificacion = (tabla, columnaDueno, dueno, columnaOpcion) => `(
+  SELECT GROUP_CONCAT(${conEspecificacion('o.valor', 't.especificacion')} ORDER BY o.orden, o.valor SEPARATOR ' | ')
+  FROM ${tabla} t JOIN opciones_lista o ON o.id = t.${columnaOpcion} WHERE t.${columnaDueno} = ${dueno})`
 
 const DETALLE_PEDIATRICO = {
   tablas: { cirugias: 'cirugias', riesgos: 'diagnosticos_riesgos', procedimientos: 'cirugias_procedimientos',
     diagnosticos: 'diagnosticos', complicacionesIntraqx: 'cirugias_complicaciones_intraqx', complicacionesPop: 'postoperatorio_complicaciones_pop' },
-  // Los días de UCI y de hospitalización se calculan de las fechas, igual que en los indicadores.
-  columnas: `rc.valor AS rachs, s.fecha_llamada_15_dias,
-    CASE WHEN po.fecha_traslado_intermedio IS NOT NULL THEN DATEDIFF(po.fecha_traslado_intermedio, c.fecha_cirugia)
-         WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_uci,
-    CASE WHEN po.fecha_salida IS NOT NULL THEN DATEDIFF(po.fecha_salida, c.fecha_cirugia) END AS dias_hospitalizacion`,
+  columnas: 'rc.valor AS rachs, s.fecha_llamada_15_dias, p.telefonos, p.sin_telefono',
   desdeCirugia: `
     JOIN pacientes p ON p.id = c.paciente_id
     LEFT JOIN diagnosticos d ON d.paciente_id = p.id
@@ -781,12 +797,12 @@ const DETALLE_PEDIATRICO = {
   uniones: 'LEFT JOIN opciones_lista rc ON rc.id = d.rachs_id',
   // Cada procedimiento adicional es otra intervención, con su propia fecha.
   fechaProcedimiento: 'CASE cp.orden WHEN 1 THEN c.fecha_cirugia WHEN 2 THEN c.fecha_procedimiento_2 ELSE c.fecha_procedimiento_3 END',
+  telefonos: (f) => (Array.isArray(f.telefonos) ? f.telefonos : []),
 }
 const DETALLE_ADULTO = {
   tablas: { cirugias: 'cirugias_adultos', riesgos: 'diagnosticos_adultos_riesgos', procedimientos: 'cirugias_adultos_procedimientos',
     diagnosticos: 'diagnosticos_adultos', complicacionesIntraqx: 'cirugias_adultos_complicaciones_intraqx', complicacionesPop: 'postoperatorio_adultos_complicaciones_pop' },
-  columnas: `d.euroscore, s.llamado_15_dias, ${DIAS_ADULTOS.replace('AS dias_hosp', 'AS dias_hospitalizacion')},
-    d.estado_preoperatorio, d.antecedentes_quirurgicos, d.comorbilidades, c.transfusion_intraoperatoria`,
+  columnas: 'ep.numero_episodio, d.euroscore, s.llamado_15_dias, s.fecha_llamada_15_dias, p.telefono',
   // Un paciente adulto puede tener varias intervenciones (episodios_adultos); cada una agrupa su
   // propio diagnóstico/postoperatorio/seguimiento, enlazados por episodio_id (no paciente_id), así
   // que esta ficha de detalle siempre muestra exactamente la intervención de `cirugiaId`, nunca una
@@ -800,29 +816,37 @@ const DETALLE_ADULTO = {
   uniones: '',
   // Todos los procedimientos son de la misma cirugía.
   fechaProcedimiento: 'c.fecha_cirugia',
+  telefonos: (f) => (f.telefono ? [f.telefono] : []),
 }
 
 /**
  * Detalle de una cirugía puntual (no de "el paciente"): en adultos, un paciente puede tener varias
  * (una reintervención meses después), cada una con su propio diagnóstico/postoperatorio/seguimiento
  * — por eso se busca por `cirugiaId`, nunca por paciente_id, y nunca se mezclan dos intervenciones
- * en una misma ficha.
+ * en una misma ficha. Trae todos los datos registrados, nombre y teléfonos incluidos: es lo que se
+ * consulta al revisar los casos de un indicador.
  */
-async function detallePaciente({ tablas, columnas, desdeCirugia, uniones, fechaProcedimiento }, cirugiaId) {
+async function detallePaciente({ tablas, columnas, desdeCirugia, uniones, fechaProcedimiento, telefonos }, cirugiaId) {
   const ficha = await una(pool, `
-    SELECT p.id AS paciente_id, p.numero_paciente, p.identificacion, sx.valor AS sexo, p.fecha_nacimiento,
+    SELECT p.id AS paciente_id, c.id AS cirugia_id, p.numero_paciente, p.nombre_completo, p.identificacion,
+      ${conEspecificacion('sx.valor', 'p.sexo_otro')} AS sexo, p.fecha_nacimiento,
       DATEDIFF(c.fecha_cirugia, p.fecha_nacimiento) AS edad_cirugia_dias, p.peso_kg, p.talla_cm,
-      pr.valor AS procedencia, mu.valor AS municipio_narino, eps.valor AS eps,
-      d.id AS diagnostico_id_resuelto, dg.valor AS diagnostico, va.valor AS valvulopatia,
-      c.fecha_cirugia, im.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
-      (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM ${tablas.complicacionesIntraqx} cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
+      ${conEspecificacion('pr.valor', 'p.procedencia_otro')} AS procedencia, mu.valor AS municipio_narino,
+      ${conEspecificacion('eps.valor', 'p.eps_otro')} AS eps,
+      d.id AS diagnostico_id_resuelto, ${conEspecificacion('dg.valor', 'd.diagnostico_otro')} AS diagnostico,
+      ${conEspecificacion('dga.valor', 'd.diagnostico_adicional_otro')} AS diagnostico_adicional, va.valor AS valvulopatia,
+      c.fecha_cirugia, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
+      ${listaConEspecificacion(tablas.complicacionesIntraqx, 'cirugia_id', 'c.id', 'complicacion_id')} AS complicacion_intraqx,
       c.cierre_esternal_diferido, c.extubacion_quirofano,
       up.valor AS unidad_pop, po.horas_ventilacion_mecanica,
-      (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM ${tablas.complicacionesPop} cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id WHERE cpp.postoperatorio_id = po.id) AS complicacion_pop,
-      po.fecha_traslado_intermedio,
-      po.fecha_salida, cs.valor AS condicion_salida,
-      (s.no_aplica = 1) AS seguimiento_no_aplica, s.fecha_control_cirugia, s.rehabilitacion_cardiaca, eh.valor AS estado_herida,
-      s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, cr.valor AS causa_reingreso, s.observaciones,
+      ${listaConEspecificacion(tablas.complicacionesPop, 'postoperatorio_id', 'po.id', 'complicacion_id')} AS complicacion_pop,
+      po.fecha_traslado_intermedio, ${sqlDiasUci('c', 'po')} AS dias_uci,
+      po.fecha_salida, ${sqlDiasHospitalizacion('c', 'po')} AS dias_hospitalizacion,
+      ${conEspecificacion('cs.valor', 'po.condicion_salida_otro')} AS condicion_salida, (cs.codigo = 'MUERTE') AS fallecido,
+      (s.no_aplica = 1) AS seguimiento_no_aplica, s.fecha_control_cirugia, s.rehabilitacion_cardiaca,
+      ${conEspecificacion('eh.valor', 's.estado_herida_otro')} AS estado_herida,
+      s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso,
+      ${conEspecificacion('cr.valor', 's.causa_reingreso_otro')} AS causa_reingreso, s.observaciones,
       ${columnas}
     FROM ${tablas.cirugias} c
     ${desdeCirugia}
@@ -831,8 +855,8 @@ async function detallePaciente({ tablas, columnas, desdeCirugia, uniones, fechaP
     LEFT JOIN opciones_lista mu ON mu.id = p.municipio_narino_id
     LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
     LEFT JOIN opciones_lista dg ON dg.id = d.diagnostico_id
+    LEFT JOIN opciones_lista dga ON dga.id = d.diagnostico_adicional_id
     LEFT JOIN opciones_lista va ON va.id = d.valvulopatia_id
-    LEFT JOIN opciones_lista im ON im.id = c.implante_id
     LEFT JOIN opciones_lista up ON up.id = po.unidad_pop_id
     LEFT JOIN opciones_lista cs ON cs.id = po.condicion_salida_id
     LEFT JOIN opciones_lista eh ON eh.id = s.estado_herida_id
@@ -843,23 +867,29 @@ async function detallePaciente({ tablas, columnas, desdeCirugia, uniones, fechaP
 
   const [riesgos, procedimientos] = await Promise.all([
     todas(pool, `
-      SELECT o.valor
+      SELECT ${conEspecificacion('o.valor', 'dr.especificacion')} AS valor
       FROM ${tablas.riesgos} dr
       JOIN opciones_lista o ON o.id = dr.riesgo_id
       WHERE dr.diagnostico_id = ?
       ORDER BY o.orden, o.valor`, [ficha.diagnostico_id_resuelto]),
     todas(pool, `
-      SELECT o.valor AS procedimiento, ${fechaProcedimiento} AS fecha
+      SELECT o.valor AS procedimiento, cp.especificacion, cp.implante, ti.valor AS tipo_implante, ${fechaProcedimiento} AS fecha
       FROM ${tablas.procedimientos} cp
       JOIN ${tablas.cirugias} c ON c.id = cp.cirugia_id
       JOIN opciones_lista o ON o.id = cp.procedimiento_id
+      LEFT JOIN opciones_lista ti ON ti.id = cp.tipo_implante_id
       WHERE cp.cirugia_id = ?
       ORDER BY cp.orden`, [cirugiaId]),
   ])
 
   return {
     ...ficha,
+    // Pediátricos guardan una lista de teléfonos y adultos uno solo: el detalle siempre da la lista.
+    telefono: undefined,
+    telefonos: telefonos(ficha),
+    sin_telefono: Boolean(ficha.sin_telefono),
     superficie_corporal: superficieCorporal(ficha.peso_kg),
+    fallecido: Boolean(ficha.fallecido),
     seguimiento_no_aplica: Boolean(ficha.seguimiento_no_aplica),
     riesgos: riesgos.map((r) => r.valor),
     procedimientos,
@@ -875,99 +905,174 @@ rutasIndicadores.get('/adultos/pacientes/:id', asincrono(async (req, res) => {
   res.json(await detallePaciente(DETALLE_ADULTO, req.params.id))
 }))
 
+/**
+ * Detalle de un indicador clave: al hacer clic en "Mortalidad 7 %" (o en el punto de un mes) se ven
+ * esos pacientes con todos sus datos. Con los mismos filtros del tablero y, si se eligió, solo el mes.
+ * `total` es la base de la tasa: los pacientes operados que cumplen esos filtros.
+ */
+async function casosIndicador(req, cargar, detalle) {
+  const consulta = leerConsulta(req)
+  if (!consulta.indicador) throw validacion('Indique el indicador.')
+  const filas = await cargar(consulta.desde, consulta.hasta)
+  const base = seleccionarPacientes(filas, { ...consulta, indicador: undefined })
+  const casos = base.filter(INDICADORES[consulta.indicador])
+  return { total: base.length, casos: await Promise.all(casos.map((f) => detallePaciente(detalle, f.cirugia_id))) }
+}
+
+rutasIndicadores.get('/casos', asincrono(async (req, res) => {
+  res.json(await casosIndicador(req, cargarPediatricos, DETALLE_PEDIATRICO))
+}))
+
+rutasIndicadores.get('/adultos/casos', asincrono(async (req, res) => {
+  res.json(await casosIndicador(req, cargarAdultos, DETALLE_ADULTO))
+}))
+
+/** La matriz en Excel con todos los campos de cada paciente: los mismos pacientes que la matriz (o que
+ * el detalle de un indicador), en su mismo orden. */
+async function exportarSeleccion(req, cargar, grupo) {
+  const consulta = leerConsulta(req)
+  const elegidos = seleccionarPacientes(await cargar(consulta.desde, consulta.hasta), consulta)
+  const filas = await filasExportacion(grupo, elegidos.map((f) => f.cirugia_id))
+  const porCirugia = new Map(filas.map((f) => [f.cirugia_id, f]))
+  return { filas: elegidos.map((f) => porCirugia.get(f.cirugia_id)).filter(Boolean) }
+}
+
+rutasIndicadores.get('/exportar', asincrono(async (req, res) => {
+  res.json(await exportarSeleccion(req, cargarPediatricos, 'pediatricos'))
+}))
+
+rutasIndicadores.get('/adultos/exportar', asincrono(async (req, res) => {
+  res.json(await exportarSeleccion(req, cargarAdultos, 'adultos'))
+}))
+
 // ---------------------------------------------------------------------------------------------
-// Exportación plana (el .xlsx / .csv se genera en el cliente). Los nombres de columna son el formato
-// canónico que también reconoce la importación.
+// Exportación plana (el .xlsx / .csv se genera en el cliente, con las columnas de
+// ENCABEZADOS_EXPORTACION* en src/lib/importacion.ts). Una fila por paciente (en adultos, por
+// intervención) con todos sus campos: cada "Otro…" de una selección única lleva su especificación en
+// la columna siguiente; en las de selección múltiple va entre paréntesis junto a la opción.
 // ---------------------------------------------------------------------------------------------
 
-rutasExportacion.get('/pacientes', asincrono(async (_req, res) => {
+/** Los tres procedimientos de la cirugía en columnas: cuál, su especificación, si llevó implante y de qué tipo. */
+function columnasProcedimientos(tabla) {
+  const columnas = []
+  const uniones = []
+  for (const n of [1, 2, 3]) {
+    columnas.push(`p${n}o.valor AS procedimiento_${n}, p${n}.especificacion AS procedimiento_${n}_otro, p${n}.implante AS implante_${n}, p${n}t.valor AS tipo_implante_${n}`)
+    uniones.push(`LEFT JOIN ${tabla} p${n} ON p${n}.cirugia_id = c.id AND p${n}.orden = ${n}
+      LEFT JOIN opciones_lista p${n}o ON p${n}o.id = p${n}.procedimiento_id
+      LEFT JOIN opciones_lista p${n}t ON p${n}t.id = p${n}.tipo_implante_id`)
+  }
+  return { columnas: columnas.join(',\n'), uniones: uniones.join('\n') }
+}
+
+const PROCEDIMIENTOS_PEDIATRICOS = columnasProcedimientos('cirugias_procedimientos')
+const PROCEDIMIENTOS_ADULTOS = columnasProcedimientos('cirugias_adultos_procedimientos')
+
+const SQL_EXPORTACION = {
+  pediatricos: `
+    SELECT c.id AS cirugia_id, p.numero_paciente, p.nombre_completo, p.identificacion, sexo.valor AS sexo, p.sexo_otro,
+      p.fecha_nacimiento, p.peso_kg, p.talla_cm,
+      procedencia.valor AS procedencia, p.procedencia_otro, municipio.valor AS municipio_narino, p.telefonos, p.sin_telefono,
+      eps.valor AS eps, p.eps_otro,
+      diagnostico.valor AS diagnostico, d.diagnostico_otro, diagnostico_adicional.valor AS diagnostico_adicional, d.diagnostico_adicional_otro,
+      valvulopatia.valor AS valvulopatia, ${listaConEspecificacion('diagnosticos_riesgos', 'diagnostico_id', 'd.id', 'riesgo_id')} AS riesgos,
+      rachs.valor AS rachs,
+      c.fecha_cirugia, c.fecha_procedimiento_2, c.fecha_procedimiento_3, ${PROCEDIMIENTOS_PEDIATRICOS.columnas},
+      c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
+      ${listaConEspecificacion('cirugias_complicaciones_intraqx', 'cirugia_id', 'c.id', 'complicacion_id')} AS complicacion_intraqx,
+      c.cierre_esternal_diferido, c.extubacion_quirofano, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
+      ${listaConEspecificacion('postoperatorio_complicaciones_pop', 'postoperatorio_id', 'po.id', 'complicacion_id')} AS complicacion_pop,
+      po.fecha_traslado_intermedio, ${sqlDiasUci('c', 'po')} AS dias_uci, po.fecha_salida, ${sqlDiasHospitalizacion('c', 'po')} AS dias_hospitalizacion,
+      condicion_salida.valor AS condicion_salida, po.condicion_salida_otro,
+      s.fecha_control_cirugia, s.rehabilitacion_cardiaca, estado_herida.valor AS estado_herida, s.estado_herida_otro, s.fecha_llamada_15_dias,
+      s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, causa_reingreso.valor AS causa_reingreso, s.causa_reingreso_otro, s.observaciones
+    FROM pacientes p
+    LEFT JOIN diagnosticos d ON d.paciente_id = p.id
+    LEFT JOIN cirugias c ON c.paciente_id = p.id
+    LEFT JOIN postoperatorio po ON po.paciente_id = p.id
+    LEFT JOIN seguimientos s ON s.paciente_id = p.id
+    LEFT JOIN opciones_lista sexo ON sexo.id = p.sexo_id
+    LEFT JOIN opciones_lista procedencia ON procedencia.id = p.procedencia_id
+    LEFT JOIN opciones_lista municipio ON municipio.id = p.municipio_narino_id
+    LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
+    LEFT JOIN opciones_lista diagnostico ON diagnostico.id = d.diagnostico_id
+    LEFT JOIN opciones_lista diagnostico_adicional ON diagnostico_adicional.id = d.diagnostico_adicional_id
+    LEFT JOIN opciones_lista valvulopatia ON valvulopatia.id = d.valvulopatia_id
+    LEFT JOIN opciones_lista rachs ON rachs.id = d.rachs_id
+    ${PROCEDIMIENTOS_PEDIATRICOS.uniones}
+    LEFT JOIN opciones_lista unidad_pop ON unidad_pop.id = po.unidad_pop_id
+    LEFT JOIN opciones_lista condicion_salida ON condicion_salida.id = po.condicion_salida_id
+    LEFT JOIN opciones_lista estado_herida ON estado_herida.id = s.estado_herida_id
+    LEFT JOIN opciones_lista causa_reingreso ON causa_reingreso.id = s.causa_reingreso_id
+    WHERE p.eliminado = 0`,
+  adultos: `
+    SELECT c.id AS cirugia_id, p.numero_paciente, ep.numero_episodio, p.nombre_completo, p.identificacion, sexo.valor AS sexo, p.sexo_otro,
+      p.fecha_nacimiento, p.peso_kg, p.talla_cm,
+      procedencia.valor AS procedencia, p.procedencia_otro, municipio.valor AS municipio_narino, p.telefono,
+      eps.valor AS eps, p.eps_otro,
+      diagnostico.valor AS diagnostico, d.diagnostico_otro, diagnostico_adicional.valor AS diagnostico_adicional, d.diagnostico_adicional_otro,
+      valvulopatia.valor AS valvulopatia, d.euroscore,
+      ${listaConEspecificacion('diagnosticos_adultos_riesgos', 'diagnostico_id', 'd.id', 'riesgo_id')} AS riesgos,
+      c.fecha_cirugia, ${PROCEDIMIENTOS_ADULTOS.columnas},
+      c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
+      ${listaConEspecificacion('cirugias_adultos_complicaciones_intraqx', 'cirugia_id', 'c.id', 'complicacion_id')} AS complicacion_intraqx,
+      c.cierre_esternal_diferido, c.extubacion_quirofano, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
+      ${listaConEspecificacion('postoperatorio_adultos_complicaciones_pop', 'postoperatorio_id', 'po.id', 'complicacion_id')} AS complicacion_pop,
+      po.fecha_traslado_intermedio, ${sqlDiasUci('c', 'po')} AS dias_uci, po.fecha_salida, ${sqlDiasHospitalizacion('c', 'po')} AS dias_hospitalizacion,
+      condicion_salida.valor AS condicion_salida, po.condicion_salida_otro,
+      s.fecha_control_cirugia, s.rehabilitacion_cardiaca, estado_herida.valor AS estado_herida, s.estado_herida_otro,
+      s.llamado_15_dias, s.fecha_llamada_15_dias, s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso,
+      causa_reingreso.valor AS causa_reingreso, s.causa_reingreso_otro, s.observaciones
+    FROM pacientes_adultos p
+    JOIN episodios_adultos ep ON ep.paciente_id = p.id
+    LEFT JOIN diagnosticos_adultos d ON d.episodio_id = ep.id
+    LEFT JOIN cirugias_adultos c ON c.episodio_id = ep.id
+    LEFT JOIN postoperatorio_adultos po ON po.episodio_id = ep.id
+    LEFT JOIN seguimientos_adultos s ON s.episodio_id = ep.id
+    LEFT JOIN opciones_lista sexo ON sexo.id = p.sexo_id
+    LEFT JOIN opciones_lista procedencia ON procedencia.id = p.procedencia_id
+    LEFT JOIN opciones_lista municipio ON municipio.id = p.municipio_narino_id
+    LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
+    LEFT JOIN opciones_lista diagnostico ON diagnostico.id = d.diagnostico_id
+    LEFT JOIN opciones_lista diagnostico_adicional ON diagnostico_adicional.id = d.diagnostico_adicional_id
+    LEFT JOIN opciones_lista valvulopatia ON valvulopatia.id = d.valvulopatia_id
+    ${PROCEDIMIENTOS_ADULTOS.uniones}
+    LEFT JOIN opciones_lista unidad_pop ON unidad_pop.id = po.unidad_pop_id
+    LEFT JOIN opciones_lista condicion_salida ON condicion_salida.id = po.condicion_salida_id
+    LEFT JOIN opciones_lista estado_herida ON estado_herida.id = s.estado_herida_id
+    LEFT JOIN opciones_lista causa_reingreso ON causa_reingreso.id = s.causa_reingreso_id
+    WHERE p.eliminado = 0`,
+}
+
+/** Filas de exportación de un grupo: todos sus pacientes activos o, con `cirugiaIds`, solo esas
+ * cirugías. La superficie corporal se calcula aquí, con la misma fórmula que la ficha. */
+async function filasExportacion(grupo, cirugiaIds) {
+  if (cirugiaIds && cirugiaIds.length === 0) return []
   const conexion = await pool.getConnection()
   try {
     await conexion.query('SET SESSION group_concat_max_len = 1000000')
-    const [filas] = await conexion.query(`
-      SELECT p.numero_paciente, p.nombre_completo, p.identificacion, sexo.valor AS sexo, p.fecha_nacimiento, p.peso_kg, p.talla_cm,
-        procedencia.valor AS procedencia, municipio.valor AS municipio_narino, p.telefonos, p.sin_telefono, eps.valor AS eps,
-        diagnostico.valor AS diagnostico, valvulopatia.valor AS valvulopatia,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY dr.id SEPARATOR ' | ') FROM diagnosticos_riesgos dr JOIN opciones_lista o ON o.id = dr.riesgo_id WHERE dr.diagnostico_id = d.id) AS riesgos,
-        rachs.valor AS rachs, c.fecha_cirugia,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY cp.orden SEPARATOR ' | ') FROM cirugias_procedimientos cp JOIN opciones_lista o ON o.id = cp.procedimiento_id WHERE cp.cirugia_id = c.id) AS procedimientos,
-        implante.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM cirugias_complicaciones_intraqx cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
-        c.cierre_esternal_diferido, c.extubacion_quirofano, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM postoperatorio_complicaciones_pop cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id WHERE cpp.postoperatorio_id = po.id) AS complicacion_pop,
-        po.fecha_traslado_intermedio, po.fecha_salida, condicion_salida.valor AS condicion_salida,
-        s.fecha_control_cirugia, s.rehabilitacion_cardiaca, estado_herida.valor AS estado_herida, s.fecha_llamada_15_dias,
-        s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, causa_reingreso.valor AS causa_reingreso, s.observaciones
-      FROM pacientes p
-      LEFT JOIN diagnosticos d ON d.paciente_id = p.id
-      LEFT JOIN cirugias c ON c.paciente_id = p.id
-      LEFT JOIN postoperatorio po ON po.paciente_id = p.id
-      LEFT JOIN seguimientos s ON s.paciente_id = p.id
-      LEFT JOIN opciones_lista sexo ON sexo.id = p.sexo_id
-      LEFT JOIN opciones_lista procedencia ON procedencia.id = p.procedencia_id
-      LEFT JOIN opciones_lista municipio ON municipio.id = p.municipio_narino_id
-      LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
-      LEFT JOIN opciones_lista diagnostico ON diagnostico.id = d.diagnostico_id
-      LEFT JOIN opciones_lista valvulopatia ON valvulopatia.id = d.valvulopatia_id
-      LEFT JOIN opciones_lista rachs ON rachs.id = d.rachs_id
-      LEFT JOIN opciones_lista implante ON implante.id = c.implante_id
-      LEFT JOIN opciones_lista unidad_pop ON unidad_pop.id = po.unidad_pop_id
-      LEFT JOIN opciones_lista condicion_salida ON condicion_salida.id = po.condicion_salida_id
-      LEFT JOIN opciones_lista estado_herida ON estado_herida.id = s.estado_herida_id
-      LEFT JOIN opciones_lista causa_reingreso ON causa_reingreso.id = s.causa_reingreso_id
-      WHERE p.eliminado = 0
-      ORDER BY p.numero_paciente`)
-    res.json(filas.map((f) => ({
+    const orden = grupo === 'adultos' ? 'p.numero_paciente, ep.numero_episodio' : 'p.numero_paciente'
+    const [filas] = await conexion.query(
+      `${SQL_EXPORTACION[grupo]} ${cirugiaIds ? 'AND c.id IN (?)' : ''} ORDER BY ${orden}`,
+      cirugiaIds ? [cirugiaIds] : [],
+    )
+    return filas.map((f) => ({
       ...f,
-      telefonos: Array.isArray(f.telefonos) ? f.telefonos.join(' | ') : '',
-      sin_telefono: Boolean(f.sin_telefono),
-    })))
+      superficie_corporal: f.peso_kg ? redondear(superficieCorporal(f.peso_kg), 2) : null,
+      ...(grupo === 'pediatricos' && {
+        telefonos: Array.isArray(f.telefonos) ? f.telefonos.join(' | ') : '',
+        sin_telefono: Boolean(f.sin_telefono),
+      }),
+    }))
   } finally {
     conexion.release()
   }
+}
+
+rutasExportacion.get('/pacientes', asincrono(async (_req, res) => {
+  res.json(await filasExportacion('pediatricos'))
 }))
 
 rutasExportacion.get('/pacientes-adultos', asincrono(async (_req, res) => {
-  const conexion = await pool.getConnection()
-  try {
-    await conexion.query('SET SESSION group_concat_max_len = 1000000')
-    const [filas] = await conexion.query(`
-      SELECT p.numero_paciente, ep.numero_episodio, p.nombre_completo, p.identificacion, sexo.valor AS sexo, p.fecha_nacimiento, p.peso_kg, p.talla_cm,
-        procedencia.valor AS procedencia, municipio.valor AS municipio_narino, p.telefono, eps.valor AS eps,
-        diagnostico.valor AS diagnostico, valvulopatia.valor AS valvulopatia, d.euroscore,
-        d.estado_preoperatorio, d.antecedentes_quirurgicos, d.comorbilidades,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY dr.id SEPARATOR ' | ') FROM diagnosticos_adultos_riesgos dr JOIN opciones_lista o ON o.id = dr.riesgo_id WHERE dr.diagnostico_id = d.id) AS riesgos,
-        c.fecha_cirugia,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY cp.orden SEPARATOR ' | ') FROM cirugias_adultos_procedimientos cp JOIN opciones_lista o ON o.id = cp.procedimiento_id WHERE cp.cirugia_id = c.id) AS procedimientos,
-        implante.valor AS implante, c.numero_implante, c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM cirugias_adultos_complicaciones_intraqx cci JOIN opciones_lista o ON o.id = cci.complicacion_id WHERE cci.cirugia_id = c.id) AS complicacion_intraqx,
-        c.cierre_esternal_diferido, c.extubacion_quirofano, c.transfusion_intraoperatoria, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,
-        (SELECT GROUP_CONCAT(o.valor ORDER BY o.orden SEPARATOR ' | ') FROM postoperatorio_adultos_complicaciones_pop cpp JOIN opciones_lista o ON o.id = cpp.complicacion_id WHERE cpp.postoperatorio_id = po.id) AS complicacion_pop,
-        po.fecha_traslado_intermedio, po.dias_estancia_uci, po.fecha_salida,
-        po.dias_hospitalizacion_total, condicion_salida.valor AS condicion_salida,
-        s.fecha_control_cirugia, s.rehabilitacion_cardiaca, estado_herida.valor AS estado_herida, s.llamado_15_dias,
-        s.persona_recibe_llamada, s.reingreso_30_dias, s.fecha_reingreso, causa_reingreso.valor AS causa_reingreso, s.observaciones
-      FROM pacientes_adultos p
-      JOIN episodios_adultos ep ON ep.paciente_id = p.id
-      LEFT JOIN diagnosticos_adultos d ON d.episodio_id = ep.id
-      LEFT JOIN cirugias_adultos c ON c.episodio_id = ep.id
-      LEFT JOIN postoperatorio_adultos po ON po.episodio_id = ep.id
-      LEFT JOIN seguimientos_adultos s ON s.episodio_id = ep.id
-      LEFT JOIN opciones_lista sexo ON sexo.id = p.sexo_id
-      LEFT JOIN opciones_lista procedencia ON procedencia.id = p.procedencia_id
-      LEFT JOIN opciones_lista municipio ON municipio.id = p.municipio_narino_id
-      LEFT JOIN opciones_lista eps ON eps.id = p.eps_id
-      LEFT JOIN opciones_lista diagnostico ON diagnostico.id = d.diagnostico_id
-      LEFT JOIN opciones_lista valvulopatia ON valvulopatia.id = d.valvulopatia_id
-      LEFT JOIN opciones_lista implante ON implante.id = c.implante_id
-      LEFT JOIN opciones_lista unidad_pop ON unidad_pop.id = po.unidad_pop_id
-      LEFT JOIN opciones_lista condicion_salida ON condicion_salida.id = po.condicion_salida_id
-      LEFT JOIN opciones_lista estado_herida ON estado_herida.id = s.estado_herida_id
-      LEFT JOIN opciones_lista causa_reingreso ON causa_reingreso.id = s.causa_reingreso_id
-      WHERE p.eliminado = 0
-      ORDER BY p.numero_paciente, ep.numero_episodio`)
-    res.json(filas)
-  } finally {
-    conexion.release()
-  }
+  res.json(await filasExportacion('adultos'))
 }))
