@@ -10,6 +10,7 @@ const TABLAS = [
   'pacientes',
   'diagnosticos',
   'diagnosticos_riesgos',
+  'diagnosticos_adicionales',
   'cirugias',
   'cirugias_procedimientos',
   'postoperatorio',

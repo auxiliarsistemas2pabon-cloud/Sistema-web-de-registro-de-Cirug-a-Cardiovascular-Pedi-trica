@@ -515,45 +515,84 @@ export function IndicadoresPage() {
         subtitulo={`Cirugías, mortalidad, complicaciones y tiempos de ${etiquetaGrupo}, filtrables por fecha de cirugía.`}
       />
 
+      {/* En celular se muestran en 2 columnas. En pantallas mayores hay 4 por fila y la última
+          fila queda centrada cuando solo tiene 3 pestañas. */}
+      <div role="tablist" className="mb-6 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-8">
+        {PESTANAS.map((p, i) => (
+          <button
+            key={p.clave}
+            type="button"
+            role="tab"
+            aria-selected={vista === p.clave}
+            onClick={() => setVista(p.clave)}
+            className={`flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors max-sm:last:odd:col-span-2 sm:col-span-2 ${
+              i === 4 ? 'sm:col-start-2' : ''
+            } ${
+              vista === p.clave ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
+            }`}
+          >
+            {p.icono}
+            {/* En el celular, el nombre largo partido en dos líneas descuadraba la cuadrícula. */}
+            {'etiquetaCorta' in p ? (
+              <>
+                <span className="xl:hidden">{p.etiquetaCorta}</span>
+                <span className="hidden xl:inline">{p.etiqueta}</span>
+              </>
+            ) : (
+              p.etiqueta
+            )}
+          </button>
+        ))}
+      </div>
+
       <Tarjeta className="mb-6">
-        <div className="flex flex-wrap items-center gap-3 p-4">
-          <div className="flex flex-none gap-1 rounded-lg bg-slate-100 p-1">
-            <button type="button" onClick={() => aplicarPreset('30')} className={clasePreset(preset === '30')}>
-              Últimos 30 días
-            </button>
-            <button type="button" onClick={() => aplicarPreset('anio')} className={clasePreset(preset === 'anio')}>
-              Este año
-            </button>
-            <button type="button" onClick={() => aplicarPreset('todo')} className={clasePreset(preset === 'todo')}>
-              Todo
-            </button>
-          </div>
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <input
-              type="date"
-              value={desde}
-              onChange={(e) => { setDesde(e.target.value); setPreset('personalizado') }}
-              className={`${claseInput} w-auto`}
-            />
-            <span className="text-slate-400">–</span>
-            <input
-              type="date"
-              value={hasta}
-              onChange={(e) => { setHasta(e.target.value); setPreset('personalizado') }}
-              className={`${claseInput} w-auto`}
-            />
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4">
+          <h2 className="text-sm font-semibold text-slate-800">Periodo de cirugía</h2>
           {data && (
-            <p className="ml-auto text-xs text-slate-500" title="Las gráficas se actualizan solas cada minuto.">
+            <p className="text-xs text-slate-500" title="Las gráficas se actualizan solas cada minuto.">
               Actualizado a las{' '}
               {new Date(dataUpdatedAt).toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}
             </p>
           )}
         </div>
+        <div className="flex flex-wrap items-end gap-4 p-4 pt-3">
+          <div>
+            <span className="mb-1.5 block text-xs font-medium text-slate-600">Rango rápido</span>
+            <div className="flex flex-wrap gap-1 rounded-lg bg-slate-100 p-1" aria-label="Rango rápido de fechas">
+              <button type="button" onClick={() => aplicarPreset('30')} aria-pressed={preset === '30'} className={clasePreset(preset === '30')}>
+                Últimos 30 días
+              </button>
+              <button type="button" onClick={() => aplicarPreset('anio')} aria-pressed={preset === 'anio'} className={clasePreset(preset === 'anio')}>
+                Este año
+              </button>
+              <button type="button" onClick={() => aplicarPreset('todo')} aria-pressed={preset === 'todo'} className={clasePreset(preset === 'todo')}>
+                Todo
+              </button>
+            </div>
+          </div>
+          <div className="grid w-full grid-cols-2 gap-3 sm:w-auto">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-slate-600">Desde</span>
+              <input
+                type="date"
+                value={desde}
+                onChange={(e) => { setDesde(e.target.value); setPreset('personalizado') }}
+                className={claseInput}
+              />
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-medium text-slate-600">Hasta</span>
+              <input
+                type="date"
+                value={hasta}
+                onChange={(e) => { setHasta(e.target.value); setPreset('personalizado') }}
+                className={claseInput}
+              />
+            </label>
+          </div>
+        </div>
 
-        {/* Filtros con un clic: se ven (y se quitan) desde cualquier pestaña. Sin filtros, la misma
-            fila explica cómo se usan, así el diseño no salta al aparecer el primero. */}
-        <div className="flex min-h-12 flex-wrap items-center gap-2 border-t border-slate-100 px-4 py-2.5">
+        <div className="flex min-h-12 flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
           {filtros.length === 0 ? (
             <p className="flex items-center gap-2 text-xs text-slate-500">
               <IconoFiltro className="h-4 w-4 flex-none text-[var(--pabon-azul-oscuro)]" />
@@ -563,12 +602,12 @@ export function IndicadoresPage() {
             <>
               <span className="mr-1 flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-600 uppercase">
                 <IconoFiltro className="h-4 w-4 text-[var(--pabon-azul-oscuro)]" />
-                Filtrado por
+                Filtros activos
               </span>
               {filtros.map((f) => (
                 <span
                   key={f.campo}
-                  className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 py-0.5 pr-1 pl-3 text-sm text-slate-900"
+                  className="inline-flex items-center gap-1 rounded-full border border-sky-200 bg-white py-0.5 pr-1 pl-3 text-sm text-slate-900"
                 >
                   {NOMBRE_CAMPO[f.campo]}: <span className="font-semibold">{f.etiqueta}</span>
                   <button
@@ -582,9 +621,8 @@ export function IndicadoresPage() {
                 </span>
               ))}
               {data && (
-                <span className="text-sm text-slate-600">
-                  · <span className="font-semibold text-slate-900">{data.resumen.total_cirugias}</span>{' '}
-                  {data.resumen.total_cirugias === 1 ? 'paciente' : 'pacientes'}
+                <span className="text-xs text-slate-600">
+                  {data.resumen.total_cirugias} {data.resumen.total_cirugias === 1 ? 'cirugía' : 'cirugías'}
                 </span>
               )}
               <button type="button" onClick={() => cambiarFiltros([])} className={`${claseBotonTexto} ml-auto text-xs`}>
@@ -594,34 +632,6 @@ export function IndicadoresPage() {
           )}
         </div>
       </Tarjeta>
-
-      {/* En el celular las pestañas van en una cuadrícula de 2 columnas (la última, si queda sola,
-          ocupa la fila completa), en tabletas de 4, y desde xl en una sola fila. */}
-      <div role="tablist" className="mb-6 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-4 xl:inline-flex">
-        {PESTANAS.map((p) => (
-          <button
-            key={p.clave}
-            type="button"
-            role="tab"
-            aria-selected={vista === p.clave}
-            onClick={() => setVista(p.clave)}
-            className={`flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors max-sm:last:odd:col-span-2 ${
-              vista === p.clave ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
-            }`}
-          >
-            {p.icono}
-            {/* En el celular, el nombre largo partido en dos líneas descuadraba la cuadrícula. */}
-            {'etiquetaCorta' in p ? (
-              <>
-                <span className="sm:hidden">{p.etiquetaCorta}</span>
-                <span className="hidden sm:inline">{p.etiqueta}</span>
-              </>
-            ) : (
-              p.etiqueta
-            )}
-          </button>
-        ))}
-      </div>
 
       {/* El detalle de un indicador ocupa el lugar de la pestaña: los mismos filtros y fechas de arriba. */}
       {detalle.indicador && (
@@ -836,7 +846,7 @@ export function IndicadoresPage() {
               <Tarjeta titulo="Cirugías por diagnóstico" descripcion="Cuántos pacientes operados tienen cada diagnóstico, como principal o como adicional.">
                 <GraficoBarras datos={data.porDiagnostico.datos} {...interaccion('diagnostico')} />
                 <p className="mt-3 text-xs text-slate-500">
-                  Un paciente con diagnóstico adicional cuenta en sus dos diagnósticos: las barras suman más que los {data.porDiagnostico.pacientes} pacientes.
+                  Un paciente con diagnósticos adicionales cuenta en cada uno de sus diagnósticos: las barras pueden sumar más que los {data.porDiagnostico.pacientes} pacientes.
                 </p>
               </Tarjeta>
 

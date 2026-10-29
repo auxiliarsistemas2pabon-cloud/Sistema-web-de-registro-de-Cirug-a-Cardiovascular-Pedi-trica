@@ -48,6 +48,8 @@ export function calcularEstadoModulo1(v: {
 export function calcularEstadoModulo2(v: {
   /** Campos con un "Otro…" elegido y sin escribir cuál (sinEspecificar en lib/opciones.ts). */
   sinEspecificar?: string[]
+  /** Lo que falta en los diagnósticos adicionales (su tipo de valvulopatía). */
+  faltantesAdicionales?: string[]
   diagnosticoId: string
   rachsId: string
   diagnosticoEsValvulopatias: boolean
@@ -58,6 +60,7 @@ export function calcularEstadoModulo2(v: {
   if (!v.diagnosticoId) faltantes.push('Diagnóstico')
   if (!v.rachsId) faltantes.push('Escala RACHS-1')
   if (v.diagnosticoEsValvulopatias && !v.valvulopatiaId) faltantes.push('Tipo de valvulopatía')
+  faltantes.push(...(v.faltantesAdicionales ?? []))
   if (v.riesgoIds.length === 0) faltantes.push('Factores de riesgo')
   return resultado(faltantes, v.sinEspecificar)
 }
@@ -156,6 +159,8 @@ export function calcularEstadoModulo1Adulto(v: {
 export function calcularEstadoModulo2Adulto(v: {
   /** Campos con un "Otro…" elegido y sin escribir cuál (sinEspecificar en lib/opciones.ts). */
   sinEspecificar?: string[]
+  /** Lo que falta en los diagnósticos adicionales (su tipo de valvulopatía). */
+  faltantesAdicionales?: string[]
   diagnosticoId: string
   euroscore: string
   diagnosticoEsValvulopatia: boolean
@@ -166,6 +171,7 @@ export function calcularEstadoModulo2Adulto(v: {
   if (!v.diagnosticoId) faltantes.push('Diagnóstico')
   if (v.euroscore === '') faltantes.push('Escala EuroSCORE (%)')
   if (v.diagnosticoEsValvulopatia && !v.valvulopatiaId) faltantes.push('Tipo de valvulopatía')
+  faltantes.push(...(v.faltantesAdicionales ?? []))
   if (v.riesgoIds.length === 0) faltantes.push('Factores de riesgo')
   return resultado(faltantes, v.sinEspecificar)
 }

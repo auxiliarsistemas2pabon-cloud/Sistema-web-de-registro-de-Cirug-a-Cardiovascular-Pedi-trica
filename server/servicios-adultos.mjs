@@ -6,8 +6,9 @@ import { hoyBogota, todas, una } from './db.mjs'
 import { ErrorApi, noEncontrado, reglaNegocio } from './errores.mjs'
 import { Validador, diasEntre } from './validar.mjs'
 import {
-  actualizar, codigoDe, especificacionDe, filaApi, idPorCodigo, insertar, leerProcedimientos, leerProcedimientosGuardados,
-  leerSeleccion, normalizarDatosPaciente, normalizarDiagnosticos, normalizarProcedimientos, normalizarReingresoYHerida,
+  actualizar, codigoDe, especificacionDe, filaApi, idPorCodigo, insertar, leerDiagnosticosAdicionales,
+  leerDiagnosticosAdicionalesGuardados, leerProcedimientos, leerProcedimientosGuardados, leerSeleccion, normalizarDatosPaciente,
+  normalizarDiagnosticos, normalizarProcedimientos, normalizarReingresoYHerida, sincronizarDiagnosticosAdicionales,
   sincronizarProcedimientos, sincronizarSeleccion,
 } from './servicios.mjs'
 
@@ -151,7 +152,11 @@ export async function obtenerDiagnosticoAdulto(conexion, episodioId) {
   const fila = await una(conexion, 'SELECT * FROM diagnosticos_adultos WHERE episodio_id = ?', [episodioId])
   if (!fila) return null
   const riesgos = await leerSeleccion(conexion, { tabla: 'diagnosticos_adultos_riesgos', columnaDueno: 'diagnostico_id', duenoId: fila.id, columnaOpcion: 'riesgo_id' })
-  return { ...sinCamposRetirados(filaApi('diagnosticos_adultos', fila)), riesgo_ids: riesgos.ids, riesgo_especificaciones: riesgos.especificaciones }
+  return {
+    ...sinCamposRetirados(filaApi('diagnosticos_adultos', fila)),
+    diagnosticos_adicionales: await leerDiagnosticosAdicionalesGuardados(conexion, 'diagnosticos_adultos_adicionales', fila.id),
+    riesgo_ids: riesgos.ids, riesgo_especificaciones: riesgos.especificaciones,
+  }
 }
 
 export async function guardarDiagnosticoAdulto(conexion, usuario, episodioId, cuerpo) {
@@ -159,36 +164,32 @@ export async function guardarDiagnosticoAdulto(conexion, usuario, episodioId, cu
   const datos = {
     diagnostico_id: v.id('diagnostico_id'),
     diagnostico_otro: v.texto('diagnostico_otro'),
-    diagnostico_adicional_id: v.id('diagnostico_adicional_id'),
-    diagnostico_adicional_otro: v.texto('diagnostico_adicional_otro'),
     valvulopatia_id: v.id('valvulopatia_id'),
     euroscore: v.decimal('euroscore', { min: 0, max: 100 }),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
+  const adicionalesPedidos = leerDiagnosticosAdicionales(v, cuerpo)
   const riesgoIds = [...new Set(v.ids('riesgo_ids'))]
   const riesgoEspecificaciones = v.especificaciones('riesgo_especificaciones')
   v.finalizar()
 
-  await normalizarDiagnosticos(conexion, datos)
-  // Regla silenciosa: la valvulopatía solo aplica si el diagnóstico (principal o adicional) la
-  // menciona; si no, queda en N/A.
-  if (!(await diagnosticoMencionaValvulopatia(conexion, datos.diagnostico_id)) &&
-      !(await diagnosticoMencionaValvulopatia(conexion, datos.diagnostico_adicional_id))) {
-    datos.valvulopatia_id = await idPorCodigo(conexion, 'VALVULOPATIA', 'NA')
-  }
+  const existente = await una(conexion, 'SELECT id FROM diagnosticos_adultos WHERE episodio_id = ?', [episodioId])
+  await normalizarDiagnosticos(conexion, datos, adicionalesPedidos, (id) => diagnosticoMencionaValvulopatia(conexion, id))
   // Regla dura: "Ninguno" excluye cualquier otro factor de riesgo.
   const ningunoId = await idPorCodigo(conexion, 'RIESGOS_ADULTO', 'NINGUNO')
   if (ningunoId && riesgoIds.includes(ningunoId) && riesgoIds.length > 1) {
     throw reglaNegocio('No se puede seleccionar "Ninguno" junto con otros factores de riesgo.')
   }
 
-  const existente = await una(conexion, 'SELECT id FROM diagnosticos_adultos WHERE episodio_id = ?', [episodioId])
   let diagnosticoId
   if (existente) {
     diagnosticoId = existente.id
     await actualizar(conexion, usuario, 'diagnosticos_adultos', diagnosticoId, datos)
   } else {
     diagnosticoId = await insertar(conexion, usuario, 'diagnosticos_adultos', { episodio_id: episodioId, ...datos, actualizado_por: usuario.id })
+  }
+  if (adicionalesPedidos) {
+    await sincronizarDiagnosticosAdicionales(conexion, usuario, 'diagnosticos_adultos_adicionales', diagnosticoId, adicionalesPedidos)
   }
 
   await sincronizarSeleccion(conexion, usuario, {
