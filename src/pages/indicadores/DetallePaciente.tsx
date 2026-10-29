@@ -35,7 +35,8 @@ export interface Detalle {
   municipio_narino: string | null
   eps: string | null
   diagnostico: string | null
-  diagnostico_adicional: string | null
+  /** Separados por " | ". */
+  diagnosticos_adicionales: string | null
   valvulopatia: string | null
   riesgos: string[]
   /** Solo en pediátricos. */
@@ -147,7 +148,9 @@ export function FichaDetalle({ d, adultos }: { d: Detalle; adultos: boolean }) {
       <Modulo numero={2}>
         <dl className={claseDatos}>
           <Dato etiqueta="Diagnóstico" ancho>{d.diagnostico}</Dato>
-          {d.diagnostico_adicional && <Dato etiqueta="Diagnóstico adicional" ancho>{d.diagnostico_adicional}</Dato>}
+          {d.diagnosticos_adicionales && (
+            <Dato etiqueta="Diagnósticos adicionales" ancho>{d.diagnosticos_adicionales.split(' | ').join(' · ')}</Dato>
+          )}
           {d.valvulopatia && <Dato etiqueta="Tipo de valvulopatía" ancho>{d.valvulopatia}</Dato>}
           {adultos ? (
             <Dato etiqueta="Escala EuroSCORE">{d.euroscore === null || d.euroscore === undefined ? null : `${d.euroscore} %`}</Dato>

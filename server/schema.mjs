@@ -99,6 +99,20 @@ const tablas = [
     FOREIGN KEY (diagnostico_id) REFERENCES diagnosticos(id),
     ${opcion('riesgo_id')}
   )`,
+  // Diagnósticos además del principal, de la misma lista y sin límite. Antes era uno solo
+  // (diagnostico_adicional_id, ver migrarDiagnosticoAdicionalSiExisteColumna). Un diagnóstico se puede
+  // repetir (p. ej. dos valvulopatías), cada uno con su propio tipo de valvulopatía; `orden` es el orden
+  // en que se agregaron en la ficha.
+  `CREATE TABLE IF NOT EXISTS diagnosticos_adicionales (
+    id CHAR(36) PRIMARY KEY,
+    diagnostico_id CHAR(36) NOT NULL,
+    adicional_id CHAR(36) NOT NULL,
+    especificacion VARCHAR(255) NULL,
+    valvulopatia_id CHAR(36) NULL,
+    orden SMALLINT NOT NULL,
+    FOREIGN KEY (diagnostico_id) REFERENCES diagnosticos(id),
+    ${opcion('adicional_id')}, ${opcion('valvulopatia_id')}
+  )`,
   `CREATE TABLE IF NOT EXISTS cirugias (
     id CHAR(36) PRIMARY KEY,
     paciente_id CHAR(36) NOT NULL UNIQUE,
@@ -277,6 +291,16 @@ const tablas = [
     FOREIGN KEY (diagnostico_id) REFERENCES diagnosticos_adultos(id),
     ${opcion('riesgo_id')}
   )`,
+  `CREATE TABLE IF NOT EXISTS diagnosticos_adultos_adicionales (
+    id CHAR(36) PRIMARY KEY,
+    diagnostico_id CHAR(36) NOT NULL,
+    adicional_id CHAR(36) NOT NULL,
+    especificacion VARCHAR(255) NULL,
+    valvulopatia_id CHAR(36) NULL,
+    orden SMALLINT NOT NULL,
+    FOREIGN KEY (diagnostico_id) REFERENCES diagnosticos_adultos(id),
+    ${opcion('adicional_id')}, ${opcion('valvulopatia_id')}
+  )`,
   `CREATE TABLE IF NOT EXISTS cirugias_adultos (
     id CHAR(36) PRIMARY KEY,
     paciente_id CHAR(36) NOT NULL UNIQUE,
@@ -416,11 +440,6 @@ const alteraciones = [
   ['seguimientos', 'causa_reingreso_otro', `ALTER TABLE seguimientos ADD COLUMN causa_reingreso_otro VARCHAR(255) NULL AFTER causa_reingreso_id`],
   ['seguimientos_adultos', 'estado_herida_otro', `ALTER TABLE seguimientos_adultos ADD COLUMN estado_herida_otro VARCHAR(255) NULL AFTER estado_herida_id`],
   ['seguimientos_adultos', 'causa_reingreso_otro', `ALTER TABLE seguimientos_adultos ADD COLUMN causa_reingreso_otro VARCHAR(255) NULL AFTER causa_reingreso_id`],
-  // Un segundo diagnóstico, de la misma lista que el principal.
-  ['diagnosticos', 'diagnostico_adicional_id', `ALTER TABLE diagnosticos ADD COLUMN diagnostico_adicional_id CHAR(36) NULL AFTER diagnostico_otro`],
-  ['diagnosticos', 'diagnostico_adicional_otro', `ALTER TABLE diagnosticos ADD COLUMN diagnostico_adicional_otro VARCHAR(255) NULL AFTER diagnostico_adicional_id`],
-  ['diagnosticos_adultos', 'diagnostico_adicional_id', `ALTER TABLE diagnosticos_adultos ADD COLUMN diagnostico_adicional_id CHAR(36) NULL AFTER diagnostico_otro`],
-  ['diagnosticos_adultos', 'diagnostico_adicional_otro', `ALTER TABLE diagnosticos_adultos ADD COLUMN diagnostico_adicional_otro VARCHAR(255) NULL AFTER diagnostico_adicional_id`],
   // El implante pasa de uno por cirugía a uno por procedimiento: "¿lleva implante?" (Sí / No / No
   // aplica) y, solo si lleva, su tipo. cirugias(_adultos).implante_id y numero_implante quedan en
   // desuso (ver migrarImplantePorProcedimiento).
@@ -434,8 +453,6 @@ const alteraciones = [
 
 // Llaves foráneas de las columnas de lista agregadas arriba (las de las tablas originales van en su CREATE TABLE).
 const llavesForaneas = [
-  ['fk_diag_adicional', 'diagnosticos', 'FOREIGN KEY (diagnostico_adicional_id) REFERENCES opciones_lista(id)'],
-  ['fk_diagad_adicional', 'diagnosticos_adultos', 'FOREIGN KEY (diagnostico_adicional_id) REFERENCES opciones_lista(id)'],
   ['fk_cp_tipo_implante', 'cirugias_procedimientos', 'FOREIGN KEY (tipo_implante_id) REFERENCES opciones_lista(id)'],
   ['fk_cpad_tipo_implante', 'cirugias_adultos_procedimientos', 'FOREIGN KEY (tipo_implante_id) REFERENCES opciones_lista(id)'],
 ]
@@ -456,6 +473,11 @@ const columnasRetiradas = [
   ['postoperatorio', 'complicacion_pop_id'],
   ['cirugias_adultos', 'complicacion_intraqx_id'],
   ['postoperatorio_adultos', 'complicacion_pop_id'],
+  // El diagnóstico adicional único pasó a la tabla puente diagnosticos(_adultos)_adicionales.
+  ['diagnosticos', 'diagnostico_adicional_id'],
+  ['diagnosticos', 'diagnostico_adicional_otro'],
+  ['diagnosticos_adultos', 'diagnostico_adicional_id'],
+  ['diagnosticos_adultos', 'diagnostico_adicional_otro'],
 ]
 
 // Migra el valor único de complicación (si la columna todavía existe) a la tabla puente, una sola vez
@@ -467,6 +489,22 @@ async function migrarComplicacionesSiExisteColumna(pool, tablaOrigen, columnaOri
     await pool.query(`
       INSERT IGNORE INTO ${tablaPuente} (id, ${columnaFk}, complicacion_id)
       SELECT UUID(), id, ${columnaOrigen} FROM ${tablaOrigen} WHERE ${columnaOrigen} IS NOT NULL`)
+  } catch (err) {
+    if (err?.errno !== 1054) throw err
+  }
+}
+
+/** Mismo patrón que migrarComplicacionesSiExisteColumna, para el diagnóstico adicional único: pasa a
+ * ser el primero de la lista, con su especificación. El tipo de valvulopatía era uno solo para los dos
+ * diagnósticos, así que se copia también al adicional (el próximo guardado de la ficha lo quita del que
+ * no sea valvulopatía). NOT EXISTS: la tabla puente admite repetidos, así que no hay UNIQUE que evite
+ * duplicar si un arranque se interrumpe antes de quitar la columna vieja. */
+async function migrarDiagnosticoAdicionalSiExisteColumna(pool, tablaOrigen, tablaPuente) {
+  try {
+    await pool.query(`
+      INSERT INTO ${tablaPuente} (id, diagnostico_id, adicional_id, especificacion, valvulopatia_id, orden)
+      SELECT UUID(), d.id, d.diagnostico_adicional_id, d.diagnostico_adicional_otro, d.valvulopatia_id, 1 FROM ${tablaOrigen} d
+      WHERE d.diagnostico_adicional_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM ${tablaPuente} t WHERE t.diagnostico_id = d.id)`)
   } catch (err) {
     if (err?.errno !== 1054) throw err
   }
@@ -634,6 +672,8 @@ export async function inicializarBase(pool, admin) {
   await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio', 'complicacion_pop_id', 'postoperatorio_complicaciones_pop', 'postoperatorio_id')
   await migrarComplicacionesSiExisteColumna(pool, 'cirugias_adultos', 'complicacion_intraqx_id', 'cirugias_adultos_complicaciones_intraqx', 'cirugia_id')
   await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio_adultos', 'complicacion_pop_id', 'postoperatorio_adultos_complicaciones_pop', 'postoperatorio_id')
+  await migrarDiagnosticoAdicionalSiExisteColumna(pool, 'diagnosticos', 'diagnosticos_adicionales')
+  await migrarDiagnosticoAdicionalSiExisteColumna(pool, 'diagnosticos_adultos', 'diagnosticos_adultos_adicionales')
 
   await crearEpisodiosAdultosFaltantes(pool)
   for (const tabla of ['diagnosticos_adultos', 'cirugias_adultos', 'postoperatorio_adultos', 'seguimientos_adultos']) {

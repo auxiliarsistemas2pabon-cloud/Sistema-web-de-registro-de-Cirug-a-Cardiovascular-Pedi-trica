@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form'
 import { useAuth } from '../../auth/AuthProvider'
 import { Campo, claseInput } from '../../components/Campo'
 import { CampoOpciones } from '../../components/CampoOpciones'
+import { DiagnosticosAdicionales, type FilaDiagnosticoAdicional } from '../../components/DiagnosticosAdicionales'
 import { PieFormulario, SeccionFormulario } from '../../components/FormularioModulo'
 import { SelectOpciones } from '../../components/SelectOpciones'
 import { SeleccionMultiple } from '../../components/SeleccionMultiple'
@@ -11,19 +12,24 @@ import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo2Adulto } from '../../lib/completitud'
 import { especificacionesElegidas, sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
 import { api, mensajeDe } from '../../lib/api'
-import type { DiagnosticoAdultoDetalle } from '../../types/db'
+import type { DiagnosticoAdultoDetalle, OpcionLista } from '../../types/db'
 import { Cargando, MensajeError } from '../../components/Estados'
 
 interface Valores {
   diagnostico_id: string
   diagnostico_otro: string
-  diagnostico_adicional_id: string
-  diagnostico_adicional_otro: string
+  adicionales: FilaDiagnosticoAdicional[]
   valvulopatia_id: string
   euroscore: string
   riesgo_ids: string[]
   riesgo_especificaciones: Record<string, string>
 }
+
+// A diferencia del módulo pediátrico (un único código 'VALVULOPATIAS'), aquí hay varios diagnósticos
+// que implican valvulopatía ("Valvulopatía", "Arritmia cardíaca + valvulopatía", "Enfermedad coronaria +
+// valvulopatía"…), así que se detecta por texto, igual que en el backend (servicios-adultos.mjs,
+// diagnosticoMencionaValvulopatia) para que ambos lados coincidan siempre.
+const mencionaValvulopatia = (opcion: OpcionLista | undefined) => /valvulopat/i.test(opcion?.valor ?? '')
 
 type DiagnosticoGuardado = DiagnosticoAdultoDetalle & { riesgo_ids: string[]; riesgo_especificaciones: Record<string, string> }
 
@@ -38,8 +44,9 @@ function valoresIniciales(diagnostico: DiagnosticoGuardado | null): Valores {
   return {
     diagnostico_id: diagnostico?.diagnostico_id ?? '',
     diagnostico_otro: diagnostico?.diagnostico_otro ?? '',
-    diagnostico_adicional_id: diagnostico?.diagnostico_adicional_id ?? '',
-    diagnostico_adicional_otro: diagnostico?.diagnostico_adicional_otro ?? '',
+    adicionales: (diagnostico?.diagnosticos_adicionales ?? []).map((a) => ({
+      diagnostico_id: a.diagnostico_id, especificacion: a.especificacion ?? '', valvulopatia_id: a.valvulopatia_id ?? '',
+    })),
     valvulopatia_id: diagnostico?.valvulopatia_id ?? '',
     euroscore: diagnostico?.euroscore?.toString() ?? '',
     riesgo_ids: diagnostico?.riesgo_ids ?? [],
@@ -67,24 +74,18 @@ export function Modulo2FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
   }, [data, reset])
 
   const diagnosticoId = watch('diagnostico_id')
-  const diagnosticoAdicionalId = watch('diagnostico_adicional_id')
   const riesgoIds = watch('riesgo_ids')
   const riesgoEspecificaciones = watch('riesgo_especificaciones')
-  // A diferencia del módulo pediátrico (un único código 'VALVULOPATIAS'), aquí hay tres
-  // diagnósticos que implican valvulopatía ("Valvulopatía", "Arritmia cardíaca + valvulopatía",
-  // "Enfermedad coronaria + valvulopatía"), así que se detecta por texto, igual que en el backend
-  // (servicios-adultos.mjs, diagnosticoMencionaValvulopatia) para que ambos lados coincidan siempre.
-  // Vale tanto para el diagnóstico principal como para el adicional.
-  const esValvulopatia = [diagnosticoId, diagnosticoAdicionalId].some(
-    (id) => !!id && /valvulopat/i.test(opcionesDiagnostico?.find((o) => o.id === id)?.valor ?? ''),
-  )
-  const adicionalRepetido = !!diagnosticoAdicionalId && diagnosticoAdicionalId === diagnosticoId
+  // El tipo de valvulopatía de aquí es el del diagnóstico principal: cada diagnóstico adicional tiene
+  // el suyo (DiagnosticosAdicionales).
+  const esValvulopatia = (id: string) => !!id && mencionaValvulopatia(opcionesDiagnostico?.find((o) => o.id === id))
+  const principalEsValvulopatia = esValvulopatia(diagnosticoId)
 
   useEffect(() => {
     // Mismo guard que Modulo2Form (pediátrico): exigir diagnosticoId evita que este efecto borre
     // valvulopatia_id en el mismo ciclo en que reset() recién la puso, antes de que `watch` la vea.
-    if (diagnosticoId && opcionesDiagnostico && !esValvulopatia) setValue('valvulopatia_id', '')
-  }, [diagnosticoId, esValvulopatia, opcionesDiagnostico, setValue])
+    if (diagnosticoId && opcionesDiagnostico && !principalEsValvulopatia) setValue('valvulopatia_id', '')
+  }, [diagnosticoId, principalEsValvulopatia, opcionesDiagnostico, setValue])
 
   if (isLoading) return <Cargando />
 
@@ -92,27 +93,24 @@ export function Modulo2FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     if (!perfil) return
     setGuardadoEn(null)
     setCamposFaltantes([])
-    if (valores.diagnostico_adicional_id && valores.diagnostico_adicional_id === valores.diagnostico_id) {
-      setErrorGuardado('El diagnóstico adicional no puede ser el mismo diagnóstico principal.')
-      return
-    }
     setErrorGuardado(null)
     setGuardando(true)
 
-    const especificar = {
-      diagnostico: esOtro('DIAGNOSTICO_ADULTO', valores.diagnostico_id),
-      adicional: esOtro('DIAGNOSTICO_ADULTO', valores.diagnostico_adicional_id),
-    }
+    // Las filas que se agregaron pero se dejaron sin elegir no se guardan.
+    const adicionales = valores.diagnostico_id ? valores.adicionales.filter((a) => a.diagnostico_id) : []
+    const especificarDiagnostico = esOtro('DIAGNOSTICO_ADULTO', valores.diagnostico_id)
     const { estado: estado_modulo, faltantes } = calcularEstadoModulo2Adulto({
       sinEspecificar: sinEspecificar([
-        { etiqueta: 'Diagnóstico', esOtro: especificar.diagnostico, texto: valores.diagnostico_otro },
-        { etiqueta: 'Diagnóstico adicional', esOtro: especificar.adicional, texto: valores.diagnostico_adicional_otro },
+        { etiqueta: 'Diagnóstico', esOtro: especificarDiagnostico, texto: valores.diagnostico_otro },
+        ...adicionales.map((a) => ({ etiqueta: 'Otro diagnóstico', esOtro: esOtro('DIAGNOSTICO_ADULTO', a.diagnostico_id), texto: a.especificacion })),
         ...valores.riesgo_ids.map((id) => ({ etiqueta: 'Factores de riesgo', esOtro: esOtro('RIESGOS_ADULTO', id), texto: valores.riesgo_especificaciones[id] })),
       ]),
       diagnosticoId: valores.diagnostico_id,
       euroscore: valores.euroscore,
-      diagnosticoEsValvulopatia: esValvulopatia,
+      diagnosticoEsValvulopatia: principalEsValvulopatia,
       valvulopatiaId: valores.valvulopatia_id,
+      faltantesAdicionales: adicionales.flatMap((a, i) =>
+        esValvulopatia(a.diagnostico_id) && !a.valvulopatia_id ? [`Tipo de valvulopatía (otro diagnóstico ${i + 1})`] : []),
       riesgoIds: valores.riesgo_ids,
     })
     setCamposFaltantes(faltantes)
@@ -120,10 +118,13 @@ export function Modulo2FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
     try {
       await api.put(`/pacientes-adultos/${pacienteId}/episodios/${episodioId}/diagnostico`, {
         diagnostico_id: valores.diagnostico_id || null,
-        diagnostico_otro: especificar.diagnostico ? valores.diagnostico_otro.trim() || null : null,
-        diagnostico_adicional_id: valores.diagnostico_id ? valores.diagnostico_adicional_id || null : null,
-        diagnostico_adicional_otro: especificar.adicional ? valores.diagnostico_adicional_otro.trim() || null : null,
-        valvulopatia_id: esValvulopatia ? valores.valvulopatia_id || null : null,
+        diagnostico_otro: especificarDiagnostico ? valores.diagnostico_otro.trim() || null : null,
+        diagnosticos_adicionales: adicionales.map((a) => ({
+          diagnostico_id: a.diagnostico_id,
+          especificacion: esOtro('DIAGNOSTICO_ADULTO', a.diagnostico_id) ? a.especificacion.trim() || null : null,
+          valvulopatia_id: esValvulopatia(a.diagnostico_id) ? a.valvulopatia_id || null : null,
+        })),
+        valvulopatia_id: principalEsValvulopatia ? valores.valvulopatia_id || null : null,
         euroscore: valores.euroscore ? Number(valores.euroscore) : null,
         riesgo_ids: valores.riesgo_ids,
         riesgo_especificaciones: especificacionesElegidas(valores.riesgo_ids, valores.riesgo_especificaciones),
@@ -162,25 +163,12 @@ export function Modulo2FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
                 <SelectOpciones
                   categoria="VALVULOPATIA"
                   control={control} name="valvulopatia_id"
-                  disabled={!esValvulopatia}
-                  placeholder={esValvulopatia ? 'Seleccione…' : 'N/A'}
+                  disabled={!principalEsValvulopatia}
+                  placeholder={principalEsValvulopatia ? 'Seleccione…' : 'N/A'}
                 />
               </Campo>
 
-              {/* Un segundo diagnóstico, de la misma lista: solo junto a un principal. */}
-              <CampoOpciones
-                etiqueta="Diagnóstico adicional"
-                categoria="DIAGNOSTICO_ADULTO"
-                control={control}
-                name="diagnostico_adicional_id"
-                nameOtro="diagnostico_adicional_otro"
-                buscable
-                permiteCrear
-                disabled={!diagnosticoId}
-                placeholder={diagnosticoId ? 'Opcional: busque otro diagnóstico…' : 'Elija primero el diagnóstico principal'}
-                error={adicionalRepetido ? 'No puede ser el mismo diagnóstico principal.' : undefined}
-                className="sm:col-span-2"
-              />
+              <DiagnosticosAdicionales control={control} setValue={setValue} categoria="DIAGNOSTICO_ADULTO" esValvulopatia={mencionaValvulopatia} />
             </div>
           </SeccionFormulario>
 

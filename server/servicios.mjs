@@ -311,18 +311,70 @@ export async function obtenerDiagnostico(conexion, pacienteId) {
   const fila = await una(conexion, 'SELECT * FROM diagnosticos WHERE paciente_id = ?', [pacienteId])
   if (!fila) return null
   const riesgos = await leerSeleccion(conexion, { tabla: 'diagnosticos_riesgos', columnaDueno: 'diagnostico_id', duenoId: fila.id, columnaOpcion: 'riesgo_id' })
-  return { ...filaApi('diagnosticos', fila), riesgo_ids: riesgos.ids, riesgo_especificaciones: riesgos.especificaciones }
+  return {
+    ...filaApi('diagnosticos', fila),
+    diagnosticos_adicionales: await leerDiagnosticosAdicionalesGuardados(conexion, 'diagnosticos_adicionales', fila.id),
+    riesgo_ids: riesgos.ids, riesgo_especificaciones: riesgos.especificaciones,
+  }
 }
 
-/** Reglas del diagnóstico adicional, iguales en pediátricos y adultos: acompaña al principal (no va
- * solo) y no puede repetirlo; cada diagnóstico guarda su especificación solo si es un "Otro…". */
-export async function normalizarDiagnosticos(conexion, datos) {
-  if (datos.diagnostico_adicional_id && !datos.diagnostico_id) throw reglaNegocio('Registre primero el diagnóstico principal.')
-  if (datos.diagnostico_adicional_id && datos.diagnostico_adicional_id === datos.diagnostico_id) {
-    throw reglaNegocio('El diagnóstico adicional no puede ser el mismo diagnóstico principal.')
+/** Los diagnósticos además del principal, en el orden en que se agregaron. */
+export async function leerDiagnosticosAdicionalesGuardados(conexion, tabla, diagnosticoId) {
+  return todas(conexion, `
+    SELECT adicional_id AS diagnostico_id, especificacion, valvulopatia_id FROM ${tabla} WHERE diagnostico_id = ? ORDER BY orden`,
+  [diagnosticoId])
+}
+
+/** Los diagnósticos adicionales que llegan en la petición, en orden: [{ diagnostico_id, especificacion,
+ * valvulopatia_id }]. undefined si el campo no llegó (quien no lo conoce, como la importación, no borra
+ * los guardados). */
+export function leerDiagnosticosAdicionales(v, cuerpo) {
+  const lista = cuerpo.diagnosticos_adicionales
+  if (lista === undefined) return undefined
+  if (lista === null) return []
+  if (!Array.isArray(lista) || lista.some((d) => d === null || typeof d !== 'object' || Array.isArray(d))) {
+    v.error('diagnosticos_adicionales', 'Debe ser una lista de diagnósticos.')
+    return []
   }
+  return lista.map((item, i) => {
+    const d = new Validador(item)
+    const adicional = {
+      diagnostico_id: d.id('diagnostico_id', { obligatorio: true }),
+      especificacion: d.texto('especificacion'),
+      valvulopatia_id: d.id('valvulopatia_id'),
+    }
+    for (const [campo, mensaje] of Object.entries(d.campos)) v.error(`diagnosticos_adicionales.${i}.${campo}`, mensaje)
+    return adicional
+  })
+}
+
+/** Reglas de los diagnósticos, iguales en pediátricos y adultos (cambia solo cómo se reconoce una
+ * valvulopatía, `esValvulopatia`). Los adicionales acompañan al principal (no van solos) y pueden repetir
+ * un diagnóstico (p. ej. dos valvulopatías de distinto tipo). Reglas silenciosas: cada diagnóstico guarda
+ * su especificación solo si es un "Otro…" y su tipo de valvulopatía solo si es una valvulopatía (el
+ * principal queda en N/A; un adicional, vacío). `adicionales` undefined: la petición no los trae y se
+ * dejan como estaban. */
+export async function normalizarDiagnosticos(conexion, datos, adicionales, esValvulopatia) {
   datos.diagnostico_otro = await especificacionDe(conexion, datos.diagnostico_id, datos.diagnostico_otro)
-  datos.diagnostico_adicional_otro = await especificacionDe(conexion, datos.diagnostico_adicional_id, datos.diagnostico_adicional_otro)
+  if (!(await esValvulopatia(datos.diagnostico_id))) datos.valvulopatia_id = await idPorCodigo(conexion, 'VALVULOPATIA', 'NA')
+  if (!adicionales) return
+  if (adicionales.length > 0 && !datos.diagnostico_id) throw reglaNegocio('Registre primero el diagnóstico principal.')
+  for (const a of adicionales) {
+    a.especificacion = await especificacionDe(conexion, a.diagnostico_id, a.especificacion)
+    if (!(await esValvulopatia(a.diagnostico_id))) a.valvulopatia_id = null
+  }
+}
+
+/** Reemplaza los diagnósticos adicionales guardados por los de la petición. Como un diagnóstico puede
+ * repetirse, se emparejan por posición: la fila N guardada pasa a ser el adicional N y sobran las demás. */
+export async function sincronizarDiagnosticosAdicionales(conexion, usuario, tabla, diagnosticoId, adicionales) {
+  const actuales = await todas(conexion, `SELECT id FROM ${tabla} WHERE diagnostico_id = ? ORDER BY orden`, [diagnosticoId])
+  for (const [i, a] of adicionales.entries()) {
+    const cambios = { adicional_id: a.diagnostico_id, especificacion: a.especificacion, valvulopatia_id: a.valvulopatia_id, orden: i + 1 }
+    if (actuales[i]) await actualizar(conexion, usuario, tabla, actuales[i].id, cambios, { conAuditoriaUsuario: false })
+    else await insertar(conexion, usuario, tabla, { diagnostico_id: diagnosticoId, ...cambios }, { conAuditoriaUsuario: false })
+  }
+  for (const fila of actuales.slice(adicionales.length)) await eliminarFila(conexion, usuario, tabla, fila.id)
 }
 
 export async function guardarDiagnostico(conexion, usuario, pacienteId, cuerpo) {
@@ -330,30 +382,23 @@ export async function guardarDiagnostico(conexion, usuario, pacienteId, cuerpo) 
   const datos = {
     diagnostico_id: v.id('diagnostico_id'),
     diagnostico_otro: v.texto('diagnostico_otro'),
-    diagnostico_adicional_id: v.id('diagnostico_adicional_id'),
-    diagnostico_adicional_otro: v.texto('diagnostico_adicional_otro'),
     valvulopatia_id: v.id('valvulopatia_id'),
     rachs_id: v.id('rachs_id'),
     estado_modulo: v.opcion('estado_modulo', ESTADOS) ?? 'pendiente',
   }
+  const adicionalesPedidos = leerDiagnosticosAdicionales(v, cuerpo)
   const riesgoIds = [...new Set(v.ids('riesgo_ids'))]
   const riesgoEspecificaciones = v.especificaciones('riesgo_especificaciones')
   v.finalizar()
 
-  await normalizarDiagnosticos(conexion, datos)
-  // Regla silenciosa: la valvulopatía solo aplica si el diagnóstico (principal o adicional) es
-  // Valvulopatías; si no, queda en N/A.
-  const codigos = [await codigoDe(conexion, datos.diagnostico_id), await codigoDe(conexion, datos.diagnostico_adicional_id)]
-  if (!codigos.includes('VALVULOPATIAS')) {
-    datos.valvulopatia_id = await idPorCodigo(conexion, 'VALVULOPATIA', 'NA')
-  }
+  const existente = await una(conexion, 'SELECT id FROM diagnosticos WHERE paciente_id = ?', [pacienteId])
+  await normalizarDiagnosticos(conexion, datos, adicionalesPedidos, async (id) => (await codigoDe(conexion, id)) === 'VALVULOPATIAS')
   // Regla dura: "Ninguno" excluye cualquier otro factor de riesgo.
   const ningunoId = await idPorCodigo(conexion, 'RIESGOS', 'NINGUNO')
   if (ningunoId && riesgoIds.includes(ningunoId) && riesgoIds.length > 1) {
     throw reglaNegocio('No se puede seleccionar "Ninguno" junto con otros factores de riesgo.')
   }
 
-  const existente = await una(conexion, 'SELECT id FROM diagnosticos WHERE paciente_id = ?', [pacienteId])
   let diagnosticoId
   if (existente) {
     diagnosticoId = existente.id
@@ -361,6 +406,7 @@ export async function guardarDiagnostico(conexion, usuario, pacienteId, cuerpo) 
   } else {
     diagnosticoId = await insertar(conexion, usuario, 'diagnosticos', { paciente_id: pacienteId, ...datos, actualizado_por: usuario.id })
   }
+  if (adicionalesPedidos) await sincronizarDiagnosticosAdicionales(conexion, usuario, 'diagnosticos_adicionales', diagnosticoId, adicionalesPedidos)
 
   await sincronizarSeleccion(conexion, usuario, {
     tabla: 'diagnosticos_riesgos', columnaDueno: 'diagnostico_id', duenoId: diagnosticoId, columnaOpcion: 'riesgo_id',

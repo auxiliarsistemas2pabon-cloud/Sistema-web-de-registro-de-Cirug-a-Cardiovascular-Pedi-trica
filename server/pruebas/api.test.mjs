@@ -104,33 +104,47 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.deepEqual(d.riesgo_ids, [porValor('RIESGOS', 'Obesidad')])
     })
 
-    it('Módulo 2: diagnóstico adicional y especificación de las opciones "Otro…"', async () => {
+    it('Módulo 2: diagnósticos adicionales y especificación de las opciones "Otro…"', async () => {
       const otras = porValor('DIAGNOSTICO', 'Otras cardiopatías congénitas')
       const valvulopatias = porCodigo('DIAGNOSTICO', 'VALVULOPATIAS')
       const otraCondicion = porValor('RIESGOS', 'Otra condición relevante')
       const obesidad = porValor('RIESGOS', 'Obesidad')
-      const base = { diagnostico_id: otras, diagnostico_otro: 'Síndrome de Shone', rachs_id: porValor('RACHS', 'II'), riesgo_ids: [otraCondicion, obesidad], estado_modulo: 'completo' }
-      // El adicional no puede repetir el principal ni ir sin él.
-      assert.equal((await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...base, diagnostico_adicional_id: otras } })).estado, 422)
-      assert.equal((await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...base, diagnostico_id: null, diagnostico_adicional_id: valvulopatias } })).estado, 422)
-      const ok = await api('PUT', `/pacientes/${id}/diagnostico`, {
-        token: admin,
-        cuerpo: {
-          ...base, diagnostico_adicional_id: valvulopatias, diagnostico_adicional_otro: 'no aplica: no es un "Otro…"',
-          valvulopatia_id: porValor('VALVULOPATIA', 'Estenosis'),
-          riesgo_especificaciones: { [otraCondicion]: 'Hipotiroidismo', [obesidad]: 'se descarta' },
-        },
+      const base = { diagnostico_id: valvulopatias, rachs_id: porValor('RACHS', 'II'), riesgo_ids: [otraCondicion, obesidad], estado_modulo: 'completo' }
+      const estenosis = porValor('VALVULOPATIA', 'Estenosis')
+      const insuficiencia = porValor('VALVULOPATIA', 'Insuficiencia')
+      const adicional = (diagnostico_id, especificacion = null, valvulopatia_id = null) => ({ diagnostico_id, especificacion, valvulopatia_id })
+      const guardar = (cuerpo) => api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...base, ...cuerpo } })
+      const leer = async () => (await api('GET', `/pacientes/${id}/diagnostico`, { token: admin })).datos
+      // Los adicionales no pueden ir sin diagnóstico principal.
+      assert.equal((await guardar({ diagnostico_id: null, diagnosticos_adicionales: [adicional(otras)] })).estado, 422)
+      // Sí pueden repetir un diagnóstico: dos valvulopatías, cada una con su propio tipo. El tipo de un
+      // diagnóstico que no es valvulopatía se descarta.
+      const ok = await guardar({
+        diagnostico_otro: 'no aplica: no es un "Otro…"',
+        valvulopatia_id: estenosis,
+        diagnosticos_adicionales: [adicional(valvulopatias, null, insuficiencia), adicional(otras, 'Síndrome de Shone', estenosis)],
+        riesgo_especificaciones: { [otraCondicion]: 'Hipotiroidismo', [obesidad]: 'se descarta' },
       })
       assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
-      const d = (await api('GET', `/pacientes/${id}/diagnostico`, { token: admin })).datos
-      assert.equal(d.diagnostico_otro, 'Síndrome de Shone')
-      assert.equal(d.diagnostico_adicional_otro, null)
-      // Con Valvulopatías como diagnóstico adicional, el tipo de valvulopatía sí aplica.
-      assert.equal(d.valvulopatia_id, porValor('VALVULOPATIA', 'Estenosis'))
+      const d = await leer()
+      assert.equal(d.diagnostico_otro, null)
+      assert.equal(d.valvulopatia_id, estenosis)
+      assert.deepEqual(d.diagnosticos_adicionales, [adicional(valvulopatias, null, insuficiencia), adicional(otras, 'Síndrome de Shone')])
       assert.deepEqual(d.riesgo_especificaciones, { [otraCondicion]: 'Hipotiroidismo' })
-      // Quien no envía las especificaciones (p. ej. la importación) no borra las guardadas.
-      await api('PUT', `/pacientes/${id}/diagnostico`, { token: admin, cuerpo: { ...base, diagnostico_adicional_id: valvulopatias } })
-      assert.deepEqual((await api('GET', `/pacientes/${id}/diagnostico`, { token: admin })).datos.riesgo_especificaciones, { [otraCondicion]: 'Hipotiroidismo' })
+      // Quien no envía las especificaciones ni los adicionales (p. ej. la importación) no borra los guardados.
+      await guardar({ valvulopatia_id: estenosis })
+      const sinCambios = await leer()
+      assert.deepEqual(sinCambios.riesgo_especificaciones, { [otraCondicion]: 'Hipotiroidismo' })
+      assert.equal(sinCambios.diagnosticos_adicionales.length, 2)
+      // Cada tipo es de su diagnóstico: con un principal que no es valvulopatía, el suyo queda en N/A
+      // aunque un adicional sí lo sea.
+      await guardar({
+        diagnostico_id: otras, diagnostico_otro: 'Síndrome de Shone', valvulopatia_id: estenosis,
+        diagnosticos_adicionales: [adicional(valvulopatias, null, insuficiencia)],
+      })
+      const final = await leer()
+      assert.equal(final.valvulopatia_id, porCodigo('VALVULOPATIA', 'NA'))
+      assert.deepEqual(final.diagnosticos_adicionales, [adicional(valvulopatias, null, insuficiencia)])
     })
 
     it('Módulo 3: fechas, CEC y procedimientos', async () => {

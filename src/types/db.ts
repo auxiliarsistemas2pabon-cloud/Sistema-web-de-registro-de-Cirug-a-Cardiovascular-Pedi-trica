@@ -56,14 +56,22 @@ export interface RegistroAuditoria {
   valores_nuevos: Record<string, unknown> | null
 }
 
+export interface DiagnosticoAdicional {
+  diagnostico_id: string
+  /** Cuál, si es una opción "Otro…". */
+  especificacion: string | null
+  /** Su propio tipo de valvulopatía, si el diagnóstico es una valvulopatía. */
+  valvulopatia_id: string | null
+}
+
 export interface DiagnosticoDetalle {
   id: string
   paciente_id: string
   diagnostico_id: string | null
   diagnostico_otro: string | null
-  /** Un segundo diagnóstico, de la misma lista que el principal (pedido del 23-oct). */
-  diagnostico_adicional_id: string | null
-  diagnostico_adicional_otro: string | null
+  /** Otros diagnósticos además del principal, de la misma lista (se pueden repetir) y en el orden en
+   * que se agregaron. `valvulopatia_id` de arriba es solo el del diagnóstico principal. */
+  diagnosticos_adicionales: DiagnosticoAdicional[]
   valvulopatia_id: string | null
   rachs_id: string | null
   estado_modulo: EstadoModulo
@@ -124,8 +132,7 @@ export interface DiagnosticoAdultoDetalle {
   episodio_id: string
   diagnostico_id: string | null
   diagnostico_otro: string | null
-  diagnostico_adicional_id: string | null
-  diagnostico_adicional_otro: string | null
+  diagnosticos_adicionales: DiagnosticoAdicional[]
   valvulopatia_id: string | null
   euroscore: number | null
   estado_modulo: EstadoModulo
