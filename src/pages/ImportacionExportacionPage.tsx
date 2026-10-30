@@ -86,8 +86,18 @@ function agregarHojasGrupo(libro: ExcelJS.Workbook, filas: FilaExportacion[], en
   }
 }
 
-const obtenerFilasPediatricos = () => api.get<FilaExportacion[]>('/exportacion/pacientes')
-const obtenerFilasAdultos = () => api.get<FilaExportacion[]>('/exportacion/pacientes-adultos')
+/**
+ * En el archivo descargado el N° de paciente va seguido desde 1, una fila tras otra (pedido del
+ * 30-oct): el del sistema tiene huecos (pacientes eliminados o números ya usados) que en una tabla se
+ * leen como faltantes. En adultos cada intervención es una fila y cuenta como un paciente más: quien
+ * fue operado dos veces aparece dos veces, con dos números (la columna "N° intervención" dice cuál es).
+ */
+function numerarDesdeUno(filas: FilaExportacion[]): FilaExportacion[] {
+  return filas.map((fila, i) => ({ ...fila, numero_paciente: i + 1 }))
+}
+
+const obtenerFilasPediatricos = async () => numerarDesdeUno(await api.get<FilaExportacion[]>('/exportacion/pacientes'))
+const obtenerFilasAdultos = async () => numerarDesdeUno(await api.get<FilaExportacion[]>('/exportacion/pacientes-adultos'))
 
 export function ImportacionExportacionPage() {
   // Las casillas se ponen solas según el grupo activo del menú (Pediátricos o Adultos) — no solo

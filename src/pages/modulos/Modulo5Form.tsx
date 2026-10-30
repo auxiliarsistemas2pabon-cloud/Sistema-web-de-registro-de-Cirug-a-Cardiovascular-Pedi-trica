@@ -204,7 +204,7 @@ export function Modulo5Form({ pacienteId }: { pacienteId: string }) {
         <div className="space-y-5">
           <SeccionFormulario titulo="Control posterior">
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              <Campo etiqueta="Fecha de control por cirugía cardiovascular *">
+              <Campo etiqueta="Fecha de control por cirugía cardiovascular / cardiología o pediátrica *">
                 <input type="date" {...register('fecha_control_cirugia')} className={claseInput} />
               </Campo>
 

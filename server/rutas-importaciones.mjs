@@ -50,6 +50,13 @@ rutasImportaciones.post('/filas/:id/aplicar', asincrono(async (req, res) => {
 
   try {
     const pacienteId = await conTransaccion(async (conexion) => {
+      // Desde el 30-oct la base admite la misma identificación en varias fichas (un reingreso se
+      // registra a mano como paciente nuevo). La importación sigue sin crear una segunda ficha: así,
+      // cargar dos veces el mismo archivo no duplica pacientes.
+      const existente = await una(conexion, 'SELECT numero_paciente FROM pacientes WHERE identificacion = ? LIMIT 1', [datos.paciente?.identificacion])
+      if (existente) {
+        throw new ErrorApi(409, 'IDENTIFICACION_DUPLICADA', `Ya existe un paciente con esta identificación (N° ${existente.numero_paciente}).`)
+      }
       const id = await crearPaciente(conexion, req.usuario, datos.paciente, { origen: 'importado', lote_importacion_id: fila.lote_id })
       if (datos.diagnostico) await guardarDiagnostico(conexion, req.usuario, id, datos.diagnostico)
       if (datos.cirugia) await guardarCirugia(conexion, req.usuario, id, datos.cirugia)

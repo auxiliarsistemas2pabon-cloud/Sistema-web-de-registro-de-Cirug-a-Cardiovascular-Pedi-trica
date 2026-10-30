@@ -189,4 +189,6 @@ export interface ProcedimientoGuardado {
   especificacion: string | null
   implante: 'SI' | 'NO' | 'NA' | null
   tipo_implante_id: string | null
+  numero_implante: string | null
+  numero_implante_no_aplica: boolean
 }

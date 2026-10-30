@@ -833,8 +833,8 @@ const DETALLE_PEDIATRICO = {
     LEFT JOIN postoperatorio po ON po.paciente_id = p.id
     LEFT JOIN seguimientos s ON s.paciente_id = p.id`,
   uniones: 'LEFT JOIN opciones_lista rc ON rc.id = d.rachs_id',
-  // Cada procedimiento adicional es otra intervención, con su propia fecha.
-  fechaProcedimiento: 'CASE cp.orden WHEN 1 THEN c.fecha_cirugia WHEN 2 THEN c.fecha_procedimiento_2 ELSE c.fecha_procedimiento_3 END',
+  // Todos los procedimientos van con la fecha de cirugía (la propia del 2 y el 3 se quitó el 30-oct).
+  fechaProcedimiento: 'c.fecha_cirugia',
   telefonos: (f) => (Array.isArray(f.telefonos) ? f.telefonos : []),
 }
 const DETALLE_ADULTO = {
@@ -911,7 +911,8 @@ async function detallePaciente({ tablas, columnas, desdeCirugia, uniones, fechaP
       WHERE dr.diagnostico_id = ?
       ORDER BY o.orden, o.valor`, [ficha.diagnostico_id_resuelto]),
     todas(pool, `
-      SELECT o.valor AS procedimiento, cp.especificacion, cp.implante, ti.valor AS tipo_implante, ${fechaProcedimiento} AS fecha
+      SELECT o.valor AS procedimiento, cp.especificacion, cp.implante, ti.valor AS tipo_implante,
+        IF(cp.numero_implante_no_aplica, 'No aplica', cp.numero_implante) AS numero_implante, ${fechaProcedimiento} AS fecha
       FROM ${tablas.procedimientos} cp
       JOIN ${tablas.cirugias} c ON c.id = cp.cirugia_id
       JOIN opciones_lista o ON o.id = cp.procedimiento_id
@@ -995,7 +996,8 @@ function columnasProcedimientos(tabla) {
   const columnas = []
   const uniones = []
   for (const n of [1, 2, 3]) {
-    columnas.push(`p${n}o.valor AS procedimiento_${n}, p${n}.especificacion AS procedimiento_${n}_otro, p${n}.implante AS implante_${n}, p${n}t.valor AS tipo_implante_${n}`)
+    columnas.push(`p${n}o.valor AS procedimiento_${n}, p${n}.especificacion AS procedimiento_${n}_otro, p${n}.implante AS implante_${n}, p${n}t.valor AS tipo_implante_${n},
+      IF(p${n}.numero_implante_no_aplica, 'No aplica', p${n}.numero_implante) AS numero_implante_${n}`)
     uniones.push(`LEFT JOIN ${tabla} p${n} ON p${n}.cirugia_id = c.id AND p${n}.orden = ${n}
       LEFT JOIN opciones_lista p${n}o ON p${n}o.id = p${n}.procedimiento_id
       LEFT JOIN opciones_lista p${n}t ON p${n}t.id = p${n}.tipo_implante_id`)
@@ -1015,7 +1017,7 @@ const SQL_EXPORTACION = {
       diagnostico.valor AS diagnostico, d.diagnostico_otro, ${listaDiagnosticosAdicionales('diagnosticos_adicionales')} AS diagnosticos_adicionales,
       valvulopatia.valor AS valvulopatia, ${listaConEspecificacion('diagnosticos_riesgos', 'diagnostico_id', 'd.id', 'riesgo_id')} AS riesgos,
       rachs.valor AS rachs,
-      c.fecha_cirugia, c.fecha_procedimiento_2, c.fecha_procedimiento_3, ${PROCEDIMIENTOS_PEDIATRICOS.columnas},
+      c.fecha_cirugia, ${PROCEDIMIENTOS_PEDIATRICOS.columnas},
       c.uso_cec, c.tiempo_cec_min, c.tiempo_clamp_min,
       ${listaConEspecificacion('cirugias_complicaciones_intraqx', 'cirugia_id', 'c.id', 'complicacion_id')} AS complicacion_intraqx,
       c.cierre_esternal_diferido, c.extubacion_quirofano, unidad_pop.valor AS unidad_pop, po.horas_ventilacion_mecanica,

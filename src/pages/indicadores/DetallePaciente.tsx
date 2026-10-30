@@ -44,7 +44,15 @@ export interface Detalle {
   /** Solo en adultos. */
   euroscore?: number | null
   fecha_cirugia: string | null
-  procedimientos: { procedimiento: string; especificacion: string | null; implante: SiNo; tipo_implante: string | null; fecha: string | null }[]
+  procedimientos: {
+    procedimiento: string
+    especificacion: string | null
+    implante: SiNo
+    tipo_implante: string | null
+    /** El número escrito, "No aplica" o null. */
+    numero_implante: string | null
+    fecha: string | null
+  }[]
   uso_cec: SiNo
   tiempo_cec_min: number | null
   tiempo_clamp_min: number | null
@@ -80,9 +88,13 @@ const fecha = (iso: string | null | undefined) => (iso ? formatearFecha(iso) : n
 const conUnidad = (v: number | null, unidad: string) => (v === null ? null : `${v} ${unidad}`)
 const dias = (v: number | null) => (v === null ? null : `${v} ${v === 1 ? 'día' : 'días'}`)
 
-/** El implante de un procedimiento en palabras: "Implante mecánico", "Sin implante", "No aplica". */
+/** El implante de un procedimiento en palabras: "Implante mecánico · N.º 12345", "Sin implante", "No aplica". */
 function textoImplante(p: Detalle['procedimientos'][number]): string | null {
-  if (p.implante === 'SI') return p.tipo_implante ? `Implante ${p.tipo_implante.toLowerCase()}` : 'Con implante (sin tipo registrado)'
+  if (p.implante === 'SI') {
+    if (!p.tipo_implante) return 'Con implante (sin tipo registrado)'
+    const numero = p.numero_implante === 'No aplica' ? ' · número: no aplica' : p.numero_implante ? ` · N.º ${p.numero_implante}` : ''
+    return `Implante ${p.tipo_implante.toLowerCase()}${numero}`
+  }
   if (p.implante === 'NO') return 'Sin implante'
   if (p.implante === 'NA') return 'Implante: no aplica'
   return null
@@ -224,7 +236,9 @@ export function FichaDetalle({ d, adultos }: { d: Detalle; adultos: boolean }) {
         }
       >
         <dl className={claseDatos}>
-          <Dato etiqueta="Control por cirugía cardiovascular">{fecha(d.fecha_control_cirugia)}</Dato>
+          <Dato etiqueta={adultos ? 'Control por cirugía cardiovascular' : 'Control por cirugía cardiovascular / cardiología o pediátrica'}>
+            {fecha(d.fecha_control_cirugia)}
+          </Dato>
           <Dato etiqueta="Rehabilitación cardíaca">{siNo(d.rehabilitacion_cardiaca)}</Dato>
           <Dato etiqueta="Estado de la herida quirúrgica" ancho>{d.estado_herida}</Dato>
           {adultos && <Dato etiqueta="Llamado 15 días">{siNo(d.llamado_15_dias)}</Dato>}

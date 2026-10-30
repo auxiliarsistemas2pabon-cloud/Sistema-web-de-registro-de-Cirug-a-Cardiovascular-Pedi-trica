@@ -7,7 +7,9 @@ import { Validador, diasEntre } from './validar.mjs'
 const BOOLEANOS = {
   pacientes: ['sin_telefono', 'eliminado'],
   seguimientos: ['no_aplica'],
+  cirugias_procedimientos: ['numero_implante_no_aplica'],
   pacientes_adultos: ['eliminado'],
+  cirugias_adultos_procedimientos: ['numero_implante_no_aplica'],
   seguimientos_adultos: ['no_aplica'],
 }
 
@@ -158,7 +160,7 @@ export async function sincronizarSeleccion(conexion, usuario, { tabla, columnaDu
 
 /**
  * Procedimientos que llegan en la petición, en orden (1 a 3). Cada uno trae su especificación y si lleva
- * implante (Sí / No / No aplica) con su tipo. También se acepta la forma anterior, `procedimiento_ids`
+ * implante (Sí / No / No aplica) con su tipo y su número (o "No aplica" al número). También se acepta la forma anterior, `procedimiento_ids`
  * (solo los ids), de quien aún no conoce el implante por procedimiento, como la importación: su
  * `detalle` queda en null y se conserva lo que ya estaba guardado de cada procedimiento.
  */
@@ -177,19 +179,23 @@ export function leerProcedimientos(v, cuerpo) {
       especificacion: p.texto('especificacion'),
       implante: p.opcion('implante', ['SI', 'NO', 'NA']),
       tipo_implante_id: p.id('tipo_implante_id'),
+      numero_implante: p.texto('numero_implante', { max: 100 }),
+      numero_implante_no_aplica: p.booleano('numero_implante_no_aplica'),
     }
     for (const [campo, mensaje] of Object.entries(p.campos)) v.error(`procedimientos.${i}.${campo}`, mensaje)
     return { procedimientoId, detalle }
   })
 }
 
-/** Reglas silenciosas de cada procedimiento: la especificación solo si es un "Otro…" y el tipo de
- * implante solo si lleva implante. */
+/** Reglas silenciosas de cada procedimiento: la especificación solo si es un "Otro…", el tipo de
+ * implante solo si lleva implante y el número solo si tiene tipo (con "No aplica", sin número). */
 export async function normalizarProcedimientos(conexion, procedimientos) {
   for (const { procedimientoId, detalle } of procedimientos) {
     if (!detalle) continue
     detalle.especificacion = await especificacionDe(conexion, procedimientoId, detalle.especificacion)
     if (detalle.implante !== 'SI') detalle.tipo_implante_id = null
+    if (!detalle.tipo_implante_id) detalle.numero_implante_no_aplica = false
+    if (!detalle.tipo_implante_id || detalle.numero_implante_no_aplica) detalle.numero_implante = null
   }
 }
 
@@ -214,7 +220,10 @@ export async function sincronizarProcedimientos(conexion, usuario, tabla, cirugi
 
 /** Procedimientos guardados de una cirugía, en orden, con su especificación e implante. */
 export async function leerProcedimientosGuardados(conexion, tabla, cirugiaId) {
-  return todas(conexion, `SELECT procedimiento_id, especificacion, implante, tipo_implante_id FROM ${tabla} WHERE cirugia_id = ? ORDER BY orden`, [cirugiaId])
+  const filas = await todas(conexion, `
+    SELECT procedimiento_id, especificacion, implante, tipo_implante_id, numero_implante, numero_implante_no_aplica
+    FROM ${tabla} WHERE cirugia_id = ? ORDER BY orden`, [cirugiaId])
+  return filas.map((f) => ({ ...f, numero_implante_no_aplica: Boolean(f.numero_implante_no_aplica) }))
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -424,8 +433,11 @@ export async function obtenerCirugia(conexion, pacienteId) {
   if (!fila) return null
   const procedimientos = await leerProcedimientosGuardados(conexion, 'cirugias_procedimientos', fila.id)
   const complicaciones = await leerSeleccion(conexion, { tabla: 'cirugias_complicaciones_intraqx', columnaDueno: 'cirugia_id', duenoId: fila.id, columnaOpcion: 'complicacion_id' })
+  // La fecha propia de los procedimientos 2 y 3 se quitó de la ficha (pedido del 30-oct): todos los
+  // procedimientos van con la fecha de cirugía. Lo ya registrado sigue en la base, pero no se devuelve.
+  const { fecha_procedimiento_2: _fecha2, fecha_procedimiento_3: _fecha3, ...cirugia } = filaApi('cirugias', fila)
   return {
-    ...filaApi('cirugias', fila),
+    ...cirugia,
     procedimientos,
     procedimiento_ids: procedimientos.map((p) => p.procedimiento_id),
     complicacion_intraqx_ids: complicaciones.ids,
@@ -439,8 +451,6 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
   // numero_implante quedan en desuso (ver migrarImplantePorProcedimiento en schema.mjs).
   const datos = {
     fecha_cirugia: v.fecha('fecha_cirugia'),
-    fecha_procedimiento_2: v.fecha('fecha_procedimiento_2'),
-    fecha_procedimiento_3: v.fecha('fecha_procedimiento_3'),
     uso_cec: v.opcion('uso_cec', ['SI', 'NO']),
     tiempo_cec_min: v.entero('tiempo_cec_min', { min: 0 }),
     tiempo_clamp_min: v.entero('tiempo_clamp_min', { min: 0 }),
@@ -468,26 +478,6 @@ export async function guardarCirugia(conexion, usuario, pacienteId, cuerpo) {
   const paciente = await una(conexion, 'SELECT fecha_nacimiento FROM pacientes WHERE id = ?', [pacienteId])
   if (datos.fecha_cirugia && datos.fecha_cirugia < paciente.fecha_nacimiento) {
     throw reglaNegocio('La fecha de cirugía no puede ser anterior a la fecha de nacimiento del paciente.')
-  }
-
-  // Cada procedimiento agregado es una intervención propia: exige su fecha y no permite que coincida
-  // (ni sea anterior) con la del procedimiento previo. Regla silenciosa: sin ese procedimiento, se
-  // descarta cualquier fecha residual que haya llegado.
-  if (procedimientoIds.length >= 2) {
-    if (!datos.fecha_procedimiento_2) throw reglaNegocio('La fecha del procedimiento quirúrgico 2 es obligatoria.')
-    if (!datos.fecha_cirugia || datos.fecha_procedimiento_2 <= datos.fecha_cirugia) {
-      throw reglaNegocio('La fecha del procedimiento quirúrgico 2 debe ser posterior a la del procedimiento 1: no pueden hacerse el mismo día.')
-    }
-  } else {
-    datos.fecha_procedimiento_2 = null
-  }
-  if (procedimientoIds.length >= 3) {
-    if (!datos.fecha_procedimiento_3) throw reglaNegocio('La fecha del procedimiento quirúrgico 3 es obligatoria.')
-    if (!datos.fecha_procedimiento_2 || datos.fecha_procedimiento_3 <= datos.fecha_procedimiento_2) {
-      throw reglaNegocio('La fecha del procedimiento quirúrgico 3 debe ser posterior a la del procedimiento 2: no pueden hacerse el mismo día.')
-    }
-  } else {
-    datos.fecha_procedimiento_3 = null
   }
 
   const existente = await una(conexion, 'SELECT id FROM cirugias WHERE paciente_id = ?', [pacienteId])
