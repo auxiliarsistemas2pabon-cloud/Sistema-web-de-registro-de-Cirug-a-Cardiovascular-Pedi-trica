@@ -541,6 +541,7 @@ function columnasProcedimientos(conFechaPropia: boolean): ColumnaExportacion[] {
 export const ENCABEZADOS_EXPORTACION: readonly ColumnaExportacion[] = [
   ['numero_paciente', 'N° paciente', 1], ['nombre_completo', 'Nombre completo', 1], ['identificacion', 'Identificación', 1],
   ['sexo', 'Sexo', 1], ['sexo_otro', 'Sexo (especifique)', 1], ['fecha_nacimiento', 'Fecha de nacimiento', 1],
+  ['edad_cirugia', 'Edad en la cirugía', 1],
   ['peso_kg', 'Peso (kg)', 1], ['talla_cm', 'Talla (cm)', 1], ['superficie_corporal', 'Superficie corporal (m²)', 1],
   ['procedencia', 'Procedencia', 1], ['procedencia_otro', 'Procedencia (especifique)', 1], ['municipio_narino', 'Municipio de Nariño', 1],
   ['telefonos', 'Teléfonos', 1], ['sin_telefono', 'Sin teléfono', 1], ['eps', 'EPS', 1], ['eps_otro', 'EPS (especifique)', 1],
@@ -570,7 +571,8 @@ export const ENCABEZADOS_EXPORTACION: readonly ColumnaExportacion[] = [
 export const ENCABEZADOS_EXPORTACION_ADULTOS: readonly ColumnaExportacion[] = [
   ['numero_paciente', 'N° paciente', 1], ['numero_episodio', 'N° intervención', 1], ['nombre_completo', 'Nombre completo', 1],
   ['identificacion', 'Identificación', 1], ['sexo', 'Sexo', 1], ['sexo_otro', 'Sexo (especifique)', 1],
-  ['fecha_nacimiento', 'Fecha de nacimiento', 1], ['peso_kg', 'Peso (kg)', 1], ['talla_cm', 'Talla (cm)', 1],
+  ['fecha_nacimiento', 'Fecha de nacimiento', 1], ['edad_cirugia', 'Edad en la cirugía', 1], ['peso_kg', 'Peso (kg)', 1],
+  ['talla_cm', 'Talla (cm)', 1],
   ['superficie_corporal', 'Superficie corporal (m²)', 1], ['procedencia', 'Procedencia', 1], ['procedencia_otro', 'Procedencia (especifique)', 1],
   ['municipio_narino', 'Municipio de Nariño', 1], ['telefono', 'Teléfono', 1], ['eps', 'EPS', 1], ['eps_otro', 'EPS (especifique)', 1],
   ['diagnostico', 'Diagnóstico', 2], ['diagnostico_otro', 'Diagnóstico (especifique)', 2],

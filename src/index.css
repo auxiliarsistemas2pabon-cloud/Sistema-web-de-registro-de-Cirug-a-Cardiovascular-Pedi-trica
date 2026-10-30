@@ -68,6 +68,10 @@
   /* Columnas de los histogramas: el sky-400 de la rampa institucional, porque son bloques anchos y
      en el azul oscuro pesaban demasiado (3.18:1 sobre blanco, y cada columna lleva su valor escrito). */
   --chart-histograma: #4594e3;
+  /* Mapa de calor (edad por procedimiento): rampa secuencial de un tono, pasos 100 → 400 del azul de la
+     skill de dataviz. Se queda en el 400 para que el número escrito en negro se lea en todas las celdas. */
+  --chart-calor-bajo: #cde2fb;
+  --chart-calor-alto: #3987e5;
   /* Colores categóricos (identidad: sexo en la dona), en este orden fijo. Validados con el script
      de la skill de dataviz sobre blanco: todos los pares distinguibles con daltonismo (ΔE ≥ 19.4)
      y con visión normal (ΔE ≥ 24.3). El 3 queda bajo 3:1, así que su valor siempre va escrito. */
@@ -124,6 +128,8 @@
   --status-good: #0ca30c;
   --status-critical: #e66767;
   --chart-histograma: #3987e5;
+  --chart-calor-bajo: #104281;
+  --chart-calor-alto: #5598e7;
   /* En oscuro el azul claro institucional se confunde con el azul (ΔE 10.3): el 3 pasa a aguamarina. */
   --chart-cat-1: #3987e5;
   --chart-cat-2: #d95926;

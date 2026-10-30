@@ -5,16 +5,32 @@ export function formatearFecha(iso: string | null | undefined): string {
   return `${dia}/${mes}/${anio}`
 }
 
-/** Convierte días en un texto de edad legible: en días, meses o años según corresponda. */
-export function formatearEdad(dias: number | null | undefined): string {
-  if (dias === null || dias === undefined) return ''
-  if (dias < 30) return `${dias} ${dias === 1 ? 'día' : 'días'}`
-  if (dias < 365) {
-    const meses = Math.floor(dias / 30)
-    return `${meses} ${meses === 1 ? 'mes' : 'meses'}`
+/** Meses cumplidos entre dos fechas ISO, por calendario (no a 30 días por mes): el 15/03 cumple un mes
+ * más el 15 de cada mes. null si falta una fecha o la segunda es anterior. */
+export function mesesCumplidos(nacimiento: string | null | undefined, hasta: string | null | undefined): number | null {
+  if (!nacimiento || !hasta || hasta < nacimiento) return null
+  const [an, mn, dn] = nacimiento.split('-').map(Number)
+  const [ah, mh, dh] = hasta.split('-').map(Number)
+  return (ah - an) * 12 + (mh - mn) - (dh < dn ? 1 : 0)
+}
+
+/**
+ * La edad cumplida en `hasta` (hoy, si no se indica) calculada con la fecha de nacimiento (pedido del
+ * jefe del servicio): menores de 1 año en meses y desde 1 año en años. Antes del primer mes se agregan
+ * los días, "0 meses (12 días)", para no perder el dato en los neonatos. La misma regla está en
+ * textoEdad (server/validar.mjs), que la usa en el Excel.
+ */
+export function formatearEdad(nacimiento: string | null | undefined, hasta: string | null | undefined = hoyIso()): string {
+  const meses = mesesCumplidos(nacimiento, hasta)
+  if (meses === null) return ''
+  if (meses >= 12) {
+    const anios = Math.floor(meses / 12)
+    return `${anios} ${anios === 1 ? 'año' : 'años'}`
   }
-  const anios = Math.floor(dias / 365)
-  return `${anios} ${anios === 1 ? 'año' : 'años'}`
+  const textoMeses = `${meses} ${meses === 1 ? 'mes' : 'meses'}`
+  if (meses > 0) return textoMeses
+  const dias = diasEntre(nacimiento!, hasta!)
+  return `${textoMeses} (${dias} ${dias === 1 ? 'día' : 'días'})`
 }
 
 /** Días entre dos fechas ISO (yyyy-mm-dd), sin que el horario de verano o la hora del día los mueva. */

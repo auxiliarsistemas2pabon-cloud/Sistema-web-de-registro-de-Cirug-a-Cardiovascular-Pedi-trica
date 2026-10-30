@@ -3,7 +3,7 @@ import { Router } from 'express'
 import { hoyBogota, pool, todas, una } from './db.mjs'
 import { asincrono, noEncontrado, validacion } from './errores.mjs'
 import { sqlDiasHospitalizacion, sqlDiasUci } from './servicios.mjs'
-import { esFechaIso } from './validar.mjs'
+import { esFechaIso, textoEdad } from './validar.mjs'
 
 export const rutasAlertas = Router()
 export const rutasIndicadores = Router()
@@ -374,6 +374,27 @@ function conteoMultiple(filas, campo) {
     .map(([categoria, total_cirugias]) => ({ categoria, total_cirugias }))
 }
 
+/**
+ * Edad por tipo de procedimiento (pedido del jefe del servicio, adultos): cuántas cirugías de cada
+ * procedimiento hubo en cada grupo de edad. Los grupos van todos, en su orden (más "Sin dato" si hay),
+ * para que las columnas no cambien con el periodo; los procedimientos, del más frecuente al menos.
+ */
+function edadPorProcedimiento(filas, ordenEdad) {
+  const porProcedimiento = new Map()
+  for (const f of filas) {
+    for (const procedimiento of f.multiples.procedimiento) {
+      if (!porProcedimiento.has(procedimiento)) porProcedimiento.set(procedimiento, {})
+      const porEdad = porProcedimiento.get(procedimiento)
+      porEdad[f.etiquetas.edad] = (porEdad[f.etiquetas.edad] ?? 0) + 1
+    }
+  }
+  const filasProcedimiento = [...porProcedimiento.entries()]
+    .map(([procedimiento, por_edad]) => ({ procedimiento, total: Object.values(por_edad).reduce((a, b) => a + b, 0), por_edad }))
+    .sort((a, b) => b.total - a.total || a.procedimiento.localeCompare(b.procedimiento, 'es'))
+  const conSinDato = filasProcedimiento.some((p) => p.por_edad['Sin dato'])
+  return { edades: conSinDato ? [...ordenEdad, 'Sin dato'] : [...ordenEdad], filas: filasProcedimiento }
+}
+
 /** Las opciones que significan "ninguno" en las listas de selección múltiple: no son un factor de
  * riesgo ni una complicación, así que no tienen barra (el paciente queda sin ninguna). */
 const CODIGOS_NINGUNO = new Set(['NINGUNO', 'NINGUNA', 'NO'])
@@ -536,6 +557,8 @@ function calcularIndicadores({ filas, filtros, rangos, ordenEdad, formatearRiesg
     por_factor_riesgo: multiple('factor_riesgo'),
     por_procedimiento: conteoMultiple(filtradas('procedimiento'), 'procedimiento')
       .map(({ categoria, total_cirugias }) => ({ procedimiento: categoria, total_cirugias })),
+    // Cruza dos campos, así que ignora el filtro de los dos (como cada gráfico ignora el suyo).
+    por_edad_procedimiento: edadPorProcedimiento(filtradas('procedimiento', 'edad'), ordenEdad),
     por_implante: multiple('implante'),
     por_uso_cec: conteoEnOrden(filtradas('uso_cec'), 'uso_cec', ORDEN_SI_NO),
     por_tiempo_cec: distribucion(columna(tiempoCec, 'tiempo_cec_min'), RANGOS_CEC),
@@ -1072,6 +1095,8 @@ async function filasExportacion(grupo, cirugiaIds) {
     return filas.map((f) => ({
       ...f,
       superficie_corporal: f.peso_kg ? redondear(superficieCorporal(f.peso_kg), 2) : null,
+      // La edad cumplida el día de la cirugía (sin cirugía, vacía): la misma regla que la ficha.
+      edad_cirugia: textoEdad(f.fecha_nacimiento, f.fecha_cirugia),
       ...(grupo === 'pediatricos' && {
         telefonos: Array.isArray(f.telefonos) ? f.telefonos.join(' | ') : '',
         sin_telefono: Boolean(f.sin_telefono),
