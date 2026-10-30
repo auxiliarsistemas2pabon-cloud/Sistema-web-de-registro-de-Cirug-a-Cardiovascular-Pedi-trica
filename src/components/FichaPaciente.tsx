@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { ETIQUETAS_ESTADO_MODULO, NOMBRES_MODULOS } from '../lib/modulos'
 import type { EstadoModulo } from '../types/db'
@@ -102,8 +102,12 @@ function ChipEstado({ estado }: { estado: EstadoModulo }) {
  * formulario del módulo a la derecha ocupando el resto del ancho (antes el formulario usaba solo
  * dos tercios de una tarjeta a todo lo ancho y dejaba un hueco vacío a la derecha). Por debajo de
  * xl la columna lateral dejaría el formulario demasiado angosto, así que la tarjeta del paciente va
- * arriba con los módulos en fila: repartidos a lo ancho en lg y deslizables en móvil y tableta.
+ * arriba con los módulos en fila, repartidos a lo ancho. En celular y tableta los cinco caben siempre
+ * (antes se deslizaban y los últimos quedaban cortados): el círculo con su estado y un nombre corto.
  */
+/** Nombres de los módulos para la fila de pasos del celular, donde los cinco tienen que caber. */
+const NOMBRES_CORTOS = ['Paciente', 'Diagnóstico', 'Cirugía', 'Postop.', 'Seguimiento']
+
 export function FichaPaciente({
   rutaListado,
   etiquetaListado,
@@ -119,18 +123,6 @@ export function FichaPaciente({
   contexto,
   children,
 }: Props) {
-  const refPasos = useRef<HTMLOListElement>(null)
-
-  // En móvil los pasos se deslizan en horizontal: al cambiar de módulo, el paso activo se centra
-  // para que no quede escondido fuera del borde. En escritorio (lista vertical) no hay desborde.
-  useEffect(() => {
-    const lista = refPasos.current
-    const activo = lista?.querySelector<HTMLElement>('[aria-current="step"]')
-    if (!lista || !activo || lista.scrollWidth <= lista.clientWidth) return
-    const desplazamiento = activo.getBoundingClientRect().left - lista.getBoundingClientRect().left
-    lista.scrollBy({ left: desplazamiento - (lista.clientWidth - activo.offsetWidth) / 2, behavior: 'smooth' })
-  }, [pestanaActiva])
-
   const estadoActivo = estados[pestanaActiva]
 
   return (
@@ -172,17 +164,14 @@ export function FichaPaciente({
             {intervenciones && <div className="border-t border-slate-100 px-5 py-4">{intervenciones}</div>}
 
             <nav aria-label="Módulos de la ficha" className="border-t border-slate-100 bg-slate-50/70">
-              <ol
-                ref={refPasos}
-                className="flex gap-1 overflow-x-auto p-2 [scrollbar-width:none] lg:overflow-visible xl:flex-col [&::-webkit-scrollbar]:hidden"
-              >
+              <ol className="grid grid-cols-5 gap-1 p-2 lg:flex xl:flex-col">
                 {MODULOS.map((numero) => {
                   const estado = estados[numero]
                   const bloqueado = esNuevo && numero !== 1
                   const activo = pestanaActiva === numero
                   const textoEstado = bloqueado ? 'Requiere el Módulo 1' : estado ? ETIQUETAS_ESTADO_MODULO[estado] : esNuevo ? 'Sin guardar' : ''
                   return (
-                    <li key={numero} className="relative flex-none lg:min-w-0 lg:flex-1 xl:flex-none">
+                    <li key={numero} className="relative min-w-0 lg:flex-1 xl:flex-none">
                       {/* Conector vertical entre pasos (solo con la columna lateral): baja desde el círculo
                           de este paso hasta el del siguiente. */}
                       {numero < 5 && <span aria-hidden className="absolute left-[25.5px] top-[2.875rem] -bottom-[0.6875rem] hidden w-px bg-slate-200 xl:block" />}
@@ -192,14 +181,17 @@ export function FichaPaciente({
                         onClick={() => onCambiarPestana(numero)}
                         aria-current={activo ? 'step' : undefined}
                         title={bloqueado ? 'Guarda primero el Módulo 1' : undefined}
-                        className={`flex h-full w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left outline-none transition-colors focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40 ${
+                        className={`flex h-full w-full flex-col items-center gap-1 rounded-lg px-0.5 py-2 text-center outline-none transition-colors focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40 lg:flex-row lg:gap-3 lg:px-2.5 lg:text-left ${
                           activo ? 'bg-white shadow-sm ring-1 ring-slate-200' : 'hover:bg-white/70'
                         } ${bloqueado ? 'cursor-not-allowed opacity-45' : ''}`}
                       >
                         <CirculoPaso numero={numero} estado={estado} activo={activo} />
-                        <span className="min-w-0">
+                        <span className="min-w-0 max-w-full">
+                          <span className={`block truncate text-[10.5px] leading-tight tracking-tight lg:hidden ${activo ? 'font-semibold' : 'font-medium'} text-slate-900`}>
+                            {NOMBRES_CORTOS[numero - 1]}
+                          </span>
                           <span
-                            className={`block whitespace-nowrap text-sm lg:whitespace-normal lg:leading-snug xl:whitespace-nowrap xl:leading-5 ${activo ? 'font-semibold' : 'font-medium'} text-slate-900`}
+                            className={`hidden text-sm lg:block lg:leading-snug xl:whitespace-nowrap xl:leading-5 ${activo ? 'font-semibold' : 'font-medium'} text-slate-900`}
                           >
                             {NOMBRES_MODULOS[numero - 1]}
                           </span>

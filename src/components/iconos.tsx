@@ -209,6 +209,8 @@ export const IconoMas = (p: Props) => base(<path d="M12 5v14M5 12h14" strokeLine
 
 export const IconoCerrar = (p: Props) => base(<path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />, p)
 
+export const IconoMenu = (p: Props) => base(<path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />, p)
+
 export const IconoChevronAbajo = (p: Props) =>
   base(<path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />, p)
 

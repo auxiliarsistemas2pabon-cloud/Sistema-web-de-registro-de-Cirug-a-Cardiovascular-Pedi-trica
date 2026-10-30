@@ -182,7 +182,9 @@ export function ImportacionExportacionPage() {
         subtitulo="Descarga los pacientes activos y todos sus módulos en Excel o CSV, pediátricos y/o adultos."
       />
 
-      <div className="max-w-3xl space-y-6">
+      {/* En pantalla ancha, al lado va qué trae el archivo: antes la tarjeta dejaba un tercio vacío. */}
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <div className="space-y-6">
         <Tarjeta titulo="Exportar registros" icono={<IconoBajar />}>
           <p className="text-sm text-slate-500">
             Incluye pacientes activos y todos sus módulos: una hoja plana con todo y una hoja adicional por cada módulo (1 a 5).
@@ -237,6 +239,28 @@ export function ImportacionExportacionPage() {
         {mensaje && <MensajeExito>{mensaje}</MensajeExito>}
         {error && <MensajeError>{error}</MensajeError>}
       </div>
+
+      <Tarjeta titulo="Qué trae el archivo" icono={<IconoDocumento />}>
+        <ul className="space-y-3 text-sm text-slate-700">
+          {CONTENIDO_ARCHIVO.map(([titulo, texto]) => (
+            <li key={titulo} className="flex gap-3">
+              <span aria-hidden className="mt-1.5 h-1.5 w-1.5 flex-none rounded-full bg-[var(--pabon-azul-oscuro)]" />
+              <span>
+                <span className="font-medium text-slate-900">{titulo}.</span> {texto}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </Tarjeta>
+      </div>
     </div>
   )
 }
+
+/** Lo que conviene saber del archivo antes de abrirlo (pedidos del 29 y 30-oct). */
+const CONTENIDO_ARCHIVO: [titulo: string, texto: string][] = [
+  ['Hojas', 'En Excel, una hoja "Datos" con todas las columnas y una por cada módulo (1 a 5). El CSV es una sola tabla.'],
+  ['Una fila por cirugía', 'Un paciente que reingresó y se operó otra vez aparece en otra fila, como paciente aparte.'],
+  ['N° de paciente', 'Va seguido desde 1 en el archivo. Para ubicar a alguien en la aplicación, use la columna Identificación.'],
+  ['Solo pacientes activos', 'Los pacientes eliminados no se exportan.'],
+]
