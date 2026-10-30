@@ -9,6 +9,7 @@ import {
   IconoChevronAbajo,
   IconoEngranaje,
   IconoGrafico,
+  IconoInicio,
   IconoMenu,
   IconoPacientes,
   IconoSalir,
@@ -31,6 +32,7 @@ interface Enlace {
 }
 
 const enlaces: Enlace[] = [
+  { to: '/inicio', etiqueta: 'Inicio', icono: IconoInicio },
   { to: '/pacientes', etiqueta: 'Pediátricos', icono: IconoPacientes },
   { to: '/adultos', etiqueta: 'Adultos', icono: IconoAdultos },
   { to: '/alertas', etiqueta: 'Alertas de seguimiento', icono: IconoCampana },
@@ -119,7 +121,7 @@ export function AppShell() {
               en la pantalla de inicio de sesión). En el celular van solo los logos: con el título al
               lado no cabía nada completo y ambos textos quedaban recortados. */}
           <NavLink
-            to="/pacientes"
+            to="/inicio"
             className="flex min-w-0 items-center gap-3 rounded-lg outline-none focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40 sm:gap-3.5"
           >
             <img src="/branding/clinica-pabon-logo.png" alt="Clínica Pabón" className="h-9 w-auto flex-none sm:h-10" />

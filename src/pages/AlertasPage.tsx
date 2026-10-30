@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { formatearFecha } from '../lib/fechas'
-import { useAlertas, type Alerta } from '../hooks/useAlertas'
+import { textoEstado, useAlertas, type Alerta } from '../hooks/useAlertas'
 import { Cargando, MensajeError } from '../components/Estados'
 import { Badge } from '../components/ui/badge'
 import { EncabezadoPagina } from '../components/EncabezadoPagina'
@@ -12,16 +12,6 @@ import { useGrupoActivo } from '../lib/grupoActivo'
 function iniciales(nombreCompleto: string) {
   const partes = nombreCompleto.trim().split(/\s+/)
   return ((partes[0]?.[0] ?? '') + (partes[1]?.[0] ?? '')).toUpperCase()
-}
-
-/** "Vencida hace 1 día" / "Falta 1 día" / "Faltan 3 días" / "Vence hoy": con la pluralización correcta. */
-function textoEstado(diasDesdeReferencia: number): string {
-  if (diasDesdeReferencia > 0) {
-    return `Vencida hace ${diasDesdeReferencia} ${diasDesdeReferencia === 1 ? 'día' : 'días'}`
-  }
-  const restantes = Math.abs(diasDesdeReferencia)
-  if (restantes === 0) return 'Vence hoy'
-  return `${restantes === 1 ? 'Falta' : 'Faltan'} ${restantes} ${restantes === 1 ? 'día' : 'días'}`
 }
 
 function IconoTelefono() {

@@ -19,6 +19,7 @@ import {
 } from '../components/iconos'
 import { useOpciones } from '../hooks/useOpciones'
 import { api, consulta } from '../lib/api'
+import { ACTUALIZACION_PERIODICA } from '../lib/clienteConsultas'
 import { formatearEdad, formatearFecha } from '../lib/fechas'
 import { fichaCompleta } from '../lib/modulos'
 import { cn } from '../lib/utils'
@@ -48,6 +49,7 @@ const TAMANO_PAGINA = 25
 
 function usePacientesAdultos(filtros: Filtros) {
   return useQuery({
+    ...ACTUALIZACION_PERIODICA,
     queryKey: ['pacientes-adultos', filtros],
     queryFn: () =>
       api.get<PacienteAdultoResumen[]>(

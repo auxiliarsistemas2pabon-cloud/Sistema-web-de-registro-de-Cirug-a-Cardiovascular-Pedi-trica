@@ -1,5 +1,6 @@
 // Cliente HTTP de la API propia (Express + MySQL). El token vive en sessionStorage: se pierde al cerrar
 // la pestaña y nunca se comparte entre pestañas ni se persiste en disco.
+import { refrescarTodo } from './clienteConsultas'
 
 const CLAVE_TOKEN = 'cardio_token'
 
@@ -57,6 +58,9 @@ async function peticion<T>(metodo: string, ruta: string, cuerpo?: unknown): Prom
     }
     throw new ErrorApi(respuesta.status, error)
   }
+  // Todo guardado (lo que no es una consulta) deja desactualizado lo que se ve en otras partes:
+  // un paciente nuevo cambia las listas, el inicio, las alertas y los indicadores.
+  if (metodo !== 'GET' && !ruta.startsWith('/auth')) refrescarTodo()
   return datos as T
 }
 

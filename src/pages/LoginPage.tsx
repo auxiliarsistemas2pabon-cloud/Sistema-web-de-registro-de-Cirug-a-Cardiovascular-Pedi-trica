@@ -30,7 +30,7 @@ export function LoginPage() {
   }
 
   if (!cargando && perfil) {
-    return <Navigate to="/pacientes" replace />
+    return <Navigate to="/inicio" replace />
   }
 
   async function handleSubmit(e: FormEvent) {

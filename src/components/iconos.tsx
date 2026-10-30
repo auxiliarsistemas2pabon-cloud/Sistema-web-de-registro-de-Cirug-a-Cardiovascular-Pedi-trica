@@ -209,6 +209,14 @@ export const IconoMas = (p: Props) => base(<path d="M12 5v14M5 12h14" strokeLine
 
 export const IconoCerrar = (p: Props) => base(<path d="M6 6l12 12M18 6 6 18" strokeLinecap="round" />, p)
 
+export const IconoInicio = (p: Props) =>
+  base(
+    <>
+      <path d="M4 10.5 12 4l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1v-8.5Z" strokeLinejoin="round" />
+    </>,
+    p,
+  )
+
 export const IconoMenu = (p: Props) => base(<path d="M4 7h16M4 12h16M4 17h16" strokeLinecap="round" />, p)
 
 export const IconoChevronAbajo = (p: Props) =>

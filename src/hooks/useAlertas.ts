@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../lib/api'
+import { ACTUALIZACION_PERIODICA } from '../lib/clienteConsultas'
 import type { GrupoActivo } from '../lib/grupoActivo'
 
 export interface Alerta {
@@ -22,7 +23,18 @@ export interface Alerta {
     calculada en el servidor — mismo criterio, dato distinto. */
 export function useAlertas(grupo: GrupoActivo) {
   return useQuery({
+    ...ACTUALIZACION_PERIODICA,
     queryKey: ['alertas', grupo],
     queryFn: () => api.get<Alerta[]>(grupo === 'adultos' ? '/alertas/adultos' : '/alertas'),
   })
+}
+
+/** "Vencida hace 1 día" / "Falta 1 día" / "Faltan 3 días" / "Vence hoy": con la pluralización correcta. */
+export function textoEstado(diasDesdeReferencia: number): string {
+  if (diasDesdeReferencia > 0) {
+    return `Vencida hace ${diasDesdeReferencia} ${diasDesdeReferencia === 1 ? 'día' : 'días'}`
+  }
+  const restantes = Math.abs(diasDesdeReferencia)
+  if (restantes === 0) return 'Vence hoy'
+  return `${restantes === 1 ? 'Falta' : 'Faltan'} ${restantes} ${restantes === 1 ? 'día' : 'días'}`
 }

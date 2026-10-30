@@ -5,6 +5,7 @@ import { AppShell } from './layout/AppShell'
 import { AdministracionPage } from './pages/AdministracionPage'
 import { AlertasPage } from './pages/AlertasPage'
 import { IndicadoresPage } from './pages/IndicadoresPage'
+import { InicioPage } from './pages/InicioPage'
 import { LoginPage } from './pages/LoginPage'
 import { PacienteAdultoFichaPage } from './pages/PacienteAdultoFichaPage'
 import { PacienteFichaPage } from './pages/PacienteFichaPage'
@@ -24,7 +25,8 @@ function App() {
 
         <Route element={<ProtectedRoute />}>
           <Route element={<AppShell />}>
-            <Route path="/" element={<Navigate to="/pacientes" replace />} />
+            <Route path="/" element={<Navigate to="/inicio" replace />} />
+            <Route path="/inicio" element={<InicioPage />} />
             <Route path="/pacientes" element={<PacientesListaPage />} />
             <Route path="/pacientes/nuevo" element={<PacienteFichaPage />} />
             <Route path="/pacientes/:id" element={<PacienteFichaPage />} />
@@ -46,7 +48,7 @@ function App() {
           </Route>
         </Route>
 
-        <Route path="*" element={<Navigate to="/pacientes" replace />} />
+        <Route path="*" element={<Navigate to="/inicio" replace />} />
       </Routes>
     </BrowserRouter>
   )
