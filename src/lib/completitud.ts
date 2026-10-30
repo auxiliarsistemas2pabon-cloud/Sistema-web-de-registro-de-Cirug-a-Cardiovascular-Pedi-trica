@@ -14,9 +14,19 @@ function resultado(faltantes: string[], sinEspecificar: string[] = []): Resultad
   return { estado: todos.length === 0 ? 'completo' : 'pendiente', faltantes: todos }
 }
 
-/** Con "¿lleva implante?" en Sí, el tipo de implante de ese procedimiento es obligatorio. */
-function implantesSinTipo(procedimientos: { implante: string; tipoImplanteId: string }[]): string[] {
-  return procedimientos.flatMap((p, i) => (p.implante === 'SI' && !p.tipoImplanteId ? [`Tipo de implante (procedimiento ${i + 1})`] : []))
+/** El implante de un procedimiento. El número (o "No aplica") solo lo trae la ficha: la importación no
+ * lo conoce y no lo exige. */
+type ImplanteProcedimiento = { implante: string; tipoImplanteId: string; numeroImplante?: string; numeroImplanteNoAplica?: boolean }
+
+/** Con "¿lleva implante?" en Sí, el tipo de implante de ese procedimiento es obligatorio; con el tipo
+ * elegido, su número o marcar "No aplica". */
+function implantesSinTipo(procedimientos: ImplanteProcedimiento[]): string[] {
+  return procedimientos.flatMap((p, i) => {
+    if (p.implante !== 'SI') return []
+    if (!p.tipoImplanteId) return [`Tipo de implante (procedimiento ${i + 1})`]
+    const sinNumero = p.numeroImplante !== undefined && !p.numeroImplante.trim() && !p.numeroImplanteNoAplica
+    return sinNumero ? [`Número de implante (procedimiento ${i + 1})`] : []
+  })
 }
 
 /** Módulo 1: nombre, identificación y fecha de nacimiento son siempre obligatorios (ya
@@ -72,8 +82,8 @@ export function calcularEstadoModulo3(v: {
   sinEspecificar?: string[]
   fechaCirugia: string
   procedimiento1Id: string
-  /** Cada procedimiento con "¿lleva implante?" y su tipo (obligatorio si lleva). */
-  procedimientos: { implante: string; tipoImplanteId: string }[]
+  /** Cada procedimiento con "¿lleva implante?", su tipo (obligatorio si lleva) y su número. */
+  procedimientos: ImplanteProcedimiento[]
   usoCec: 'SI' | 'NO' | ''
   tiempoCecMin: string
 }): ResultadoCompletitud {
@@ -118,7 +128,7 @@ export function calcularEstadoModulo5(v: {
   causaReingresoId: string
 }): ResultadoCompletitud {
   const faltantes: string[] = []
-  if (!v.fechaControl) faltantes.push('Fecha de control por cirugía cardiovascular')
+  if (!v.fechaControl) faltantes.push('Fecha de control por cirugía cardiovascular / cardiología o pediátrica')
   if (!v.rehabilitacionCardiaca) faltantes.push('Terapia de rehabilitación cardíaca')
   if (!v.estadoHeridaId) faltantes.push('Estado de la herida quirúrgica')
   if (!v.fechaLlamada15Dias) faltantes.push('Fecha de la llamada')
@@ -184,7 +194,7 @@ export function calcularEstadoModulo3Adulto(v: {
   sinEspecificar?: string[]
   fechaCirugia: string
   procedimiento1Id: string
-  procedimientos: { implante: string; tipoImplanteId: string }[]
+  procedimientos: ImplanteProcedimiento[]
   usoCec: 'SI' | 'NO' | ''
   tiempoCecMin: string
 }): ResultadoCompletitud {

@@ -16,6 +16,7 @@ import { edadMinimaIso, formatearEdad, hoyIso } from '../../lib/fechas'
 import { formatearNumero, superficieCorporal } from '../../lib/estadisticas'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteAdultoDetalle } from '../../types/db'
+import { AvisoMismaIdentificacion } from '../../components/AvisoMismaIdentificacion'
 
 const esquema = z
   .object({
@@ -105,6 +106,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
   const procedenciaId = watch('procedencia_id')
   const pesoKg = watch('peso_kg')
   const fechaNacimiento = watch('fecha_nacimiento')
+  const identificacion = watch('identificacion')
   const asc = superficieCorporal(pesoKg ? Number(pesoKg) : null)
 
   const narinioId = opcionesProcedencia?.find((o) => o.codigo === 'NARINO')?.id
@@ -189,9 +191,12 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
                 <input {...register('nombre_completo')} className={claseInput} />
               </Campo>
 
-              <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
-                <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
-              </Campo>
+              <div>
+                <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
+                  <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
+                </Campo>
+                <AvisoMismaIdentificacion ruta="/pacientes-adultos" identificacion={identificacion ?? ''} pacienteId={paciente?.id} />
+              </div>
 
               <CampoOpciones etiqueta="Sexo" categoria="SEXO" control={control} name="sexo_id" nameOtro="sexo_otro" />
 

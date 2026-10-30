@@ -47,8 +47,6 @@ const ALIAS: Record<string, string[]> = {
     'procedimientos quirurgicos', 'procedimientos quirúrgicos', 'procedimiento quirurgico', 'procedimiento quirúrgico',
     'procedimientos', 'procedimiento quirurgico realizado', 'procedimientos quirurgicos realizados',
   ],
-  fecha_procedimiento_2: ['fecha procedimiento 2', 'fecha del procedimiento 2', 'fecha procedimiento quirurgico 2'],
-  fecha_procedimiento_3: ['fecha procedimiento 3', 'fecha del procedimiento 3', 'fecha procedimiento quirurgico 3'],
   implante: ['tipo de implante', 'implante'],
   numero_implante: ['numero de implante', 'número de implante', 'numero implante', 'número implante'],
   uso_cec: ['uso de cec', 'cec', 'circulacion extracorporea', 'circulación extracorpórea', 'uso de circulacion extracorporea', 'uso de circulacion extracororea'],
@@ -66,6 +64,7 @@ const ALIAS: Record<string, string[]> = {
   fecha_control_cirugia: [
     'fecha de control por cirugia cardiovascular', 'fecha de control por cirugía cardiovascular',
     'fecha control cirugia', 'fecha control cirugía', 'fecha control por cirugia cardiovascular',
+    'fecha de control por cirugía cardiovascular / cardiología o pediátrica',
   ],
   rehabilitacion_cardiaca: ['terapia de rehabilitacion cardiaca', 'terapia de rehabilitación cardíaca', 'rehabilitacion cardiaca', 'rehabilitación cardíaca'],
   estado_herida: ['estado de la herida quirurgica', 'estado de la herida quirúrgica', 'estado herida', 'estado de herida quirugica', 'estado de herida quirurgica'],
@@ -367,8 +366,6 @@ export function normalizarFilaImportacion(
   if (tiempoCec !== null && tiempoClamp !== null && tiempoClamp > tiempoCec) errores.push('Tiempo de clamp no puede ser mayor que el tiempo de CEC.')
   const procedimientoIds = listaIds(opciones, 'PROCEDIMIENTOS', valorListaDe(datosOriginales, 'procedimientos'), 'Procedimientos', errores)
   if (procedimientoIds.length > 3) errores.push('Solo se permiten hasta tres procedimientos quirúrgicos.')
-  const fechaProcedimiento2 = fechaIso(valorDe(datosOriginales, 'fecha_procedimiento_2'), 'Fecha del procedimiento 2', errores)
-  const fechaProcedimiento3 = fechaIso(valorDe(datosOriginales, 'fecha_procedimiento_3'), 'Fecha del procedimiento 3', errores)
   const cirugia = moduloTieneDatos([
     fechaCirugia, procedimientoIds, usoCec, tiempoCec, tiempoClamp, valorDe(datosOriginales, 'implante'),
     valorDe(datosOriginales, 'complicacion_intraqx'), valorDe(datosOriginales, 'cierre_esternal_diferido'),
@@ -381,8 +378,6 @@ export function normalizarFilaImportacion(
           implante: implanteEsNA ? 'NA' : implanteId && i === 0 ? 'SI' : null,
           tipo_implante_id: implanteId && i === 0 ? implanteId : null,
         })),
-        fecha_procedimiento_2: procedimientoIds.length >= 2 ? fechaProcedimiento2 : null,
-        fecha_procedimiento_3: procedimientoIds.length >= 3 ? fechaProcedimiento3 : null,
         uso_cec: usoCec === 'NA' ? null : usoCec,
         tiempo_cec_min: usoCec === 'SI' ? tiempoCec : null,
         tiempo_clamp_min: usoCec === 'SI' ? tiempoClamp : null,
@@ -397,16 +392,6 @@ export function normalizarFilaImportacion(
   if (cirugia) {
     if (!fechaCirugia) errores.push('Fecha de cirugía es obligatoria cuando hay datos intraoperatorios.')
     if (procedimientoIds.length === 0) errores.push('Procedimiento quirúrgico 1 es obligatorio cuando hay datos intraoperatorios.')
-    // Cada procedimiento adicional debe tener su propia fecha, posterior a la del anterior: no
-    // todos se pueden hacer el mismo día (regla de negocio, ver server/servicios.mjs).
-    if (procedimientoIds.length >= 2) {
-      if (!fechaProcedimiento2) errores.push('Fecha del procedimiento quirúrgico 2 es obligatoria cuando hay un segundo procedimiento.')
-      else if (fechaCirugia && fechaProcedimiento2 <= fechaCirugia) errores.push('La fecha del procedimiento 2 debe ser posterior a la del procedimiento 1.')
-    }
-    if (procedimientoIds.length >= 3) {
-      if (!fechaProcedimiento3) errores.push('Fecha del procedimiento quirúrgico 3 es obligatoria cuando hay un tercer procedimiento.')
-      else if (fechaProcedimiento2 && fechaProcedimiento3 <= fechaProcedimiento2) errores.push('La fecha del procedimiento 3 debe ser posterior a la del procedimiento 2.')
-    }
     cirugia.estado_modulo = calcularEstadoModulo3({
       fechaCirugia: fechaCirugia ?? '',
       procedimiento1Id: procedimientoIds[0] ?? '',
@@ -526,15 +511,15 @@ export function marcarIdentificacionesDuplicadas(filas: FilaImportacion[]): Fila
  * reconoce la importación. */
 export type ColumnaExportacion = readonly [clave: string, etiqueta: string, modulo: 1 | 2 | 3 | 4 | 5]
 
-/** Los tres procedimientos, cada uno con su especificación ("Otro…") y su implante; en pediátricos el 2 y
- * el 3 llevan además su propia fecha (son otra intervención). */
-function columnasProcedimientos(conFechaPropia: boolean): ColumnaExportacion[] {
+/** Los tres procedimientos, cada uno con su especificación ("Otro…") y su implante. Todos van con la
+ * fecha de cirugía (la fecha propia del 2 y el 3 de los pediátricos se quitó el 30-oct). */
+function columnasProcedimientos(): ColumnaExportacion[] {
   return ([1, 2, 3] as const).flatMap((n): ColumnaExportacion[] => [
-    ...(conFechaPropia && n > 1 ? [[`fecha_procedimiento_${n}`, `Fecha del procedimiento ${n}`, 3] as const] : []),
     [`procedimiento_${n}`, `Procedimiento quirúrgico ${n}`, 3],
     [`procedimiento_${n}_otro`, `Procedimiento quirúrgico ${n} (especifique)`, 3],
     [`implante_${n}`, `¿Lleva implante? (procedimiento ${n})`, 3],
     [`tipo_implante_${n}`, `Tipo de implante (procedimiento ${n})`, 3],
+    [`numero_implante_${n}`, `Número de implante (procedimiento ${n})`, 3],
   ])
 }
 
@@ -548,7 +533,7 @@ export const ENCABEZADOS_EXPORTACION: readonly ColumnaExportacion[] = [
   ['diagnostico', 'Diagnóstico', 2], ['diagnostico_otro', 'Diagnóstico (especifique)', 2],
   ['diagnosticos_adicionales', 'Diagnósticos adicionales', 2],
   ['valvulopatia', 'Tipo de valvulopatía', 2], ['riesgos', 'Factores de riesgo', 2], ['rachs', 'RACHS-1', 2],
-  ['fecha_cirugia', 'Fecha de cirugía', 3], ...columnasProcedimientos(true),
+  ['fecha_cirugia', 'Fecha de cirugía', 3], ...columnasProcedimientos(),
   ['uso_cec', 'Uso de CEC', 3], ['tiempo_cec_min', 'Tiempo CEC (min)', 3], ['tiempo_clamp_min', 'Tiempo clamp (min)', 3],
   ['complicacion_intraqx', 'Complicación intraquirúrgica', 3], ['cierre_esternal_diferido', 'Cierre esternal diferido', 3],
   ['extubacion_quirofano', 'Extubación en quirófano', 3],
@@ -557,7 +542,7 @@ export const ENCABEZADOS_EXPORTACION: readonly ColumnaExportacion[] = [
   ['dias_uci', 'Días de estancia en UCI', 4], ['fecha_salida', 'Fecha de salida', 4],
   ['dias_hospitalizacion', 'Días totales de hospitalización', 4], ['condicion_salida', 'Condición de salida', 4],
   ['condicion_salida_otro', 'Condición de salida (especifique)', 4],
-  ['fecha_control_cirugia', 'Fecha de control por cirugía cardiovascular', 5], ['rehabilitacion_cardiaca', 'Terapia de rehabilitación cardíaca', 5],
+  ['fecha_control_cirugia', 'Fecha de control por cirugía cardiovascular / cardiología o pediátrica', 5], ['rehabilitacion_cardiaca', 'Terapia de rehabilitación cardíaca', 5],
   ['estado_herida', 'Estado de la herida quirúrgica', 5], ['estado_herida_otro', 'Estado de la herida quirúrgica (especifique)', 5],
   ['fecha_llamada_15_dias', 'Fecha de llamada de los 15 días', 5], ['persona_recibe_llamada', 'Persona que recibe la llamada', 5],
   ['reingreso_30_dias', 'Reingreso a la institución en los primeros 30 días', 5], ['fecha_reingreso', 'Fecha de reingreso', 5],
@@ -578,7 +563,7 @@ export const ENCABEZADOS_EXPORTACION_ADULTOS: readonly ColumnaExportacion[] = [
   ['diagnostico', 'Diagnóstico', 2], ['diagnostico_otro', 'Diagnóstico (especifique)', 2],
   ['diagnosticos_adicionales', 'Diagnósticos adicionales', 2],
   ['valvulopatia', 'Tipo de valvulopatía', 2], ['euroscore', 'Escala EuroSCORE (%)', 2], ['riesgos', 'Factores de riesgo', 2],
-  ['fecha_cirugia', 'Fecha de cirugía', 3], ...columnasProcedimientos(false),
+  ['fecha_cirugia', 'Fecha de cirugía', 3], ...columnasProcedimientos(),
   ['uso_cec', 'Uso de CEC', 3], ['tiempo_cec_min', 'Tiempo CEC (min)', 3], ['tiempo_clamp_min', 'Tiempo clamp (min)', 3],
   ['complicacion_intraqx', 'Complicación intraquirúrgica', 3], ['cierre_esternal_diferido', 'Cierre esternal diferido', 3],
   ['extubacion_quirofano', 'Extubación en quirófano', 3],

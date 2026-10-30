@@ -9,7 +9,7 @@ import { IconoCerrar, IconoMas } from '../../components/iconos'
 import { SeleccionMultiple } from '../../components/SeleccionMultiple'
 import { calcularEstadoModulo3Adulto } from '../../lib/completitud'
 import { especificacionesElegidas, sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
-import { procedimientosIniciales, procedimientosParaGuardar, type ProcedimientoFormulario } from '../../lib/procedimientos'
+import { implantesParaCompletitud, procedimientosIniciales, procedimientosParaGuardar, type ProcedimientoFormulario } from '../../lib/procedimientos'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteAdultoDetalle, ProcedimientoGuardado } from '../../types/db'
 import { Cargando, MensajeError } from '../../components/Estados'
@@ -41,7 +41,7 @@ interface Valores {
   extubacion_quirofano: 'SI' | 'NO' | ''
 }
 
-const PROCEDIMIENTO_VACIO: ProcedimientoFormulario = { procedimiento_id: '', especificacion: '', implante: '', tipo_implante_id: '' }
+const PROCEDIMIENTO_VACIO: ProcedimientoFormulario = { procedimiento_id: '', especificacion: '', implante: '', tipo_implante_id: '', numero_implante: '', numero_implante_no_aplica: false }
 
 function useCirugiaAdulto(pacienteId: string, episodioId: string) {
   return useQuery({
@@ -152,7 +152,7 @@ export function Modulo3FormAdulto({ pacienteId, episodioId }: { pacienteId: stri
       ]),
       fechaCirugia: valores.fecha_cirugia,
       procedimiento1Id: v1,
-      procedimientos: elegidos.map((p) => ({ implante: p.implante, tipoImplanteId: p.tipo_implante_id })),
+      procedimientos: implantesParaCompletitud(elegidos),
       usoCec: valores.uso_cec,
       tiempoCecMin: valores.tiempo_cec_min,
     })

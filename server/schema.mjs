@@ -55,7 +55,9 @@ const tablas = [
     id CHAR(36) PRIMARY KEY,
     numero_paciente BIGINT NOT NULL AUTO_INCREMENT UNIQUE,
     nombre_completo VARCHAR(255) NOT NULL,
-    identificacion VARCHAR(50) NOT NULL UNIQUE,
+    -- Sin UNIQUE: un reingreso se registra como paciente nuevo, con la misma identificación (ver
+    -- permitirIdentificacionRepetida).
+    identificacion VARCHAR(50) NOT NULL,
     sexo_id CHAR(36) NULL,
     fecha_nacimiento DATE NOT NULL,
     peso_kg DECIMAL(5,2) NULL,
@@ -76,6 +78,7 @@ const tablas = [
     CONSTRAINT ck_pac_talla CHECK (talla_cm IS NULL OR talla_cm BETWEEN 30 AND 220),
     KEY ix_pac_eliminado (eliminado),
     KEY ix_pac_nombre (nombre_completo),
+    KEY ix_pac_identificacion (identificacion),
     ${opcion('sexo_id')}, ${opcion('procedencia_id')}, ${opcion('municipio_narino_id')}, ${opcion('eps_id')},
     FOREIGN KEY (lote_importacion_id) REFERENCES importaciones_lote(id),
     FOREIGN KEY (creado_por) REFERENCES usuarios(id),
@@ -128,10 +131,6 @@ const tablas = [
     estado_modulo ${ESTADO},${AUDITORIA_COLS},
     CONSTRAINT ck_cir_tiempos CHECK (tiempo_cec_min IS NULL OR tiempo_cec_min >= 0),
     CONSTRAINT ck_cir_clamp CHECK (tiempo_clamp_min IS NULL OR (tiempo_cec_min IS NOT NULL AND tiempo_clamp_min >= 0 AND tiempo_clamp_min <= tiempo_cec_min)),
-    -- Cada procedimiento adicional necesita su propia fecha y no puede compartir día con el anterior:
-    -- son intervenciones distintas, no procedimientos simultáneos de una misma cirugía.
-    CONSTRAINT ck_cir_fecha2_posterior CHECK (fecha_procedimiento_2 IS NULL OR (fecha_cirugia IS NOT NULL AND fecha_procedimiento_2 > fecha_cirugia)),
-    CONSTRAINT ck_cir_fecha3_posterior CHECK (fecha_procedimiento_3 IS NULL OR (fecha_procedimiento_2 IS NOT NULL AND fecha_procedimiento_3 > fecha_procedimiento_2)),
     FOREIGN KEY (paciente_id) REFERENCES pacientes(id),
     ${opcion('implante_id')}
   )`,
@@ -235,7 +234,9 @@ const tablas = [
     id CHAR(36) PRIMARY KEY,
     numero_paciente BIGINT NOT NULL AUTO_INCREMENT UNIQUE,
     nombre_completo VARCHAR(255) NOT NULL,
-    identificacion VARCHAR(50) NOT NULL UNIQUE,
+    -- Sin UNIQUE: un reingreso se registra como paciente nuevo, con la misma identificación (ver
+    -- permitirIdentificacionRepetida).
+    identificacion VARCHAR(50) NOT NULL,
     sexo_id CHAR(36) NULL,
     fecha_nacimiento DATE NOT NULL,
     peso_kg DECIMAL(5,2) NULL,
@@ -254,6 +255,7 @@ const tablas = [
     CONSTRAINT ck_pacad_talla CHECK (talla_cm IS NULL OR talla_cm BETWEEN 120 AND 230),
     KEY ix_pacad_eliminado (eliminado),
     KEY ix_pacad_nombre (nombre_completo),
+    KEY ix_pacad_identificacion (identificacion),
     ${opcion('sexo_id')}, ${opcion('procedencia_id')}, ${opcion('municipio_narino_id')}, ${opcion('eps_id')},
     FOREIGN KEY (creado_por) REFERENCES usuarios(id),
     FOREIGN KEY (eliminado_por) REFERENCES usuarios(id)
@@ -447,6 +449,11 @@ const alteraciones = [
   ['cirugias_procedimientos', 'tipo_implante_id', `ALTER TABLE cirugias_procedimientos ADD COLUMN tipo_implante_id CHAR(36) NULL AFTER implante`],
   ['cirugias_adultos_procedimientos', 'implante', `ALTER TABLE cirugias_adultos_procedimientos ADD COLUMN implante ENUM('SI','NO','NA') NULL`],
   ['cirugias_adultos_procedimientos', 'tipo_implante_id', `ALTER TABLE cirugias_adultos_procedimientos ADD COLUMN tipo_implante_id CHAR(36) NULL AFTER implante`],
+  // Pedido del 30-oct: con el tipo de implante elegido, su número (lote / serie) o "No aplica".
+  ['cirugias_procedimientos', 'numero_implante', `ALTER TABLE cirugias_procedimientos ADD COLUMN numero_implante VARCHAR(100) NULL AFTER tipo_implante_id`],
+  ['cirugias_procedimientos', 'numero_implante_no_aplica', `ALTER TABLE cirugias_procedimientos ADD COLUMN numero_implante_no_aplica BOOLEAN NOT NULL DEFAULT false AFTER numero_implante`],
+  ['cirugias_adultos_procedimientos', 'numero_implante', `ALTER TABLE cirugias_adultos_procedimientos ADD COLUMN numero_implante VARCHAR(100) NULL AFTER tipo_implante_id`],
+  ['cirugias_adultos_procedimientos', 'numero_implante_no_aplica', `ALTER TABLE cirugias_adultos_procedimientos ADD COLUMN numero_implante_no_aplica BOOLEAN NOT NULL DEFAULT false AFTER numero_implante`],
   // Adultos solo guardaban si se hizo la llamada (Sí/No); ahora también el día en que se hizo.
   ['seguimientos_adultos', 'fecha_llamada_15_dias', `ALTER TABLE seguimientos_adultos ADD COLUMN fecha_llamada_15_dias DATE NULL AFTER llamado_15_dias`],
 ]
@@ -457,9 +464,16 @@ const llavesForaneas = [
   ['fk_cpad_tipo_implante', 'cirugias_adultos_procedimientos', 'FOREIGN KEY (tipo_implante_id) REFERENCES opciones_lista(id)'],
 ]
 
-const restricciones = [
-  ['ck_cir_fecha2_posterior', 'cirugias', 'CHECK (fecha_procedimiento_2 IS NULL OR (fecha_cirugia IS NOT NULL AND fecha_procedimiento_2 > fecha_cirugia))'],
-  ['ck_cir_fecha3_posterior', 'cirugias', 'CHECK (fecha_procedimiento_3 IS NULL OR (fecha_procedimiento_2 IS NOT NULL AND fecha_procedimiento_3 > fecha_procedimiento_2))'],
+const restricciones = []
+
+// Restricciones CHECK que dejaron de aplicar. Las dos de fecha_procedimiento_2/3 exigían que cada
+// procedimiento adicional tuviera su propia fecha, posterior a la anterior; desde el 30-oct los
+// procedimientos 2 y 3 van con la fecha de cirugía y esas columnas quedan en desuso (con lo ya
+// registrado). Hay que quitarlas: si no, cambiar la fecha de cirugía de un paciente con fechas viejas
+// (p. ej. a una posterior a su fecha_procedimiento_2) sería rechazado por la base.
+const restriccionesRetiradas = [
+  ['ck_cir_fecha2_posterior', 'cirugias'],
+  ['ck_cir_fecha3_posterior', 'cirugias'],
 ]
 
 // Columnas que dejaron de usarse. `usuarios.rol` distinguía Administrador, Registrador y Consulta; ya no
@@ -536,6 +550,29 @@ async function agregarColumnaSiNoExiste(pool, tabla, columna, sentencia) {
     await pool.query(sentencia)
   } catch (err) {
     if (err?.errno !== 1060) throw err
+  }
+}
+
+/** Quita una restricción CHECK si todavía existe (por el catálogo: MySQL no tiene "DROP CHECK IF EXISTS"). */
+async function quitarRestriccionSiExiste(pool, nombre, tabla) {
+  const [[existente]] = await pool.query(`
+    SELECT 1 AS x FROM information_schema.TABLE_CONSTRAINTS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND CONSTRAINT_NAME = ?`, [tabla, nombre])
+  if (existente) await pool.query(`ALTER TABLE ${tabla} DROP CHECK ${nombre}`)
+}
+
+/** Pedido del 30-oct: un paciente (adulto o niño) que reingresa se registra como paciente nuevo, con la
+ * misma identificación. En las bases que ya existían la columna era UNIQUE: se agrega primero un índice
+ * normal (las búsquedas por documento lo siguen usando) y luego se quita el único. Seguro de repetir. */
+async function permitirIdentificacionRepetida(pool, tabla, indiceNormal) {
+  const [indices] = await pool.query(`
+    SELECT DISTINCT INDEX_NAME AS nombre, NON_UNIQUE AS noUnico FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = 'identificacion'`, [tabla])
+  if (!indices.some((i) => Number(i.noUnico) === 1)) {
+    await pool.query(`ALTER TABLE ${tabla} ADD INDEX ${indiceNormal} (identificacion)`)
+  }
+  for (const { nombre } of indices.filter((i) => Number(i.noUnico) === 0)) {
+    await pool.query(`ALTER TABLE ${tabla} DROP INDEX \`${nombre}\``)
   }
 }
 
@@ -655,6 +692,18 @@ async function migrarImplantePorProcedimiento(conexion, tablaCirugias, tablaProc
     WHERE cp.implante IS NULL AND (o.valor = 'N/A' OR cp.orden = 1)`)
 }
 
+/** El número de implante era uno por cirugía (cirugias(_adultos).numero_implante, en desuso desde el
+ * 23-oct). Pasa al procedimiento 1 si ese lleva implante: el mismo al que migrarImplantePorProcedimiento
+ * le pasó el tipo. */
+async function migrarNumeroImplante(conexion, tablaCirugias, tablaProcedimientos) {
+  await conexion.query(`
+    UPDATE ${tablaProcedimientos} cp
+    JOIN ${tablaCirugias} c ON c.id = cp.cirugia_id
+    SET cp.numero_implante = c.numero_implante
+    WHERE cp.orden = 1 AND cp.implante = 'SI' AND cp.numero_implante IS NULL
+      AND c.numero_implante IS NOT NULL AND TRIM(c.numero_implante) <> ''`)
+}
+
 const EPISODIO_ADULTO_TABLAS = [
   ['diagnosticos_adultos', 'uq_diagad_episodio', 'fk_diagad_episodio'],
   ['cirugias_adultos', 'uq_cirad_episodio', 'fk_cirad_episodio'],
@@ -667,6 +716,9 @@ export async function inicializarBase(pool, admin) {
   for (const sentencia of tablas) await pool.query(sentencia)
   for (const [tabla, columna, sentencia] of alteraciones) await agregarColumnaSiNoExiste(pool, tabla, columna, sentencia)
   for (const [nombre, tabla, definicion] of restricciones) await agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion)
+  for (const [nombre, tabla] of restriccionesRetiradas) await quitarRestriccionSiExiste(pool, nombre, tabla)
+  await permitirIdentificacionRepetida(pool, 'pacientes', 'ix_pac_identificacion')
+  await permitirIdentificacionRepetida(pool, 'pacientes_adultos', 'ix_pacad_identificacion')
   for (const [nombre, tabla, definicion] of llavesForaneas) await agregarRestriccionNombradaSiNoExiste(pool, nombre, tabla, definicion)
   await migrarComplicacionesSiExisteColumna(pool, 'cirugias', 'complicacion_intraqx_id', 'cirugias_complicaciones_intraqx', 'cirugia_id')
   await migrarComplicacionesSiExisteColumna(pool, 'postoperatorio', 'complicacion_pop_id', 'postoperatorio_complicaciones_pop', 'postoperatorio_id')
@@ -690,6 +742,10 @@ export async function inicializarBase(pool, admin) {
     await conexion.query(`
       UPDATE opciones_lista o JOIN categorias_lista c ON c.id = o.categoria_id
       SET o.activo = 0 WHERE c.codigo = 'IMPLANTE' AND o.valor = 'N/A'`)
+  })
+  await migrarUnaVez(pool, 'numero_implante_por_procedimiento', async (conexion) => {
+    await migrarNumeroImplante(conexion, 'cirugias', 'cirugias_procedimientos')
+    await migrarNumeroImplante(conexion, 'cirugias_adultos', 'cirugias_adultos_procedimientos')
   })
 
   for (const [tabla, columna] of columnasRetiradas) await quitarColumnaSiExiste(pool, tabla, columna)

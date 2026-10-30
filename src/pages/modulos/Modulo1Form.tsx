@@ -13,6 +13,7 @@ import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1 } from '../../lib/completitud'
 import { sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
 import { formatearEdad, hoyIso } from '../../lib/fechas'
+import { AvisoMismaIdentificacion } from '../../components/AvisoMismaIdentificacion'
 import { formatearNumero, superficieCorporal } from '../../lib/estadisticas'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteDetalle } from '../../types/db'
@@ -108,6 +109,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   const telefonos = watch('telefonos')
   const pesoKg = watch('peso_kg')
   const fechaNacimiento = watch('fecha_nacimiento')
+  const identificacion = watch('identificacion')
 
   const asc = superficieCorporal(pesoKg ? Number(pesoKg) : null)
 
@@ -203,9 +205,12 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
                 <input {...register('nombre_completo')} className={claseInput} />
               </Campo>
 
-              <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
-                <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
-              </Campo>
+              <div>
+                <Campo etiqueta="Identificación *" error={errors.identificacion?.message}>
+                  <input {...register('identificacion')} inputMode="numeric" className={claseInput} />
+                </Campo>
+                <AvisoMismaIdentificacion ruta="/pacientes" identificacion={identificacion ?? ''} pacienteId={paciente?.id} />
+              </div>
 
               <CampoOpciones etiqueta="Sexo" categoria="SEXO" control={control} name="sexo_id" nameOtro="sexo_otro" />
 

@@ -88,9 +88,12 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.equal(detalle.municipio_narino_id, null)
       assert.equal(detalle.sin_telefono, true)
       assert.equal(detalle.eliminado, false)
-      const dup = await api('POST', '/pacientes', { token: admin, cuerpo: { nombre_completo: 'Dup', identificacion: `9${sufijo}`, fecha_nacimiento: '2023-01-10' } })
-      assert.equal(dup.estado, 409)
-      assert.equal(dup.datos.error.codigo, 'IDENTIFICACION_DUPLICADA')
+      // Un reingreso se registra como paciente nuevo con la misma identificación: otra ficha, otro número.
+      const reingreso = await api('POST', '/pacientes', { token: admin, cuerpo: { nombre_completo: 'Reingreso', identificacion: `9${sufijo}`, fecha_nacimiento: '2023-01-10' } })
+      assert.equal(reingreso.estado, 201, JSON.stringify(reingreso.datos))
+      assert.notEqual(reingreso.datos.id, id)
+      // Se elimina para que las pruebas siguientes (que buscan por esta identificación) vean una sola ficha.
+      assert.equal((await api('PUT', `/pacientes/${reingreso.datos.id}/eliminado`, { token: admin, cuerpo: { eliminado: true } })).estado, 200)
     })
 
     it('Módulo 2: valvulopatía a N/A y "Ninguno" exclusivo', async () => {
@@ -161,23 +164,16 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.equal(c.procedimiento_ids.length, 1)
     })
 
-    it('Módulo 3: cada procedimiento adicional exige su propia fecha, posterior a la anterior', async () => {
+    it('Módulo 3: los procedimientos adicionales van con la fecha de cirugía (sin fecha propia)', async () => {
       const base = { fecha_cirugia: '2023-06-01', procedimiento_ids: [porValor('PROCEDIMIENTOS', 'Cirugía de coartación de aorta'), porValor('PROCEDIMIENTOS', 'Otro')], estado_modulo: 'pendiente' }
-      // Falta la fecha del procedimiento 2.
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: base })).estado, 422)
-      // Mismo día que el procedimiento 1: no está permitido.
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-01' } })).estado, 422)
-      // Anterior al procedimiento 1: tampoco.
-      assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_procedimiento_2: '2023-05-01' } })).estado, 422)
-      const ok = await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_procedimiento_2: '2023-06-15' } })
+      // Un segundo procedimiento ya no pide fecha propia; si llega una, se ignora y no se devuelve.
+      const ok = await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...base, fecha_procedimiento_2: '2023-05-01' } })
       assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
       const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
-      assert.equal(c.fecha_procedimiento_2, '2023-06-15')
-      // Al quitar el procedimiento 2, su fecha se descarta en silencio.
+      assert.equal(c.procedimiento_ids.length, 2)
+      assert.equal('fecha_procedimiento_2' in c, false)
       const sinP2 = await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2023-06-01', procedimiento_ids: [base.procedimiento_ids[0]], estado_modulo: 'completo' } })
       assert.equal(sinP2.estado, 200, JSON.stringify(sinP2.datos))
-      const c2 = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
-      assert.equal(c2.fecha_procedimiento_2, null)
     })
 
     it('Módulo 3: implante y especificación por procedimiento', async () => {
@@ -185,10 +181,10 @@ describe('API cirugía cardiovascular pediátrica', () => {
       const otro = porValor('PROCEDIMIENTOS', 'Otro')
       const mecanico = porValor('IMPLANTE', 'Mecánico')
       const cuerpo = {
-        fecha_cirugia: '2023-06-01', fecha_procedimiento_2: '2023-06-15', estado_modulo: 'completo',
+        fecha_cirugia: '2023-06-01', estado_modulo: 'completo',
         procedimientos: [
-          { procedimiento_id: coartacion, implante: 'NA', tipo_implante_id: mecanico, especificacion: 'se descarta' },
-          { procedimiento_id: otro, implante: 'SI', tipo_implante_id: mecanico, especificacion: 'Plastia de arco' },
+          { procedimiento_id: coartacion, implante: 'NA', tipo_implante_id: mecanico, especificacion: 'se descarta', numero_implante: 'se descarta' },
+          { procedimiento_id: otro, implante: 'SI', tipo_implante_id: mecanico, especificacion: 'Plastia de arco', numero_implante: 'LOTE-123' },
         ],
       }
       assert.equal((await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { ...cuerpo, procedimientos: [{ implante: 'SI' }] } })).estado, 400)
@@ -196,11 +192,20 @@ describe('API cirugía cardiovascular pediátrica', () => {
       assert.equal(ok.estado, 200, JSON.stringify(ok.datos))
       const c = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos
       assert.deepEqual(c.procedimientos, [
-        { procedimiento_id: coartacion, especificacion: null, implante: 'NA', tipo_implante_id: null },
-        { procedimiento_id: otro, especificacion: 'Plastia de arco', implante: 'SI', tipo_implante_id: mecanico },
+        { procedimiento_id: coartacion, especificacion: null, implante: 'NA', tipo_implante_id: null, numero_implante: null, numero_implante_no_aplica: false },
+        { procedimiento_id: otro, especificacion: 'Plastia de arco', implante: 'SI', tipo_implante_id: mecanico, numero_implante: 'LOTE-123', numero_implante_no_aplica: false },
       ])
+      // Con "No aplica" en el número de implante, el número escrito se descarta.
+      await api('PUT', `/pacientes/${id}/cirugia`, {
+        token: admin,
+        cuerpo: { ...cuerpo, procedimientos: [cuerpo.procedimientos[0], { ...cuerpo.procedimientos[1], numero_implante_no_aplica: true }] },
+      })
+      const sinNumero = (await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos.procedimientos[1]
+      assert.equal(sinNumero.numero_implante, null)
+      assert.equal(sinNumero.numero_implante_no_aplica, true)
+      await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo })
       // La forma anterior (solo los ids) conserva el implante y la especificación de cada procedimiento.
-      await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2023-06-01', fecha_procedimiento_2: '2023-06-15', procedimiento_ids: [coartacion, otro], estado_modulo: 'completo' } })
+      await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2023-06-01', procedimiento_ids: [coartacion, otro], estado_modulo: 'completo' } })
       assert.deepEqual((await api('GET', `/pacientes/${id}/cirugia`, { token: admin })).datos.procedimientos, c.procedimientos)
       // Deja la cirugía como la esperan las pruebas siguientes: un solo procedimiento.
       await api('PUT', `/pacientes/${id}/cirugia`, { token: admin, cuerpo: { fecha_cirugia: '2023-06-01', procedimientos: [{ procedimiento_id: coartacion, implante: 'NA' }], estado_modulo: 'completo' } })
