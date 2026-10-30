@@ -523,7 +523,7 @@ export function PacientesListaPage() {
                           <Link
                             to={`/pacientes/${p.paciente_id}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="block max-w-[17rem] truncate font-medium text-slate-900 outline-none decoration-[var(--pabon-azul-oscuro)]/40 underline-offset-2 hover:underline focus-visible:underline"
+                            className="line-clamp-2 max-w-[17rem] font-medium leading-snug text-slate-900 outline-none decoration-[var(--pabon-azul-oscuro)]/40 underline-offset-2 hover:underline focus-visible:underline"
                             title={p.nombre_completo}
                           >
                             {p.nombre_completo}
@@ -565,7 +565,7 @@ export function PacientesListaPage() {
                     <div className="flex items-start gap-3">
                       <Avatar nombre={p.nombre_completo} />
                       <div className="min-w-0 flex-1">
-                        <p className="truncate font-semibold text-slate-900">{p.nombre_completo}</p>
+                        <p className="line-clamp-2 font-semibold leading-snug text-slate-900">{p.nombre_completo}</p>
                         <p className="truncate text-xs tabular-nums text-slate-500">
                           N° {p.numero_paciente} · {p.identificacion}
                         </p>

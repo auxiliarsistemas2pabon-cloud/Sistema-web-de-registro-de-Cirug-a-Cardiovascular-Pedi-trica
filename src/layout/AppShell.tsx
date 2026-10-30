@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, type ComponentType, type SVGProps } from 'react'
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type SVGProps } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
 import { useInactivityLogout } from '../auth/useInactivityLogout'
 import {
@@ -9,6 +9,7 @@ import {
   IconoChevronAbajo,
   IconoEngranaje,
   IconoGrafico,
+  IconoMenu,
   IconoPacientes,
   IconoSalir,
 } from '../components/iconos'
@@ -72,6 +73,19 @@ export function AppShell() {
   const { perfil, cerrarSesion } = useAuth()
   useInactivityLogout(15)
   const refEncabezado = useRef<HTMLElement>(null)
+  const { pathname } = useLocation()
+  // En el celular las seis secciones no caben como pestañas (quedaban cortadas y las últimas no se
+  // veían): ahí van en un menú que se despliega desde una barra con la sección actual.
+  const [menuAbierto, setMenuAbierto] = useState(false)
+  const seccionActual = enlaces.find((e) => pathname.startsWith(e.to))
+
+  useEffect(() => setMenuAbierto(false), [pathname])
+  useEffect(() => {
+    if (!menuAbierto) return
+    const alTeclear = (e: KeyboardEvent) => e.key === 'Escape' && setMenuAbierto(false)
+    window.addEventListener('keydown', alTeclear)
+    return () => window.removeEventListener('keydown', alTeclear)
+  }, [menuAbierto])
 
   // Publica el alto real del encabezado fijo como variable CSS (--alto-encabezado) para que los
   // encabezados de tabla "sticky" se peguen justo debajo, y no detrás, de él. Se mide en vez de
@@ -159,9 +173,46 @@ export function AppShell() {
           </DropdownMenu>
         </div>
 
+        <div className="border-t border-slate-100 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setMenuAbierto((v) => !v)}
+            aria-expanded={menuAbierto}
+            aria-controls="menu-secciones"
+            className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm font-medium text-slate-900 outline-none focus-visible:bg-slate-50"
+          >
+            <IconoMenu className="h-5 w-5 flex-none text-[var(--pabon-azul-oscuro)]" />
+            <span className="flex min-w-0 flex-1 items-center gap-2">
+              <span className="truncate">{seccionActual?.etiqueta ?? 'Menú'}</span>
+              {seccionActual?.to !== '/alertas' && <ContadorAlertas />}
+            </span>
+            <span className="text-xs text-slate-500">{menuAbierto ? 'Cerrar' : 'Secciones'}</span>
+            <IconoChevronAbajo className={`h-4 w-4 flex-none text-slate-500 transition-transform ${menuAbierto ? 'rotate-180' : ''}`} />
+          </button>
+          {menuAbierto && (
+            <nav id="menu-secciones" aria-label="Secciones" className="animate-in fade-in-0 slide-in-from-top-1 border-t border-slate-100 px-2 pb-2 pt-1 duration-150">
+              {enlaces.map(({ to, etiqueta, icono: Icono }) => (
+                <NavLink
+                  key={to}
+                  to={to}
+                  className={({ isActive }) =>
+                    `flex min-h-11 items-center gap-3 rounded-lg px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--pabon-azul-claro)]/40 ${
+                      isActive ? 'bg-[var(--pabon-azul-oscuro)]/[0.07] text-[var(--pabon-azul-oscuro)]' : 'text-slate-700 hover:bg-slate-50'
+                    }`
+                  }
+                >
+                  <Icono className="h-[18px] w-[18px] flex-none" />
+                  <span className="flex-1">{etiqueta}</span>
+                  {to === '/alertas' && <ContadorAlertas />}
+                </NavLink>
+              ))}
+            </nav>
+          )}
+        </div>
+
         <nav
           aria-label="Secciones"
-          className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-2 [scrollbar-width:none] sm:px-4 [&::-webkit-scrollbar]:hidden"
+          className="mx-auto hidden max-w-7xl gap-1 overflow-x-auto px-2 [scrollbar-width:none] sm:px-4 lg:flex [&::-webkit-scrollbar]:hidden"
         >
           {enlaces.map(({ to, etiqueta, icono: Icono }) => (
             <NavLink

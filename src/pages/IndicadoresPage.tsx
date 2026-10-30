@@ -438,6 +438,7 @@ function TarjetasIndicadores({ resumen, onAbrir }: { resumen: Resumen; onAbrir: 
     return (
       <TarjetaKpi
         key={indicador}
+        etiquetaDosLineas
         etiqueta={etiqueta}
         valor={`${num(pct)}%`}
         tono={critico ? 'critico' : 'normal'}
@@ -534,32 +535,24 @@ export function IndicadoresPage() {
         subtitulo={`Cirugías, mortalidad, complicaciones y tiempos de ${etiquetaGrupo}, filtrables por fecha de cirugía.`}
       />
 
-      {/* En celular se muestran en 2 columnas. En pantallas mayores hay 4 por fila y la última
-          fila queda centrada cuando solo tiene 3 pestañas. */}
-      <div role="tablist" className="mb-6 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-8">
-        {PESTANAS.map((p, i) => (
+      {/* Siete pestañas con su nombre corto (el completo, al pasar el mouse): con los nombres largos no
+          cabían en una fila ni en pantalla grande y se partían en dos filas desparejas. Desde lg van
+          en una sola fila; en celular, en 2 columnas, y en tableta, en 4. */}
+      <div role="tablist" className="mb-6 grid grid-cols-2 gap-1 rounded-lg bg-slate-100 p-1 sm:grid-cols-4 lg:flex">
+        {PESTANAS.map((p) => (
           <button
             key={p.clave}
             type="button"
             role="tab"
             aria-selected={vista === p.clave}
             onClick={() => setVista(p.clave)}
-            className={`flex items-center justify-center gap-2 rounded-md px-3.5 py-2 text-sm font-medium transition-colors max-sm:last:odd:col-span-2 sm:col-span-2 ${
-              i === 4 ? 'sm:col-start-2' : ''
-            } ${
+            title={p.etiqueta}
+            className={`flex items-center justify-center gap-2 whitespace-nowrap rounded-md px-3.5 py-2 text-sm font-medium transition-colors max-sm:last:odd:col-span-2 lg:flex-auto ${
               vista === p.clave ? 'bg-white text-[var(--pabon-azul-oscuro)] shadow-sm' : 'text-slate-500 hover:text-slate-800'
             }`}
           >
             {p.icono}
-            {/* En el celular, el nombre largo partido en dos líneas descuadraba la cuadrícula. */}
-            {'etiquetaCorta' in p ? (
-              <>
-                <span className="xl:hidden">{p.etiquetaCorta}</span>
-                <span className="hidden xl:inline">{p.etiqueta}</span>
-              </>
-            ) : (
-              p.etiqueta
-            )}
+            {'etiquetaCorta' in p ? p.etiquetaCorta : p.etiqueta}
           </button>
         ))}
       </div>
@@ -679,8 +672,10 @@ export function IndicadoresPage() {
                     una sola suelta al final. */}
                 <div className="col-span-2 sm:col-span-1">
                   <TarjetaKpi
+                    etiquetaDosLineas
                     etiqueta="Total de cirugías"
                     valor={String(data.resumen.total_cirugias)}
+                    detalle="En el periodo elegido"
                     icono={<IconoCorazon className="h-4 w-4" />}
                   />
                 </div>

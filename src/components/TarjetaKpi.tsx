@@ -20,6 +20,9 @@ interface Props {
   titulo?: string
   /** Solo con onClick: lo que hace el clic, como un enlace al pie (p. ej. "Ver los pacientes"). */
   accion?: string
+  /** Reserva dos líneas para la etiqueta: en una fila donde algunas etiquetas se parten en dos, las
+   * cifras de todas las tarjetas quedan a la misma altura. */
+  etiquetaDosLineas?: boolean
 }
 
 // Los íconos llevan color con valores arbitrarios (text-[#…]) y no con text-emerald-600 &
@@ -32,20 +35,20 @@ const TONOS: Record<Tono, { insignia: string; barra: string }> = {
   critico: { insignia: 'bg-red-50 text-[#dc2626]', barra: 'bg-red-500' },
 }
 
-export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal', detalle, progreso, segmentos, onClick, activo = false, titulo, accion }: Props) {
+export function TarjetaKpi({ etiqueta, valor, icono, tono = 'normal', detalle, progreso, segmentos, onClick, activo = false, titulo, accion, etiquetaDosLineas = false }: Props) {
   const estilo = TONOS[tono]
   const contenido = (
     <>
       <div className="flex items-start justify-between gap-2">
-        <p className="text-xs font-medium leading-snug text-slate-600 sm:text-sm">{etiqueta}</p>
+        <p className={`text-xs font-medium leading-snug text-slate-600 sm:text-sm ${etiquetaDosLineas ? 'min-h-[2lh]' : ''}`}>{etiqueta}</p>
         {icono && (
           <span className={`hidden h-8 w-8 flex-none items-center justify-center rounded-lg sm:flex ${estilo.insignia}`}>{icono}</span>
         )}
       </div>
-      {/* mt-auto: si las etiquetas ocupan distinto número de líneas (pasa en móvil), las cifras
-          de tarjetas vecinas igual quedan a la misma altura. */}
-      <div className="mt-auto pt-2">
-        <p className="text-2xl font-semibold tracking-tight tabular-nums text-slate-900 sm:text-[1.75rem] sm:leading-9">{valor}</p>
+      {/* La cifra va justo bajo la etiqueta y el resto al pie (mt-auto): así una tarjeta sin detalle
+          ni enlace no deja su cifra más abajo que las vecinas. */}
+      <p className="pt-2 text-2xl font-semibold tracking-tight tabular-nums text-slate-900 sm:text-[1.75rem] sm:leading-9">{valor}</p>
+      <div className="mt-auto">
         {detalle && <p className="mt-0.5 hidden text-xs text-slate-500 sm:block">{detalle}</p>}
         {onClick && accion && (
           <p className="mt-2 flex items-center gap-1 text-xs font-medium text-sky-700">

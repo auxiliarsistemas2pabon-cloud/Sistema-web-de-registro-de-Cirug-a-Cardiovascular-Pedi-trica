@@ -63,7 +63,7 @@ export function GraficoLineaTiempo({ datos, seleccion, onSeleccionar }: { datos:
         <ResponsiveContainer width="100%" height={240}>
           <AreaChart
             data={datos}
-            margin={{ top: 20, right: 16, bottom: 0, left: 0 }}
+            margin={{ top: 20, right: 24, bottom: 0, left: 0 }}
             onClick={(estado) => seleccionarPorIndice(datos, estado, { seleccion, onSeleccionar })}
             style={onSeleccionar ? { cursor: 'pointer' } : undefined}
           >
