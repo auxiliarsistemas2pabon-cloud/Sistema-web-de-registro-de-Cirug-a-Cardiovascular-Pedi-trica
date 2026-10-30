@@ -134,7 +134,7 @@ export function FichaDetalle({ d, adultos }: { d: Detalle; adultos: boolean }) {
           <Dato etiqueta={d.telefonos.length > 1 ? 'Teléfonos' : 'Teléfono'}>{telefonos}</Dato>
           <Dato etiqueta="Sexo">{d.sexo}</Dato>
           <Dato etiqueta="Fecha de nacimiento">{fecha(d.fecha_nacimiento)}</Dato>
-          <Dato etiqueta="Edad en la cirugía">{d.edad_cirugia_dias === null ? null : formatearEdad(d.edad_cirugia_dias)}</Dato>
+          <Dato etiqueta="Edad en la cirugía">{formatearEdad(d.fecha_nacimiento, d.fecha_cirugia) || null}</Dato>
           <Dato etiqueta="EPS">{d.eps}</Dato>
           <Dato etiqueta="Peso">{conUnidad(d.peso_kg, 'kg')}</Dato>
           <Dato etiqueta="Talla">{conUnidad(d.talla_cm, 'cm')}</Dato>

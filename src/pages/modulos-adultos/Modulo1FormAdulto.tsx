@@ -12,7 +12,7 @@ import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1Adulto } from '../../lib/completitud'
 import { sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
-import { edadMinimaIso, hoyIso } from '../../lib/fechas'
+import { edadMinimaIso, formatearEdad, hoyIso } from '../../lib/fechas'
 import { formatearNumero, superficieCorporal } from '../../lib/estadisticas'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteAdultoDetalle } from '../../types/db'
@@ -104,6 +104,7 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
 
   const procedenciaId = watch('procedencia_id')
   const pesoKg = watch('peso_kg')
+  const fechaNacimiento = watch('fecha_nacimiento')
   const asc = superficieCorporal(pesoKg ? Number(pesoKg) : null)
 
   const narinioId = opcionesProcedencia?.find((o) => o.codigo === 'NARINO')?.id
@@ -196,6 +197,9 @@ export function Modulo1FormAdulto({ paciente, onGuardado }: Props) {
 
               <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
                 <input type="date" max={edadMinimaIso(18)} {...register('fecha_nacimiento')} className={claseInput} />
+              </Campo>
+              <Campo etiqueta="Edad">
+                <input disabled value={formatearEdad(fechaNacimiento)} placeholder="Se calcula con la fecha de nacimiento" className={claseInput} />
               </Campo>
             </div>
           </SeccionFormulario>

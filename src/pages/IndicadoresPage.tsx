@@ -10,6 +10,7 @@ import { GraficoDona, type Segmento } from '../components/GraficoDona'
 import { GraficoLineaTiempo } from '../components/GraficoLineaTiempo'
 import { GraficoPuntos, type DatoTasa } from '../components/GraficoPuntos'
 import { GraficoSiNo } from '../components/GraficoSiNo'
+import { MapaCalor } from '../components/MapaCalor'
 import { Tarjeta } from '../components/Tarjeta'
 import {
   IconoAlerta,
@@ -178,6 +179,7 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         por_municipio: Conteo
         por_diagnostico: ConteoMultiple
         por_procedimiento: { procedimiento: string; total_cirugias: number }[]
+        por_edad_procedimiento: { edades: string[]; filas: { procedimiento: string; total: number; por_edad: Record<string, number> }[] }
         por_rachs?: ({ rachs: string } & ConteoRiesgo)[]
         por_euroscore?: ({ categoria: string } & ConteoRiesgo)[]
         por_eps: { eps: string; total_cirugias: number }[]
@@ -222,6 +224,10 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         porMunicipio: aDatos(r.por_municipio),
         porDiagnostico: aMultiple(r.por_diagnostico),
         porProcedimiento: r.por_procedimiento.map((d) => ({ etiqueta: d.procedimiento, valor: d.total_cirugias })),
+        edadPorProcedimiento: {
+          columnas: r.por_edad_procedimiento.edades,
+          filas: r.por_edad_procedimiento.filas.map((f) => ({ etiqueta: f.procedimiento, total: f.total, valores: f.por_edad })),
+        },
         porRiesgoTotal: riesgo.map((d) => ({ etiqueta: d.etiqueta, clave: d.clave, valor: d.total_cirugias })),
         porRiesgoMortalidad: riesgo.map((d) => ({
           etiqueta: d.etiqueta,
@@ -491,6 +497,19 @@ export function IndicadoresPage() {
     const resto = filtros.filter((f) => f.campo !== campo)
     const yaEstaba = filtros.some((f) => f.campo === campo && f.valor === valor)
     cambiarFiltros(yaEstaba ? resto : [...resto, { campo, valor, etiqueta }])
+  }
+
+  /** Un clic en una celda del mapa de calor filtra por sus dos campos a la vez (procedimiento y edad);
+   * un segundo clic en la misma celda quita los dos. */
+  function alternarCelda(procedimiento: string, edad: string) {
+    const resto = filtros.filter((f) => f.campo !== 'procedimiento' && f.campo !== 'edad')
+    const yaEstaba = filtros.some((f) => f.campo === 'procedimiento' && f.valor === procedimiento) &&
+      filtros.some((f) => f.campo === 'edad' && f.valor === edad)
+    cambiarFiltros(yaEstaba ? resto : [
+      ...resto,
+      { campo: 'procedimiento', valor: procedimiento, etiqueta: procedimiento },
+      { campo: 'edad', valor: edad, etiqueta: edad },
+    ])
   }
 
   /** Lo que necesita un gráfico para filtrar el tablero por su campo y resaltar lo elegido. */
@@ -874,6 +893,23 @@ export function IndicadoresPage() {
               <Tarjeta titulo="Procedimiento quirúrgico realizado" descripcion="Cuántas veces se realizó cada procedimiento.">
                 <GraficoBarras datos={data.porProcedimiento} {...interaccion('procedimiento')} />
               </Tarjeta>
+
+              {grupo === 'adultos' && (
+                <Tarjeta
+                  titulo="Edad por tipo de procedimiento"
+                  descripcion="Cuántas cirugías de cada procedimiento hubo en cada grupo de edad, según la edad cumplida el día de la cirugía. Entre más oscura la celda, más cirugías."
+                >
+                  <MapaCalor
+                    filas={data.edadPorProcedimiento.filas}
+                    columnas={data.edadPorProcedimiento.columnas}
+                    tituloFilas="Procedimiento"
+                    unidad={['cirugía', 'cirugías']}
+                    filaSeleccionada={filtros.find((f) => f.campo === 'procedimiento')?.valor ?? null}
+                    columnaSeleccionada={filtros.find((f) => f.campo === 'edad')?.valor ?? null}
+                    onSeleccionar={alternarCelda}
+                  />
+                </Tarjeta>
+              )}
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Tarjeta titulo="Tipo de implante" descripcion="Cuántas cirugías llevaron cada tipo de implante en alguno de sus procedimientos.">

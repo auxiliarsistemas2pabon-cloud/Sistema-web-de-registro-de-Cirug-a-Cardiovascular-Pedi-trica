@@ -35,7 +35,7 @@ function useResumenEdad(id: string | undefined) {
     queryKey: ['paciente-adulto-resumen', id],
     enabled: !!id && id !== 'nuevo',
     queryFn: () =>
-      api.get<Pick<PacienteAdultoResumen, 'edad_dias' | 'diagnostico_valor' | 'estado_m1' | 'estado_m2' | 'estado_m3' | 'estado_m4' | 'estado_m5'>>(
+      api.get<Pick<PacienteAdultoResumen, 'diagnostico_valor' | 'estado_m1' | 'estado_m2' | 'estado_m3' | 'estado_m4' | 'estado_m5'>>(
         `/pacientes-adultos/${id}/resumen`,
       ),
   })
@@ -93,7 +93,7 @@ export function PacienteAdultoFichaPage() {
         !esNuevo && paciente
           ? [
               { etiqueta: 'Identificación', valor: paciente.identificacion },
-              { etiqueta: 'Edad', valor: formatearEdad(resumen?.edad_dias) || '—' },
+              { etiqueta: 'Edad', valor: formatearEdad(paciente.fecha_nacimiento) || '—' },
               {
                 etiqueta: varias && episodio ? `Diagnóstico (intervención ${episodio.numero_episodio})` : 'Diagnóstico',
                 valor: diagnostico ?? 'Sin diagnóstico',

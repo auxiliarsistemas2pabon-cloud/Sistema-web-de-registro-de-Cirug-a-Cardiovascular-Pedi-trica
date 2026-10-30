@@ -506,7 +506,7 @@ export function PacientesAdultosListaPage() {
                       </div>
                     </td>
                     <td className="px-3 py-3 tabular-nums text-slate-700">{p.identificacion}</td>
-                    <td className="whitespace-nowrap px-3 py-3 text-slate-700">{formatearEdad(p.edad_dias)}</td>
+                    <td className="whitespace-nowrap px-3 py-3 text-slate-700">{formatearEdad(p.fecha_nacimiento)}</td>
                     <td className="px-3 py-3">
                       <p className="line-clamp-1 max-w-[24rem] text-slate-700" title={p.diagnostico_valor ?? undefined}>
                         {p.diagnostico_valor ?? '—'}
@@ -547,7 +547,7 @@ export function PacientesAdultosListaPage() {
                     <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
                       <div>
                         <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Edad</dt>
-                        <dd className="text-slate-900">{formatearEdad(p.edad_dias) || '—'}</dd>
+                        <dd className="text-slate-900">{formatearEdad(p.fecha_nacimiento) || '—'}</dd>
                       </div>
                       <div>
                         <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Cirugía</dt>

@@ -15,6 +15,24 @@ export function diasEntre(desde, hasta) {
   return Math.round((Date.parse(`${hasta}T00:00:00Z`) - Date.parse(`${desde}T00:00:00Z`)) / 86_400_000)
 }
 
+/** La edad cumplida en `hasta`, igual que formatearEdad en src/lib/fechas.ts (misma regla, para que el
+ * Excel diga lo mismo que la ficha): menores de 1 año en meses por calendario, desde 1 año en años, y
+ * antes del primer mes también los días. '' si falta una fecha. */
+export function textoEdad(nacimiento, hasta) {
+  if (!nacimiento || !hasta || hasta < nacimiento) return ''
+  const [an, mn, dn] = nacimiento.split('-').map(Number)
+  const [ah, mh, dh] = hasta.split('-').map(Number)
+  const meses = (ah - an) * 12 + (mh - mn) - (dh < dn ? 1 : 0)
+  if (meses >= 12) {
+    const anios = Math.floor(meses / 12)
+    return `${anios} ${anios === 1 ? 'año' : 'años'}`
+  }
+  const textoMeses = `${meses} ${meses === 1 ? 'mes' : 'meses'}`
+  if (meses > 0) return textoMeses
+  const dias = diasEntre(nacimiento, hasta)
+  return `${textoMeses} (${dias} ${dias === 1 ? 'día' : 'días'})`
+}
+
 /**
  * Validador acumulativo: recoge todos los errores de campo y los lanza juntos como 400 VALIDACION.
  * Los valores vacíos ("" o undefined) se tratan como null.

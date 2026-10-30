@@ -12,7 +12,7 @@ import { SelectOpciones } from '../../components/SelectOpciones'
 import { useOpciones } from '../../hooks/useOpciones'
 import { calcularEstadoModulo1 } from '../../lib/completitud'
 import { sinEspecificar, useEsOpcionOtro } from '../../lib/opciones'
-import { hoyIso } from '../../lib/fechas'
+import { formatearEdad, hoyIso } from '../../lib/fechas'
 import { formatearNumero, superficieCorporal } from '../../lib/estadisticas'
 import { api, mensajeDe } from '../../lib/api'
 import type { PacienteDetalle } from '../../types/db'
@@ -107,6 +107,7 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
   const sinTelefono = watch('sin_telefono')
   const telefonos = watch('telefonos')
   const pesoKg = watch('peso_kg')
+  const fechaNacimiento = watch('fecha_nacimiento')
 
   const asc = superficieCorporal(pesoKg ? Number(pesoKg) : null)
 
@@ -210,6 +211,9 @@ export function Modulo1Form({ paciente, onGuardado }: Props) {
 
               <Campo etiqueta="Fecha de nacimiento *" error={errors.fecha_nacimiento?.message}>
                 <input type="date" max={hoyIso()} {...register('fecha_nacimiento')} className={claseInput} />
+              </Campo>
+              <Campo etiqueta="Edad">
+                <input disabled value={formatearEdad(fechaNacimiento)} placeholder="Se calcula con la fecha de nacimiento" className={claseInput} />
               </Campo>
             </div>
           </SeccionFormulario>
