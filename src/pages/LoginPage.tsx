@@ -100,7 +100,7 @@ export function LoginPage() {
               </span>
             </h1>
             <p className="mx-auto mt-3 max-w-sm text-sm text-white/90 sm:mt-4 sm:text-base lg:mx-0">
-              Sistema de Registro de Cirugía Cardiovascular Pediátrica.
+              Sistema de Registro de Cirugía Cardiovascular.
             </p>
           </div>
         </div>

@@ -116,7 +116,7 @@ export function AppShell() {
               className="h-10 w-10 flex-none rounded-full shadow-sm ring-1 ring-slate-200"
             />
             <div className="hidden min-w-0 leading-tight sm:block">
-              <p className="truncate text-[15px] font-semibold tracking-tight text-slate-900">Cirugía Cardiovascular Pediátrica</p>
+              <p className="truncate text-[15px] font-semibold tracking-tight text-slate-900">Cirugía Cardiovascular</p>
               <p className="truncate text-[11px] font-medium uppercase tracking-[0.08em] text-slate-500">
                 Centro de Cuidados Cardioneurovasculares Pabón
               </p>
