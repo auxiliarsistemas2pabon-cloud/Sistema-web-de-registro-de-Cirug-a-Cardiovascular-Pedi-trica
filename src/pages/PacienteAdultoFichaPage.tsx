@@ -106,9 +106,8 @@ export function PacienteAdultoFichaPage() {
       pestanaActiva={pestanaActiva}
       onCambiarPestana={setPestanaActiva}
       intervenciones={
-        paciente && episodios && (
-          <SelectorEpisodiosAdulto pacienteId={paciente.id} episodios={episodios} episodioId={episodioId} onSeleccionar={setEpisodioId} />
-        )
+        // Un reingreso es una ficha nueva: el selector solo aparece si una ficha tiene más de una intervención.
+        varias && episodios ? <SelectorEpisodiosAdulto episodios={episodios} episodioId={episodioId} onSeleccionar={setEpisodioId} /> : undefined
       }
       contexto={varias && episodio && pestanaActiva !== 1 ? `Intervención ${episodio.numero_episodio}` : undefined}
     >
