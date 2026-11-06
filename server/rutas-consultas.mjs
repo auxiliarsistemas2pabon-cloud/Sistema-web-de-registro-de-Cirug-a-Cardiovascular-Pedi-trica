@@ -395,6 +395,30 @@ function edadPorProcedimiento(filas, ordenEdad) {
   return { edades: conSinDato ? [...ordenEdad, 'Sin dato'] : [...ordenEdad], filas: filasProcedimiento }
 }
 
+/**
+ * Una lista de selección múltiple mes a mes (pedido del 06-nov: las complicaciones "por tipo de cada
+ * mes"): cuántos pacientes operados en cada mes tuvieron cada tipo. Van los meses con cirugías (los
+ * que tienen tasa en el gráfico de puntos), en orden, aunque ese mes nadie tuviera ninguna: así se
+ * ve que el mes estuvo limpio. Cada mes lleva su total de cirugías, la base de esos casos.
+ */
+function multiplePorMes(filas, campo) {
+  const cirugiasPorMes = {}
+  const porTipo = new Map()
+  for (const f of filas) {
+    const mes = f.etiquetas.mes
+    cirugiasPorMes[mes] = (cirugiasPorMes[mes] ?? 0) + 1
+    for (const tipo of f.multiples[campo]) {
+      if (!porTipo.has(tipo)) porTipo.set(tipo, {})
+      const porMes = porTipo.get(tipo)
+      porMes[mes] = (porMes[mes] ?? 0) + 1
+    }
+  }
+  const tipos = [...porTipo.entries()]
+    .map(([tipo, por_mes]) => ({ tipo, total: Object.values(por_mes).reduce((a, b) => a + b, 0), por_mes }))
+    .sort((a, b) => esVacia(a.tipo) - esVacia(b.tipo) || b.total - a.total || a.tipo.localeCompare(b.tipo, 'es'))
+  return { meses: Object.keys(cirugiasPorMes).sort(), cirugias_por_mes: cirugiasPorMes, filas: tipos }
+}
+
 /** Las opciones que significan "ninguno" en las listas de selección múltiple: no son un factor de
  * riesgo ni una complicación, así que no tienen barra (el paciente queda sin ninguna). */
 const CODIGOS_NINGUNO = new Set(['NINGUNO', 'NINGUNA', 'NO'])
@@ -548,6 +572,9 @@ function calcularIndicadores({ filas, filtros, rangos, ordenEdad, formatearRiesg
     tasas_por_mes: tasasPorMes(filtradas('mes')),
     por_complicacion_intraqx: multiple('complicacion_intraqx'),
     por_complicacion_pop: multiple('complicacion_pop'),
+    // Cruzan el tipo con el mes, así que ignoran el filtro de los dos (como la edad por procedimiento).
+    complicacion_intraqx_por_mes: multiplePorMes(filtradas('complicacion_intraqx', 'mes'), 'complicacion_intraqx'),
+    complicacion_pop_por_mes: multiplePorMes(filtradas('complicacion_pop', 'mes'), 'complicacion_pop'),
     por_reingreso: conteoEnOrden(filtradas('reingreso'), 'reingreso', ORDEN_SI_NO),
     por_causa_reingreso: conteoCampo(filtradas('causa_reingreso'), 'causa_reingreso'),
     por_condicion_salida: conteoCampo(filtradas('condicion_salida'), 'condicion_salida'),

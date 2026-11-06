@@ -109,6 +109,19 @@ function tasasMes(meses: MesTasas[], casos: CasosMes): DatoTasa[] {
   })
 }
 
+/** Una lista de selección múltiple mes a mes: pacientes de cada tipo en cada mes con cirugías. */
+type TipoPorMes = {
+  meses: string[]
+  cirugias_por_mes: Record<string, number>
+  filas: { tipo: string; total: number; por_mes: Record<string, number> }[]
+}
+
+/** "2026-05" → "May 2026". */
+function etiquetaMes(clave: string): string {
+  const [anio, mes] = clave.split('-').map(Number)
+  return `${MESES[mes]} ${anio}`
+}
+
 type ConteoRiesgo = { total_cirugias: number; fallecidos: number; mortalidad_pct: number }
 type GrupoHerida = 'adecuada' | 'alteracion' | 'no_aplica' | 'sin_registrar'
 
@@ -161,6 +174,8 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         tasas_por_mes: MesTasas[]
         por_complicacion_intraqx: ConteoMultiple
         por_complicacion_pop: ConteoMultiple
+        complicacion_intraqx_por_mes: TipoPorMes
+        complicacion_pop_por_mes: TipoPorMes
         por_reingreso: Conteo
         por_causa_reingreso: Conteo
         por_condicion_salida: Conteo
@@ -206,6 +221,8 @@ function useIndicadores(grupo: GrupoActivo, desde: string, hasta: string, filtro
         tasasPorMes: r.tasas_por_mes,
         porComplicacionIntraqx: aMultiple(r.por_complicacion_intraqx),
         porComplicacionPop: aMultiple(r.por_complicacion_pop),
+        complicacionIntraqxPorMes: r.complicacion_intraqx_por_mes,
+        complicacionPopPorMes: r.complicacion_pop_por_mes,
         porReingreso: aDatos(r.por_reingreso),
         porCausaReingreso: aDatos(r.por_causa_reingreso),
         porCondicionSalida: aDatos(r.por_condicion_salida),
@@ -323,6 +340,16 @@ function NotaMultiple({ pacientes, conAlguno, ninguno }: { pacientes: number; co
   )
 }
 
+/** Pie de un mapa de complicaciones mes a mes: aquí no hay porcentajes, solo pacientes. */
+function NotaPorMes({ pacientes, conAlguno, ninguno }: { pacientes: number; conAlguno: number; ninguno: string }) {
+  return (
+    <p className="mt-3 text-xs text-slate-500">
+      Un paciente con dos complicaciones cuenta en las dos filas. De los {pacientes} pacientes del periodo, {conAlguno} tuvieron alguna y{' '}
+      {pacientes - conAlguno} quedaron {ninguno}.
+    </p>
+  )
+}
+
 function num(v: number | null | undefined, decimales = 1): string {
   if (v === null || v === undefined) return '—'
   return v.toFixed(decimales)
@@ -335,7 +362,8 @@ function num(v: number | null | undefined, decimales = 1): string {
  * matriz por paciente al final, como consulta de detalle. */
 const PESTANAS = [
   { clave: 'resumen', etiqueta: 'Resumen', icono: <IconoGrafico /> },
-  { clave: 'clave', etiqueta: 'Indicadores clave', etiquetaCorta: 'Indicadores', icono: <IconoAlerta /> },
+  // No se llama "Indicadores": repetía el nombre de la página entera (pedido del 06-nov).
+  { clave: 'clave', etiqueta: 'Desenlaces clínicos: mortalidad, complicaciones y reingreso', etiquetaCorta: 'Desenlaces', icono: <IconoAlerta /> },
   { clave: 'pacientes', etiqueta: 'Pacientes', icono: <IconoPacientes /> },
   { clave: 'riesgo', etiqueta: 'Riesgo y diagnóstico', etiquetaCorta: 'Riesgo', icono: <IconoEscudo /> },
   { clave: 'cirugia', etiqueta: 'Cirugía', icono: <IconoCorazon /> },
@@ -500,18 +528,36 @@ export function IndicadoresPage() {
     cambiarFiltros(yaEstaba ? resto : [...resto, { campo, valor, etiqueta }])
   }
 
-  /** Un clic en una celda del mapa de calor filtra por sus dos campos a la vez (procedimiento y edad);
-   * un segundo clic en la misma celda quita los dos. */
-  function alternarCelda(procedimiento: string, edad: string) {
-    const resto = filtros.filter((f) => f.campo !== 'procedimiento' && f.campo !== 'edad')
-    const yaEstaba = filtros.some((f) => f.campo === 'procedimiento' && f.valor === procedimiento) &&
-      filtros.some((f) => f.campo === 'edad' && f.valor === edad)
+  /** Un clic en una celda de un mapa de calor filtra por sus dos campos a la vez (p. ej. procedimiento
+   * y edad, o complicación y mes); un segundo clic en la misma celda quita los dos. */
+  function alternarCelda(campoFila: CampoFiltro, fila: string, campoColumna: CampoFiltro, columna: string, etiquetaColumna = columna) {
+    const resto = filtros.filter((f) => f.campo !== campoFila && f.campo !== campoColumna)
+    const yaEstaba = filtros.some((f) => f.campo === campoFila && f.valor === fila) &&
+      filtros.some((f) => f.campo === campoColumna && f.valor === columna)
     cambiarFiltros(yaEstaba ? resto : [
       ...resto,
-      { campo: 'procedimiento', valor: procedimiento, etiqueta: procedimiento },
-      { campo: 'edad', valor: edad, etiqueta: edad },
+      { campo: campoFila, valor: fila, etiqueta: fila },
+      { campo: campoColumna, valor: columna, etiqueta: etiquetaColumna },
     ])
   }
+
+  /** Mapa de calor tipo × mes de una lista de complicaciones (pedido del 06-nov: por tipo de cada mes). */
+  const mapaPorMes = (datos: TipoPorMes, campo: 'complicacion_intraqx' | 'complicacion_pop') => (
+    <MapaCalor
+      filas={datos.filas.map((f) => ({ etiqueta: f.tipo, total: f.total, valores: f.por_mes }))}
+      columnas={datos.meses}
+      tituloFilas="Tipo de complicación"
+      unidad={['paciente', 'pacientes']}
+      etiquetaColumna={etiquetaMes}
+      detalleColumna={(mes) => {
+        const n = datos.cirugias_por_mes[mes] ?? 0
+        return `de ${n} ${n === 1 ? 'cirugía' : 'cirugías'}`
+      }}
+      filaSeleccionada={filtros.find((f) => f.campo === campo)?.valor ?? null}
+      columnaSeleccionada={filtros.find((f) => f.campo === 'mes')?.valor ?? null}
+      onSeleccionar={(tipo, mes) => alternarCelda(campo, tipo, 'mes', mes, etiquetaMes(mes))}
+    />
+  )
 
   /** Lo que necesita un gráfico para filtrar el tablero por su campo y resaltar lo elegido. */
   const interaccion = (campo: CampoFiltro): PropsSeleccion => ({
@@ -765,25 +811,24 @@ export function IndicadoresPage() {
                 ))}
               </div>
 
+              {/* Las complicaciones por tipo, separadas mes a mes (pedido del 06-nov): una fila por tipo y
+                  una columna por mes con cirugías; la columna Total es lo que antes mostraban las barras. */}
+              <Tarjeta
+                titulo="Complicaciones intraquirúrgicas por tipo, mes a mes"
+                descripcion="Cuántos pacientes operados en cada mes tuvieron cada complicación en quirófano. Clic en una celda para filtrar el tablero por ese tipo y ese mes."
+              >
+                {mapaPorMes(data.complicacionIntraqxPorMes, 'complicacion_intraqx')}
+                <NotaPorMes {...data.porComplicacionIntraqx} ninguno="sin complicación intraquirúrgica registrada" />
+              </Tarjeta>
+              <Tarjeta
+                titulo="Complicaciones postoperatorias por tipo, mes a mes"
+                descripcion="Cuántos pacientes operados en cada mes tuvieron cada complicación después de la cirugía. Clic en una celda para filtrar el tablero por ese tipo y ese mes."
+              >
+                {mapaPorMes(data.complicacionPopPorMes, 'complicacion_pop')}
+                <NotaPorMes {...data.porComplicacionPop} ninguno="sin complicación postoperatoria registrada" />
+              </Tarjeta>
+
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                <Tarjeta titulo="Complicaciones intraquirúrgicas por tipo" descripcion="Cuántos pacientes tuvieron cada complicación en quirófano.">
-                  <GraficoBarras
-                    datos={data.porComplicacionIntraqx.datos}
-                    conPorcentaje
-                    totalPorcentaje={data.porComplicacionIntraqx.pacientes}
-                    {...interaccion('complicacion_intraqx')}
-                  />
-                  <NotaMultiple {...data.porComplicacionIntraqx} ninguno="sin complicación intraquirúrgica registrada" />
-                </Tarjeta>
-                <Tarjeta titulo="Complicaciones postoperatorias por tipo" descripcion="Cuántos pacientes tuvieron cada complicación después de la cirugía.">
-                  <GraficoBarras
-                    datos={data.porComplicacionPop.datos}
-                    conPorcentaje
-                    totalPorcentaje={data.porComplicacionPop.pacientes}
-                    {...interaccion('complicacion_pop')}
-                  />
-                  <NotaMultiple {...data.porComplicacionPop} ninguno="sin complicación postoperatoria registrada" />
-                </Tarjeta>
                 <Tarjeta
                   titulo="Reingreso a la institución en los primeros 30 días"
                   descripcion="Según el seguimiento post-egreso (Módulo 5). No incluye a los pacientes fallecidos."
@@ -901,7 +946,7 @@ export function IndicadoresPage() {
                     unidad={['cirugía', 'cirugías']}
                     filaSeleccionada={filtros.find((f) => f.campo === 'procedimiento')?.valor ?? null}
                     columnaSeleccionada={filtros.find((f) => f.campo === 'edad')?.valor ?? null}
-                    onSeleccionar={alternarCelda}
+                    onSeleccionar={(procedimiento, edad) => alternarCelda('procedimiento', procedimiento, 'edad', edad)}
                   />
                 </Tarjeta>
               )}

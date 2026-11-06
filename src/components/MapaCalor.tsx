@@ -18,6 +18,10 @@ interface Props {
   filaSeleccionada: string | null
   columnaSeleccionada: string | null
   onSeleccionar?: (fila: string, columna: string) => void
+  /** Cómo se lee cada columna, si su clave no sirve de título (el mes "2026-05" → "May 2026"). */
+  etiquetaColumna?: (columna: string) => string
+  /** Línea pequeña bajo el título de cada columna (p. ej. "5 cirugías", la base de esos casos). */
+  detalleColumna?: (columna: string) => string | undefined
 }
 
 /**
@@ -26,7 +30,17 @@ interface Props {
  * claro a oscuro según la cantidad (skill de dataviz: magnitud = rampa secuencial de un tono). El tono
  * más oscuro es el paso 400 de la rampa, para que el número en negro se lea en cualquier celda (5.6:1).
  */
-export function MapaCalor({ filas, columnas, tituloFilas, unidad, filaSeleccionada, columnaSeleccionada, onSeleccionar }: Props) {
+export function MapaCalor({
+  filas,
+  columnas,
+  tituloFilas,
+  unidad,
+  filaSeleccionada,
+  columnaSeleccionada,
+  onSeleccionar,
+  etiquetaColumna = (columna) => columna,
+  detalleColumna,
+}: Props) {
   if (filas.length === 0) return <SinDatosGrafico />
   const maximo = Math.max(...filas.flatMap((f) => columnas.map((c) => f.valores[c] ?? 0)))
   const atenuada = (fila: string, columna: string) =>
@@ -44,7 +58,10 @@ export function MapaCalor({ filas, columnas, tituloFilas, unidad, filaSelecciona
               </th>
               {columnas.map((columna) => (
                 <th key={columna} scope="col" className="min-w-16 px-1 py-1.5 text-center text-xs font-medium text-slate-600">
-                  {columna}
+                  {etiquetaColumna(columna)}
+                  {detalleColumna?.(columna) && (
+                    <span className="block whitespace-nowrap text-[10px] font-normal text-slate-500">{detalleColumna(columna)}</span>
+                  )}
                 </th>
               ))}
               <th scope="col" className="px-2 py-1.5 text-right text-xs font-medium text-slate-600">Total</th>
@@ -53,12 +70,12 @@ export function MapaCalor({ filas, columnas, tituloFilas, unidad, filaSelecciona
           <tbody>
             {filas.map((fila) => (
               <tr key={fila.etiqueta}>
-                <th scope="row" className="sticky left-0 z-10 max-w-64 bg-white px-2 py-1 text-left text-xs font-normal text-slate-700">
+                <th scope="row" className="sticky left-0 z-10 min-w-44 max-w-64 bg-white px-2 py-1 text-left text-xs font-normal text-slate-700">
                   {fila.etiqueta}
                 </th>
                 {columnas.map((columna) => {
                   const valor = fila.valores[columna] ?? 0
-                  const descripcion = `${fila.etiqueta} · ${columna}: ${texto(valor)}`
+                  const descripcion = `${fila.etiqueta} · ${etiquetaColumna(columna)}: ${texto(valor)}`
                   const estilo = valor > 0
                     ? { background: `color-mix(in oklab, var(--chart-calor-alto) ${Math.round((valor / maximo) * 100)}%, var(--chart-calor-bajo))` }
                     : undefined
