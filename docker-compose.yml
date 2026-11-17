@@ -1,5 +1,5 @@
 # Grupo local unificado. Los dos motores conservan sus volúmenes y puertos.
-name: clinica-pabon
+name: cirugia-cardiovascular
 
 services:
   db:

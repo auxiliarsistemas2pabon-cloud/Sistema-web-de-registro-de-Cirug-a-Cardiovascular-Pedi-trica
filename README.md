@@ -4,7 +4,7 @@ Registro clínico pediátrico y de adultos con React, TypeScript, Express y MySQ
 
 ## Uso local ya configurado
 
-1. Inicie Docker Desktop y espere que el grupo `clinica-pabon` esté saludable. Para iniciarlo completo use `docker compose --env-file .env.docker up -d --wait`; conserva los volúmenes existentes.
+1. Inicie Docker Desktop y espere que el grupo `cirugia-cardiovascular` esté saludable. Para iniciarlo completo use `docker compose --env-file .env.docker up -d --wait`; conserva los volúmenes existentes.
 2. Ejecute `npm run server` desde esta carpeta si el servidor aún no está activo.
 3. Abra **https://localhost:3443**. El servicio y MySQL escuchan exclusivamente en `127.0.0.1`.
 
@@ -14,7 +14,7 @@ El certificado local está instalado en la cuenta actual de Windows y expira al 
 
 ## Grupo Docker local
 
-Los grupos anteriores `backend` y `sistemawebdecirugacardiovascularpeditrica` se reunieron en **`clinica-pabon`**. PostgreSQL y MySQL siguen siendo dos servicios dentro de ese único grupo:
+Los grupos anteriores `backend` y `sistemawebdecirugacardiovascularpeditrica` se reunieron en **`cirugia-cardiovascular`**. PostgreSQL y MySQL siguen siendo dos servicios dentro de ese único grupo:
 
 | Servicio | Contenedor | Puerto del equipo | Volumen conservado |
 | --- | --- | --- | --- |
