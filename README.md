@@ -4,13 +4,26 @@ Registro clínico pediátrico y de adultos con React, TypeScript, Express y MySQ
 
 ## Uso local ya configurado
 
-1. Inicie Docker Desktop y espere que `cardio-mysql` esté saludable. Si necesita recrearlo, use `docker compose --env-file .env.docker up -d --wait mysql`; conserva el volumen existente.
+1. Inicie Docker Desktop y espere que el grupo `clinica-pabon` esté saludable. Para iniciarlo completo use `docker compose --env-file .env.docker up -d --wait`; conserva los volúmenes existentes.
 2. Ejecute `npm run server` desde esta carpeta si el servidor aún no está activo.
 3. Abra **https://localhost:3443**. El servicio y MySQL escuchan exclusivamente en `127.0.0.1`.
 
 Al primer ingreso después de esta actualización deberá cambiar su contraseña y configurar una aplicación autenticadora. Los códigos de recuperación se muestran una sola vez: guárdelos fuera del sistema, en su gestor de contraseñas. Ninguna cuenta puede consultar datos clínicos antes de completar el doble factor.
 
 El certificado local está instalado en la cuenta actual de Windows y expira al año. Otras cuentas de Windows necesitan su propia configuración de confianza. No omita advertencias de certificado: compruebe la vigencia y ejecute el procedimiento de renovación indicado en [seguridad.md](docs/seguridad.md).
+
+## Grupo Docker local
+
+Los grupos anteriores `backend` y `sistemawebdecirugacardiovascularpeditrica` se reunieron en **`clinica-pabon`**. PostgreSQL y MySQL siguen siendo dos servicios dentro de ese único grupo:
+
+| Servicio | Contenedor | Puerto del equipo | Volumen conservado |
+| --- | --- | --- | --- |
+| `db` · PostgreSQL 16 | `backend-db-1` | 5434 | `backend_postgres_data` |
+| `mysql` · MySQL 8.4 | `cardio-mysql` | 3307 | `sistemawebdecirugacardiovascularpeditrica_cardio_mysql_data` |
+
+Los volúmenes están declarados como externos para conservar su identidad y protegerlos de `docker compose down -v`. Las credenciales PostgreSQL se cargan del archivo privado `.env.postgres.docker`. El Compose de `C:/Gestión Ambiental y Ropa/backend/` incluye esta configuración unificada; los comandos desde cualquiera de las dos carpetas administran el mismo grupo.
+
+La agrupación conserva los motores, las cuentas y los puertos de las bases; no mezcla sus esquemas. Antes del cambio se guardaron copias cifradas y se verificaron después las huellas de las tablas. El grupo detenido `gestinambientalyropa` se conserva aparte.
 
 ## Permisos
 
@@ -65,6 +78,7 @@ npm run backup:verify -- "backups/ARCHIVO.sql.gz.aes"
 - `.env.maintenance`: cuenta de migraciones y datos iniciales de administración.
 - `.env.backup`: cuenta de lectura para respaldos.
 - `.env.docker`: inicialización del contenedor y contraseña root.
+- `.env.postgres.docker`: credenciales del servicio PostgreSQL del grupo unificado.
 - `.local-secrets/`: certificado, claves y registros privados.
 
 Estos archivos están excluidos de Git. Los archivos locales con secretos tienen acceso restringido a la cuenta actual y SYSTEM. No los adjunte a incidencias ni los copie en chats.
@@ -76,6 +90,8 @@ Para pérdida de autenticador, use primero un código de recuperación y **Segur
 ## Instalación nueva en Windows
 
 Estos pasos son para una base nueva. No repita el aprovisionamiento sobre la instalación ya configurada.
+
+El Compose actual utiliza también PostgreSQL y dos volúmenes externos de esta instalación. En otro equipo debe preparar `.env.postgres.docker` con `POSTGRES_DB`, `POSTGRES_USER` y una contraseña propia en `POSTGRES_PASSWORD`, con acceso restringido al operador. Antes de arrancar cree ambos volúmenes con `docker volume create backend_postgres_data` y `docker volume create sistemawebdecirugacardiovascularpeditrica_cardio_mysql_data`, o restaure los volúmenes existentes si se trata de una recuperación.
 
 1. Instale dependencias con `npm ci`.
 2. Ejecute `node scripts/preparar-local.mjs --email=SU_CORREO_INSTITUCIONAL`. Crea secretos aleatorios y un archivo `.env` privado; no imprime contraseñas.

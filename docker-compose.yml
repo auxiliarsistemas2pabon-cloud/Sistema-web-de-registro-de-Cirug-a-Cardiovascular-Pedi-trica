@@ -1,5 +1,23 @@
-# MySQL para desarrollo local. En producción use su propio servidor MySQL 8.x.
+# Grupo local unificado. Los dos motores conservan sus volúmenes y puertos.
+name: clinica-pabon
+
 services:
+  db:
+    image: postgres:16
+    container_name: backend-db-1
+    restart: unless-stopped
+    env_file:
+      - .env.postgres.docker
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   mysql:
     image: mysql:8.4
     container_name: cardio-mysql
@@ -24,4 +42,9 @@ services:
       retries: 20
 
 volumes:
+  postgres_data:
+    external: true
+    name: backend_postgres_data
   cardio_mysql_data:
+    external: true
+    name: sistemawebdecirugacardiovascularpeditrica_cardio_mysql_data
