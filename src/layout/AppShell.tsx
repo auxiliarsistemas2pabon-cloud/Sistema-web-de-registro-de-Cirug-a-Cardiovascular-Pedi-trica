@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type SVGProps } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { NOMBRES_ROL } from '../auth/permisos'
 import { useInactivityLogout } from '../auth/useInactivityLogout'
 import {
   IconoAdultos,
@@ -63,8 +64,6 @@ const gruposEnlaces: GrupoEnlaces[] = [
 
 const todosLosEnlaces = gruposEnlaces.flatMap((g) => g.enlaces)
 
-/** No hay roles: todos los usuarios son administradores, y así se lee bajo su nombre. */
-const ROL = 'Administrador'
 
 /** Iniciales para el avatar circular (primeras letras del primer y segundo nombre/apellido). */
 function iniciales(nombreCompleto: string | undefined) {
@@ -133,6 +132,7 @@ function Marca() {
  * inicio de sesión) para que se distinga a simple vista del contenido. Fijo a la izquierda desde
  * `lg`; en pantallas pequeñas se despliega encima. */
 function BarraLateral({ abierta, cerrar }: { abierta: boolean; cerrar: () => void }) {
+  const { perfil } = useAuth()
   return (
     <aside
       id="menu-secciones"
@@ -175,7 +175,8 @@ function BarraLateral({ abierta, cerrar }: { abierta: boolean; cerrar: () => voi
         aria-label="Secciones"
         className="relative min-h-0 flex-1 overflow-y-auto border-t border-white/10 px-3 py-3 [scrollbar-color:rgb(255_255_255/0.25)_transparent] [scrollbar-width:thin]"
       >
-        {gruposEnlaces.map((grupo) => (
+        {gruposEnlaces.map((grupo) => ({ ...grupo, enlaces: grupo.enlaces.filter((enlace) =>
+          !['/datos', '/administracion'].includes(enlace.to) || perfil?.rol === 'administrador') })).filter((g) => g.enlaces.length).map((grupo) => (
           <div key={grupo.titulo} className="mb-4 last:mb-0">
             <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/60">{grupo.titulo}</p>
             <div className="space-y-0.5">
@@ -220,6 +221,7 @@ function BarraLateral({ abierta, cerrar }: { abierta: boolean; cerrar: () => voi
 
 function MenuUsuario() {
   const { perfil, cerrarSesion } = useAuth()
+  const rol = perfil ? NOMBRES_ROL[perfil.rol] : ''
   return (
     <DropdownMenu>
       <DropdownMenuTrigger className="group flex flex-none items-center gap-2.5 rounded-full border border-transparent p-1 outline-none transition-colors hover:border-slate-200 hover:bg-slate-50 focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40 data-[state=open]:border-slate-200 data-[state=open]:bg-slate-50 sm:pr-3">
@@ -231,7 +233,7 @@ function MenuUsuario() {
         </span>
         <span className="hidden text-left leading-tight sm:block">
           <span className="block max-w-[14rem] truncate text-sm font-semibold text-slate-900">{perfil?.nombre_completo}</span>
-          <span className="block text-xs text-slate-500">{ROL}</span>
+          <span className="block text-xs text-slate-500">{rol}</span>
         </span>
         <IconoChevronAbajo className="hidden h-4 w-4 text-[var(--pabon-azul-oscuro)] opacity-60 transition-transform group-data-[state=open]:rotate-180 sm:block" />
       </DropdownMenuTrigger>
@@ -244,11 +246,12 @@ function MenuUsuario() {
             <span className="block truncate text-sm font-semibold text-slate-900">{perfil?.nombre_completo}</span>
             {perfil?.email && <span className="block truncate text-xs font-normal text-slate-500">{perfil.email}</span>}
             <span className="mt-1 inline-flex rounded-full bg-[var(--pabon-azul-oscuro)]/[0.08] px-2 py-0.5 text-[11px] font-medium text-[var(--pabon-azul-oscuro)]">
-              {ROL}
+              {rol}
             </span>
           </span>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild><NavLink to="/seguridad">Seguridad de mi cuenta</NavLink></DropdownMenuItem>
         <DropdownMenuItem variant="destructive" onClick={() => cerrarSesion()} className="px-2 py-2">
           <IconoSalir className="h-4 w-4" />
           Cerrar sesión

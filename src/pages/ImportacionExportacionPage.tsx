@@ -9,6 +9,7 @@ import { IconoAdultos, IconoBajar, IconoDocumento, IconoPacientes } from '../com
 import { ENCABEZADOS_EXPORTACION, ENCABEZADOS_EXPORTACION_ADULTOS, type ColumnaExportacion } from '../lib/importacion'
 import { api } from '../lib/api'
 import { useGrupoActivo } from '../lib/grupoActivo'
+import { escaparCsv } from '../lib/csv'
 
 type FilaExportacion = Record<string, string | number | boolean | null>
 type Encabezados = readonly ColumnaExportacion[]
@@ -54,12 +55,6 @@ function OpcionGrupo({
 
 function fechaArchivo(): string {
   return new Date().toLocaleDateString('en-CA')
-}
-
-function escaparCsv(valor: unknown): string {
-  let texto = valor === null || valor === undefined ? '' : String(valor)
-  if (/^[=+\-@]/.test(texto)) texto = `'${texto}`
-  return /[",\n]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto
 }
 
 function prepararHoja(libro: ExcelJS.Workbook, nombre: string, columnas: Encabezados, filas: FilaExportacion[]) {

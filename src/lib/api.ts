@@ -1,8 +1,5 @@
-// Cliente HTTP de la API propia (Express + MySQL). El token vive en sessionStorage: se pierde al cerrar
-// la pestaña y nunca se comparte entre pestañas ni se persiste en disco.
+// La sesión viaja en una cookie HttpOnly: JavaScript no puede leer su identificador.
 import { refrescarTodo } from './clienteConsultas'
-
-const CLAVE_TOKEN = 'cardio_token'
 
 export interface CuerpoError {
   codigo: string
@@ -23,37 +20,31 @@ export class ErrorApi extends Error {
   }
 }
 
-export const obtenerToken = () => sessionStorage.getItem(CLAVE_TOKEN)
-export const guardarToken = (token: string) => sessionStorage.setItem(CLAVE_TOKEN, token)
-export const borrarToken = () => sessionStorage.removeItem(CLAVE_TOKEN)
-
 let alExpirarSesion: (() => void) | null = null
 export function alExpirar(callback: (() => void) | null) {
   alExpirarSesion = callback
 }
 
-async function peticion<T>(metodo: string, ruta: string, cuerpo?: unknown): Promise<T> {
-  const token = obtenerToken()
+interface OpcionesPeticion { signal?: AbortSignal }
+
+async function peticion<T>(metodo: string, ruta: string, cuerpo?: unknown, opciones: OpcionesPeticion = {}): Promise<T> {
   const respuesta = await fetch(`/api${ruta}`, {
     method: metodo,
+    credentials: 'same-origin',
+    signal: opciones.signal,
     headers: {
       ...(cuerpo !== undefined ? { 'Content-Type': 'application/json' } : {}),
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      'X-Cardio-Request': '1',
     },
     body: cuerpo !== undefined ? JSON.stringify(cuerpo) : undefined,
   })
-
-  // Sesión deslizante: el servidor entrega un token nuevo mientras el usuario esté activo.
-  const renovado = respuesta.headers.get('X-Token-Renovado')
-  if (renovado) guardarToken(renovado)
 
   const texto = await respuesta.text()
   const datos = texto ? JSON.parse(texto) : null
 
   if (!respuesta.ok) {
     const error: CuerpoError = datos?.error ?? { codigo: 'ERROR_INTERNO', mensaje: 'Ocurrió un error inesperado.' }
-    if (respuesta.status === 401 && error.codigo === 'NO_AUTENTICADO' && token) {
-      borrarToken()
+    if (respuesta.status === 401 && error.codigo === 'NO_AUTENTICADO') {
       alExpirarSesion?.()
     }
     throw new ErrorApi(respuesta.status, error)
@@ -66,7 +57,7 @@ async function peticion<T>(metodo: string, ruta: string, cuerpo?: unknown): Prom
 
 export const api = {
   get: <T>(ruta: string) => peticion<T>('GET', ruta),
-  post: <T>(ruta: string, cuerpo?: unknown) => peticion<T>('POST', ruta, cuerpo ?? {}),
+  post: <T>(ruta: string, cuerpo?: unknown, opciones?: OpcionesPeticion) => peticion<T>('POST', ruta, cuerpo ?? {}, opciones),
   put: <T>(ruta: string, cuerpo: unknown) => peticion<T>('PUT', ruta, cuerpo),
   patch: <T>(ruta: string, cuerpo: unknown) => peticion<T>('PATCH', ruta, cuerpo),
 }

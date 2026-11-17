@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { claseBotonPrimario } from './Campo'
+import { usePermisos } from '../auth/permisos'
 
 /** Bloque titulado de un formulario de módulo. Los bloques se separan solos con una línea (el
  * primero no la lleva), así los diez formularios comparten el mismo ritmo visual. */
@@ -29,6 +30,8 @@ interface PieProps {
  * hasta los bordes de la tarjeta: asume el relleno p-5 / sm:p-6 que le da FichaPaciente.
  */
 export function PieFormulario({ etiqueta, guardando, guardadoEn, faltantes }: PieProps) {
+  const { escribir } = usePermisos()
+  if (!escribir) return <p className="mt-4 text-sm text-slate-500">Solo lectura</p>
   return (
     <div className="sticky bottom-0 z-10 -mx-5 -mb-5 mt-2 flex flex-col gap-2 border-t border-slate-200/80 bg-white px-5 py-3 shadow-[0_-6px_16px_-10px_rgb(16_24_40/0.12)] sm:-mx-6 sm:-mb-6 sm:px-6">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">

@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { usePermisos } from '../auth/permisos'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { claseBotonPrimario, claseBotonSecundario, claseBotonTexto, claseInput } from '../components/Campo'
@@ -156,6 +157,7 @@ const claseBotonPagina =
   'flex h-9 w-9 items-center justify-center rounded-lg border border-slate-300 bg-white text-[var(--pabon-azul-oscuro)] shadow-xs outline-none transition-colors hover:border-slate-400 hover:bg-slate-50 focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/30 disabled:pointer-events-none disabled:opacity-40'
 
 export function PacientesAdultosListaPage() {
+  const { escribir } = usePermisos()
   const navigate = useNavigate()
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_INICIALES)
   const [estadoFicha, setEstadoFicha] = useState<EstadoFicha>('todos')
@@ -226,7 +228,7 @@ export function PacientesAdultosListaPage() {
         titulo="Pacientes adultos"
         subtitulo="Registro y seguimiento de las fichas de cirugía cardiovascular de adultos."
         acciones={
-          <Link to="/adultos/nuevo" className={claseBotonPrimario}>
+          <Link to="/adultos/nuevo" className={escribir ? claseBotonPrimario : 'hidden'}>
             <IconoMas className="h-4 w-4" strokeWidth={2.2} />
             Nuevo paciente
           </Link>
@@ -459,7 +461,7 @@ export function PacientesAdultosListaPage() {
                   Limpiar filtros
                 </button>
               ) : (
-                <Link to="/adultos/nuevo" className={claseBotonPrimario}>
+                <Link to="/adultos/nuevo" className={escribir ? claseBotonPrimario : 'hidden'}>
                   <IconoMas className="h-4 w-4" strokeWidth={2.2} />
                   Nuevo paciente
                 </Link>

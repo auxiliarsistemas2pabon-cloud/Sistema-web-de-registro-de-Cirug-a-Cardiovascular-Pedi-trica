@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { usePermisos } from '../../auth/permisos'
 import { claseBotonSecundarioCompacto, claseInput } from '../../components/Campo'
 import { Cargando, EstadoVacio } from '../../components/Estados'
 import { SinDatosGrafico } from '../../components/GraficoComun'
@@ -124,6 +125,7 @@ interface Props {
  * (pedido del 23-oct), no solo las columnas que caben en pantalla.
  */
 export function MatrizResumen({ pacientes, cargando, grupo, claveGrupo, desde, hasta, filtros, onFiltrar, nombreArchivo }: Props) {
+  const { administrar } = usePermisos()
   const [busqueda, setBusqueda] = useState('')
   const [descargando, setDescargando] = useState(false)
   const [errorDescarga, setErrorDescarga] = useState(false)
@@ -172,7 +174,7 @@ export function MatrizResumen({ pacientes, cargando, grupo, claveGrupo, desde, h
       <Tarjeta
         titulo="Matriz de resumen por paciente"
         acciones={
-          visibles.length > 0 && (
+          administrar && visibles.length > 0 && (
             <button type="button" onClick={() => void descargarExcel()} disabled={descargando} className={claseBotonSecundarioCompacto}>
               <IconoBajar />
               {descargando ? 'Generando…' : 'Descargar Excel'}

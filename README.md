@@ -1,112 +1,93 @@
-# Sistema de registro de Cirugía Cardiovascular Pediátrica
+# Sistema de Cirugía Cardiovascular
 
-Aplicación web para el registro longitudinal de cirugía cardiovascular pediátrica. Está construida con React, TypeScript, Tailwind y Supabase/PostgreSQL. La interfaz está en español y usa la zona horaria `America/Bogota`.
+Registro clínico pediátrico y de adultos con React, TypeScript, Express y MySQL 8.4. Interfaz en español; fechas clínicas en `America/Bogota` y marcas de tiempo en UTC.
 
-El diagrama y las reglas del esquema están en [`docs/modelo-de-datos.md`](docs/modelo-de-datos.md).
+## Uso local ya configurado
 
-## Incluye
+1. Inicie Docker Desktop y espere que `cardio-mysql` esté saludable. Si necesita recrearlo, use `docker compose --env-file .env.docker up -d --wait mysql`; conserva el volumen existente.
+2. Ejecute `npm run server` desde esta carpeta si el servidor aún no está activo.
+3. Abra **https://localhost:3443**. El servicio y MySQL escuchan exclusivamente en `127.0.0.1`.
 
-- Autenticación y cierre por inactividad. No hay roles: todos los usuarios son administradores.
-- Ficha por paciente dividida en cinco módulos clínicos, con guardado independiente, validaciones y cálculos automáticos.
-- Listado con búsqueda y filtros, alertas de seguimiento e indicadores filtrables por fecha.
-- Listas desplegables administrables y auditoría de cambios.
-- Borrado lógico de pacientes y políticas RLS de Supabase.
-- Importación `.xlsx` con limpieza, validación, vista previa y trazabilidad por lote.
-- Exportación de los pacientes activos a Excel (tabla plana y hojas por módulo) o CSV.
+Al primer ingreso después de esta actualización deberá cambiar su contraseña y configurar una aplicación autenticadora. Los códigos de recuperación se muestran una sola vez: guárdelos fuera del sistema, en su gestor de contraseñas. Ninguna cuenta puede consultar datos clínicos antes de completar el doble factor.
 
-## Requisitos
+El certificado local está instalado en la cuenta actual de Windows y expira al año. Otras cuentas de Windows necesitan su propia configuración de confianza. No omita advertencias de certificado: compruebe la vigencia y ejecute el procedimiento de renovación indicado en [seguridad.md](docs/seguridad.md).
 
-- Node.js 22 o superior.
-- Un proyecto de Supabase (o Supabase CLI/Docker para desarrollo local).
+## Permisos
 
-## Desarrollo local
+| Perfil | Lectura clínica | Guardar fichas | Usuarios y listas administrativas | Importar y exportar | Eliminar/restaurar |
+| --- | --- | --- | --- | --- | --- |
+| Consulta | Sí | No | No | No | No |
+| Registro clínico | Sí | Sí | No; puede añadir diagnósticos desde la ficha | No | No |
+| Administrador | Sí | Sí | Sí | Sí | Sí |
 
-1. Instale dependencias:
+Los controles se aplican en la API. La migración conserva un administrador inicial y asigna consulta a las demás cuentas existentes; el administrador debe revisar y asignar sus permisos. Los perfiles autorizados para lectura pueden consultar los pacientes de esta institución; no existe segmentación por equipo asistencial o por paciente.
 
-   ```powershell
-   npm install
-   ```
+Administrar cuentas, importar, exportar y eliminar/restaurar exige haber confirmado la contraseña y el doble factor en los últimos diez minutos, desde **Seguridad de mi cuenta**. Los cambios de permisos y estado revocan las sesiones de la cuenta afectada. Siempre debe permanecer un administrador activo.
 
-2. Copie `.env.example` como `.env` y complete los valores públicos de su proyecto:
-
-   ```env
-   VITE_SUPABASE_URL=https://<project-ref>.supabase.co
-   VITE_SUPABASE_ANON_KEY=<anon-key>
-   ```
-
-   No añada la clave `service_role` al archivo `.env` del frontend.
-
-3. Aplique las migraciones a una instancia local o vinculada:
-
-   ```powershell
-   npx supabase start
-   npx supabase db reset
-   npm run dev
-   ```
-
-   Para una instancia remota, vincule primero el proyecto y aplique los cambios:
-
-   ```powershell
-   npx supabase link --project-ref <project-ref>
-   npx supabase db push
-   ```
-
-4. Abra la URL que muestra Vite (normalmente `http://localhost:5173`).
-
-## Primer administrador
-
-El primer perfil administrador se crea de forma controlada desde el SQL Editor de Supabase:
-
-1. Cree el usuario inicial en **Authentication → Users**.
-2. Copie su UUID y ejecute, sustituyendo los valores:
-
-   ```sql
-   insert into public.perfiles (id, nombre_completo, rol)
-   values ('UUID_DEL_USUARIO', 'Nombre del administrador', 'administrador');
-   ```
-
-3. Inicie sesión. Desde **Administración → Usuarios** podrá crear los demás usuarios mediante la Edge Function.
-
-Despliegue la función una vez por proyecto:
-
-```powershell
-npx supabase functions deploy crear-usuario
-```
-
-## Datos ficticios de demostración
-
-[`supabase/seed.demo.sql`](supabase/seed.demo.sql) crea 15 registros totalmente ficticios. Incluye un paciente fallecido en UCI, uno con reingreso, uno sin CEC y uno con seguimiento pendiente.
-
-Ejecute ese archivo solo en desarrollo o una demo y después de crear el administrador. No se ejecuta automáticamente al reiniciar la base de datos y no debe utilizarse en producción.
-
-## Importación y exportación
-
-Las funciones están en **Importar / exportar**.
-
-- Descargue la plantilla para conocer las columnas canónicas.
-- Al cargar un `.xlsx`, la aplicación normaliza espacios, equivalentes de `N/A`, números con coma decimal y fechas `dd/mm/aaaa` o `aaaa-mm-dd`.
-- Antes de crear pacientes, guarda un lote con la vista previa y muestra errores de listas, fechas, rangos, duplicados y reglas clínicas.
-- Se importan únicamente las filas válidas; una fila errónea no afecta las demás.
-- La exportación genera un archivo Excel con una hoja plana `Datos` y una hoja por módulo, además de CSV.
-
-La importación reconoce variaciones habituales de los encabezados en español (por ejemplo, `Fecha nacimiento`, `Fecha de nacimiento` y `fecha_nacimiento`). Cuando se disponga del Excel histórico de 44 columnas, sus encabezados exactos se pueden añadir al mapa de alias en [`src/lib/importacion.ts`](src/lib/importacion.ts).
+Reautenticarse no prolonga el límite absoluto de la sesión. Los cambios de contraseña y recuperación rotan la cookie actual. Si falla un cierre por conexión, la aplicación conserva una marca sin credenciales y reintenta revocarlo antes de restaurar acceso tras una recarga o un nuevo inicio.
 
 ## Verificación
 
+Requiere Node.js 24 LTS, Docker Desktop y, para las pruebas de navegador, Chromium de Playwright.
+
 ```powershell
+npm ci
+npx playwright install chromium
 npm run build
 npm run lint
+npm run test:security
+npm run test:security:mysql
+npm run test:security:tls
+npm audit --omit=dev
 ```
 
-`npm run build` valida TypeScript y crea el paquete de producción en `dist/`.
+`test:security` comprueba límites HTTP y criptografía sin una base clínica. Las pruebas `mysql` y `tls` crean un contenedor MySQL temporal con credenciales aleatorias; ejecutan pruebas clínicas, de permisos, MFA, concurrencia y navegador, y lo eliminan después. `tls` usa el certificado local válido. No se usa ni modifica la base de atención clínica. `test:security:browser` ejecuta solo los casos de navegador en ese mismo aislamiento.
 
-## Despliegue
+`test:api` es la suite clínica interna invocada por el entorno aislado; ejecútela mediante `test:security:mysql` para obtener las cuentas ficticias y el doble factor de pruebas.
 
-1. Aplique las migraciones y despliegue `crear-usuario` en Supabase.
-2. En el proveedor del frontend, configure `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` como variables de compilación.
-3. Ejecute `npm run build` y publique el directorio `dist` como sitio estático.
-4. Configure una URL de producción en **Authentication → URL Configuration** de Supabase y active un SMTP institucional antes de invitar usuarios reales.
+## Respaldos
 
-## Protección de datos
+`npm run backup` genera un volcado comprimido y cifrado con AES-256-GCM en `backups/` y verifica su restauración en una base temporal. También genera un archivo `.config.json.aes` con la clave necesaria para recuperar las semillas MFA. Ambos archivos se cifran con `.local-secrets/backup.key`.
 
-El sistema maneja datos de salud de menores de edad. Mantenga el proyecto de Supabase privado, limite las cuentas al personal autorizado, revise periódicamente la auditoría y no use los datos ficticios para atención clínica. Antes de la salida a producción, la institución debe validar sus políticas de tratamiento de datos, retención, copias de seguridad y control de acceso conforme a su marco normativo.
+La tarea de Windows **Cardio-Respaldo-Cifrado-Local** se programa con `scripts/programar-respaldo-local.ps1` para las 18:00 de Bogotá. Requiere una sesión de Windows iniciada y Docker disponible. Su resultado se consulta en el Programador de tareas y en los registros privados `.local-secrets/respaldo-programado.*.log`. La configuración actual fue probada con una ejecución de la tarea.
+
+Para verificar un respaldo existente:
+
+```powershell
+npm run backup:verify -- "backups/ARCHIVO.sql.gz.aes"
+```
+
+**Una copia en el mismo equipo no protege contra pérdida del equipo.** Mantenga también copias externas cifradas de los archivos SQL y configuración. Custodie `backup.key` por separado: sin ella no se recuperan. No hay transferencia externa configurada ni eliminación automática de respaldos.
+
+## Credenciales y mantenimiento
+
+- `.env`: solo la configuración y secretos de la aplicación.
+- `.env.maintenance`: cuenta de migraciones y datos iniciales de administración.
+- `.env.backup`: cuenta de lectura para respaldos.
+- `.env.docker`: inicialización del contenedor y contraseña root.
+- `.local-secrets/`: certificado, claves y registros privados.
+
+Estos archivos están excluidos de Git. Los archivos locales con secretos tienen acceso restringido a la cuenta actual y SYSTEM. No los adjunte a incidencias ni los copie en chats.
+
+`npm run db:migrate` aplica cambios con la cuenta separada de mantenimiento. El servicio normal no ejecuta migraciones ni tiene permisos para alterar tablas, borrar auditoría o administrar usuarios de MySQL. Haga y verifique un respaldo antes de migrar.
+
+Para pérdida de autenticador, use primero un código de recuperación y **Seguridad de mi cuenta → Cambiar aplicación autenticadora**. Si se perdieron todos los factores, un operador autorizado debe verificar presencialmente la identidad y usar [el procedimiento local](docs/seguridad.md); no existe restablecimiento anónimo de MFA.
+
+## Instalación nueva en Windows
+
+Estos pasos son para una base nueva. No repita el aprovisionamiento sobre la instalación ya configurada.
+
+1. Instale dependencias con `npm ci`.
+2. Ejecute `node scripts/preparar-local.mjs --email=SU_CORREO_INSTITUCIONAL`. Crea secretos aleatorios y un archivo `.env` privado; no imprime contraseñas.
+3. Ejecute `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/configurar-https-local.ps1`. Verifique y acepte manualmente el certificado local que genere Windows.
+4. Inicie MySQL con `docker compose up -d --wait mysql`.
+5. Ejecute `npm run backup` y `node scripts/configurar-db-local.mjs`. Se crean tablas, roles y cuentas de servicio; se rotan las credenciales iniciales y se restringe la cuenta de la aplicación.
+6. Ejecute `node scripts/separar-entornos-locales.mjs`. La contraseña temporal inicial pasa al archivo privado `.env.maintenance`; consúltela localmente para el primer ingreso y retírela después de cambiarla.
+7. Programe los respaldos con `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/programar-respaldo-local.ps1`.
+8. Ejecute `npm run build`, las pruebas y `npm run server`.
+
+Para desarrollo de la interfaz, `npm run dev:full` utiliza el mismo certificado y un proxy local. El uso habitual local debe hacerse con Express y `dist/`; no publique Vite.
+
+## Publicación futura
+
+Esta configuración está destinada al equipo local. Antes de publicar se deben configurar dominio, proxy HTTPS, red, certificados, copias externas, monitoreo y la política institucional de acceso y retención. Consulte [la documentación de seguridad](docs/seguridad.md) y [el contrato de autenticación](docs/api-contrato.md). No existe una garantía de seguridad absoluta.

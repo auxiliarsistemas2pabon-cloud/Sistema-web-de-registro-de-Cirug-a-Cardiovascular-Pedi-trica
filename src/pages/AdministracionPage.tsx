@@ -5,8 +5,10 @@ import { IconoEngranaje, IconoEscudo, IconoLista, IconoUsuarios } from '../compo
 import { AuditoriaTab } from './administracion/AuditoriaTab'
 import { ListasTab } from './administracion/ListasTab'
 import { UsuariosTab } from './administracion/UsuariosTab'
+import { SeguridadTab } from './administracion/SeguridadTab'
 
 const PESTANAS = [
+  { clave: 'seguridad', etiqueta: 'Seguridad', icono: <IconoEscudo /> },
   { clave: 'usuarios', etiqueta: 'Usuarios', icono: <IconoUsuarios /> },
   { clave: 'listas', etiqueta: 'Listas', icono: <IconoLista /> },
   { clave: 'auditoria', etiqueta: 'Auditoría', icono: <IconoEscudo /> },
@@ -15,7 +17,7 @@ const PESTANAS = [
 type Pestana = (typeof PESTANAS)[number]['clave']
 
 export function AdministracionPage() {
-  const [pestana, setPestana] = useState<Pestana>('usuarios')
+  const [pestana, setPestana] = useState<Pestana>('seguridad')
 
   return (
     <div>
@@ -44,6 +46,7 @@ export function AdministracionPage() {
       <Tarjeta>
         <div className="p-5">
           {pestana === 'usuarios' && <UsuariosTab />}
+          {pestana === 'seguridad' && <SeguridadTab />}
           {pestana === 'listas' && <ListasTab />}
           {pestana === 'auditoria' && <AuditoriaTab />}
         </div>

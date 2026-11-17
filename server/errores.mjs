@@ -23,6 +23,12 @@ export function manejadorErrores(err, _req, res, _next) {
   if (err?.type === 'entity.parse.failed') {
     return res.status(400).json({ error: { codigo: 'VALIDACION', mensaje: 'El cuerpo de la petición no es un JSON válido.' } })
   }
+  if (err?.type === 'entity.too.large') {
+    return res.status(413).json({ error: { codigo: 'CUERPO_DEMASIADO_GRANDE', mensaje: 'La petición supera el tamaño permitido.' } })
+  }
+  if (err?.status === 415) {
+    return res.status(415).json({ error: { codigo: 'TIPO_NO_ADMITIDO', mensaje: 'Codificación de petición no admitida.' } })
+  }
   if (err?.code === 'ER_DUP_ENTRY' && /identificacion/.test(err.sqlMessage ?? '')) {
     return res.status(409).json({ error: { codigo: 'IDENTIFICACION_DUPLICADA', mensaje: 'Ya existe un paciente con esa identificación.' } })
   }
@@ -32,6 +38,7 @@ export function manejadorErrores(err, _req, res, _next) {
   if (err?.code === 'ER_CHECK_CONSTRAINT_VIOLATED') {
     return res.status(422).json({ error: { codigo: 'REGLA_NEGOCIO', mensaje: 'Los datos no cumplen una restricción de integridad.' } })
   }
-  console.error(err)
+  // Los errores MySQL pueden incluir SQL con historias clínicas, contraseñas o identificaciones.
+  console.error({ evento: 'error_api', tipo: err?.name ?? 'Error' })
   return res.status(500).json({ error: { codigo: 'ERROR_INTERNO', mensaje: 'Ocurrió un error inesperado. Intente de nuevo.' } })
 }

@@ -7,6 +7,7 @@ import {
   crearPaciente, guardarCirugia, guardarDiagnostico, guardarPostoperatorio, guardarSeguimiento,
 } from './servicios.mjs'
 
+if (config.produccion) throw new Error('La carga de demostración está deshabilitada en producción.')
 await inicializarBase(pool, config.admin)
 
 const [{ n }] = await todas(pool, 'SELECT COUNT(*) AS n FROM pacientes')

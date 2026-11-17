@@ -1,6 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
-@import "shadcn/tailwind.css";
+@import "./styles/shadcn.css";
 @import "@fontsource-variable/geist";
 
 /* La app usa una marca institucional fija (Clínica Pabón): las clases `dark:` de Tailwind

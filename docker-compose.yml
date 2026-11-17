@@ -5,10 +5,10 @@ services:
     container_name: cardio-mysql
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: cardio_root_dev
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Defina MYSQL_ROOT_PASSWORD en .env}
       MYSQL_DATABASE: ${DB_NAME:-cardio_pediatrica}
       MYSQL_USER: ${DB_USER:-cardio}
-      MYSQL_PASSWORD: ${DB_PASSWORD:-cardio_dev_pass}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?Defina DB_PASSWORD en .env}
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_0900_ai_ci
@@ -18,7 +18,7 @@ services:
     volumes:
       - cardio_mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pcardio_root_dev"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
       interval: 5s
       timeout: 5s
       retries: 20

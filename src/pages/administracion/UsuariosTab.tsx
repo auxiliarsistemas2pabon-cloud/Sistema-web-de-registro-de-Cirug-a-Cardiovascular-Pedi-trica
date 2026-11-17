@@ -15,7 +15,8 @@ import {
   AlertDialogTitle,
 } from '../../components/ui/alert-dialog'
 import { api, mensajeDe } from '../../lib/api'
-import type { Perfil } from '../../types/db'
+import type { Perfil, Rol } from '../../types/db'
+import { NOMBRES_ROL } from '../../auth/permisos'
 
 function usePerfiles() {
   return useQuery({
@@ -36,6 +37,7 @@ export function UsuariosTab() {
   const [nombre, setNombre] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [rol, setRol] = useState<Rol>('consulta')
   const [enviando, setEnviando] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [errorLista, setErrorLista] = useState<string | null>(null)
@@ -46,7 +48,7 @@ export function UsuariosTab() {
     setError(null)
     setEnviando(true)
     try {
-      await api.post('/admin/usuarios', { email, password, nombre_completo: nombre })
+      await api.post('/admin/usuarios', { email, password, nombre_completo: nombre, rol })
       setNombre('')
       setEmail('')
       setPassword('')
@@ -117,12 +119,17 @@ export function UsuariosTab() {
               <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="off" className={claseInput} />
             </Campo>
             <Campo etiqueta="Contraseña temporal *">
-              <input type="password" required minLength={10} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={claseInput} />
-              <span className="mt-1 block text-xs text-slate-500">Mínimo 10 caracteres, con mayúsculas, minúsculas y números.</span>
+              <input type="password" required minLength={12} value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" className={claseInput} />
+              <span className="mt-1 block text-xs text-slate-500">Mínimo 12 caracteres, con mayúsculas, minúsculas y números. Debe cambiarla al primer ingreso.</span>
+            </Campo>
+            <Campo etiqueta="Perfil de acceso">
+              <select value={rol} onChange={(e) => setRol(e.target.value as Rol)} className={claseInput}>
+                {Object.entries(NOMBRES_ROL).map(([valor, texto]) => <option key={valor} value={valor}>{texto}</option>)}
+              </select>
             </Campo>
           </div>
           <p className="text-xs text-slate-500">
-            Todos los usuarios son administradores: pueden registrar y modificar pacientes, exportar datos y gestionar usuarios y listas.
+            Consulta solo permite leer; registro clínico permite guardar fichas. Administración permite gestionar cuentas, importar, exportar y eliminar. Todas las cuentas deben configurar doble factor.
           </p>
           {error && <MensajeError>{error}</MensajeError>}
           <button type="submit" disabled={enviando} className={claseBotonPrimario}>
@@ -144,6 +151,7 @@ export function UsuariosTab() {
                 <th className="px-3 py-2.5 font-semibold">Nombre</th>
                 <th className="px-3 py-2.5 font-semibold">Correo</th>
                 <th className="px-3 py-2.5 font-semibold">Estado</th>
+                <th className="px-3 py-2.5 font-semibold">Permisos y doble factor</th>
                 <th className="px-3 py-2.5"></th>
               </tr>
             </thead>
@@ -163,6 +171,14 @@ export function UsuariosTab() {
                     <Badge variant="outline" className={p.activo ? 'bg-emerald-100 text-emerald-700 border-emerald-200/60' : 'bg-slate-100 text-slate-500 border-slate-200'}>
                       {p.activo ? 'Activo' : 'Inactivo'}
                     </Badge>
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <select aria-label={`Perfil de ${p.nombre_completo}`} value={p.rol} className={claseInput} onChange={async (e) => {
+                      try { await api.patch(`/admin/usuarios/${p.id}`, { rol: e.target.value }); setErrorLista(null) }
+                      catch (causa) { setErrorLista(mensajeDe(causa)) }
+                      void queryClient.invalidateQueries({ queryKey: ['perfiles'] })
+                    }}>{Object.entries(NOMBRES_ROL).map(([valor, texto]) => <option key={valor} value={valor}>{texto}</option>)}</select>
+                    <span className="text-xs text-slate-500">{p.mfa_activo ? 'Doble factor activo' : 'Inscripción pendiente'}</span>
                   </td>
                   <td className="px-3 py-2.5 text-right">
                     <button type="button" onClick={() => pedirCambioActivo(p)} className={claseBotonSecundarioCompacto}>

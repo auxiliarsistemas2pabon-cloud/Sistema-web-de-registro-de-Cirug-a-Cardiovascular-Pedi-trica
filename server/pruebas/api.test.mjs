@@ -3,6 +3,7 @@
 import 'dotenv/config'
 import assert from 'node:assert/strict'
 import { before, describe, it } from 'node:test'
+import * as OTPAuth from 'otpauth'
 
 const BASE = process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`
 const sufijo = Date.now().toString().slice(-8)
@@ -10,28 +11,32 @@ const sufijo = Date.now().toString().slice(-8)
 async function api(metodo, ruta, { token, cuerpo } = {}) {
   const res = await fetch(`${BASE}/api${ruta}`, {
     method: metodo,
-    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { 'Content-Type': 'application/json', 'X-Cardio-Request': '1', ...(token ? { Cookie: token } : {}) },
     body: cuerpo === undefined ? undefined : JSON.stringify(cuerpo),
   })
   const texto = await res.text()
-  return { estado: res.status, datos: texto ? JSON.parse(texto) : null }
+  return { estado: res.status, datos: texto ? JSON.parse(texto) : null, cookie: res.headers.getSetCookie().find((c) => !c.includes('Expires='))?.split(';')[0] }
 }
 
 async function login(email, password) {
   const r = await api('POST', '/auth/login', { cuerpo: { email, password } })
   assert.equal(r.estado, 200, JSON.stringify(r.datos))
-  return r.datos.token
+  assert.ok(r.cookie)
+  if (r.datos.paso !== 'mfa' || !process.env.TEST_MFA_SECRET) throw new Error('Use una base exclusiva de pruebas con doble factor configurado; ejecute npm run test:security:mysql.')
+  const verificacion = await api('POST', '/auth/mfa/verificar', { token: r.cookie, cuerpo: { codigo: OTPAuth.TOTP.generate({ secret: process.env.TEST_MFA_SECRET }) } })
+  assert.equal(verificacion.estado, 200, JSON.stringify(verificacion.datos))
+  return verificacion.cookie
 }
 
 describe('API cirugía cardiovascular pediátrica', () => {
-  // No hay roles: todo usuario es administrador, así que las pruebas usan al administrador inicial y
-  // no crean usuarios (no hay forma de borrarlos por la API y quedarían en la base en cada ejecución).
+  // Se usa el administrador ficticio del entorno aislado; los permisos de los otros perfiles se
+  // comprueban en seguridad-mysql.test.mjs.
   let admin, perfil
   const op = {}
 
   before(async () => {
     admin = await login(process.env.INITIAL_ADMIN_EMAIL, process.env.INITIAL_ADMIN_PASSWORD)
-    perfil = (await api('GET', '/auth/me', { token: admin })).datos
+    perfil = (await api('GET', '/auth/me', { token: admin })).datos.perfil
     const todas = (await api('GET', '/listas/opciones', { token: admin })).datos
     for (const o of todas) (op[o.categoria_codigo] ??= []).push(o)
   })
@@ -52,10 +57,10 @@ describe('API cirugía cardiovascular pediátrica', () => {
     assert.ok(r.datos.error.campos.password)
   })
 
-  it('los usuarios no tienen rol y no se puede desactivar al último activo', async () => {
-    assert.ok(!('rol' in perfil))
+  it('expone permisos y protege al último administrador activo', async () => {
+    assert.equal(perfil.rol, 'administrador')
     const usuarios = (await api('GET', '/admin/usuarios', { token: admin })).datos
-    assert.ok(usuarios.length >= 1 && usuarios.every((u) => !('rol' in u)))
+    assert.ok(usuarios.length >= 1 && usuarios.every((u) => ['administrador', 'registrador', 'consulta'].includes(u.rol)))
     // Solo se comprueba la regla si el administrador de las pruebas es el único activo: si no, la
     // petición lo desactivaría de verdad.
     if (usuarios.filter((u) => u.activo).length === 1) {

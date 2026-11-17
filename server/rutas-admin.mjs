@@ -1,7 +1,9 @@
 import bcrypt from 'bcryptjs'
 import { Router } from 'express'
-import { validarClave } from './auth.mjs'
-import { aBooleanos, isoUtc, nuevoId, pool, todas, una } from './db.mjs'
+import { perfilPublico, validarClave } from './auth.mjs'
+import { ROLES, exigirReautenticacion } from './permisos.mjs'
+import { registrarEvento } from './auditoria-seguridad.mjs'
+import { aBooleanos, conTransaccion, isoUtc, nuevoId, pool, todas, una } from './db.mjs'
 import { ErrorApi, asincrono, noEncontrado, reglaNegocio, validacion } from './errores.mjs'
 import { Validador, esFechaIso } from './validar.mjs'
 
@@ -39,6 +41,10 @@ rutasListas.post('/opciones', asincrono(async (req, res) => {
   const valor = v.texto('valor', { obligatorio: true, max: 500 })
   v.finalizar()
 
+  if (req.usuario.rol !== 'administrador' && categoriaCodigo !== 'DIAGNOSTICO') {
+    throw new ErrorApi(403, 'SIN_PERMISO', 'Solo puede añadir diagnósticos desde la ficha clínica.')
+  }
+
   const categoria = await una(pool, 'SELECT id FROM categorias_lista WHERE codigo = ?', [categoriaCodigo])
   if (!categoria) throw noEncontrado('No se encontró la lista.')
 
@@ -66,32 +72,38 @@ rutasListas.post('/opciones', asincrono(async (req, res) => {
 }))
 
 // ---------------------------------------------------------------------------------------------
-// Administración. No hay roles: todos los usuarios son administradores.
+// Administración: el router principal exige rol administrador.
 // ---------------------------------------------------------------------------------------------
 
 export const rutasAdmin = Router()
 
-const usuarioApi = (f) => aBooleanos({ id: f.id, email: f.email, nombre_completo: f.nombre_completo, activo: f.activo }, ['activo'])
+const usuarioApi = perfilPublico
 
 rutasAdmin.get('/usuarios', asincrono(async (_req, res) => {
-  const filas = await todas(pool, 'SELECT id, email, nombre_completo, activo FROM usuarios ORDER BY nombre_completo')
+  const filas = await todas(pool, 'SELECT id, email, nombre_completo, activo, rol, clave_temporal, (mfa_secret IS NOT NULL) AS mfa_activo FROM usuarios ORDER BY nombre_completo')
   res.json(filas.map(usuarioApi))
 }))
 
-rutasAdmin.post('/usuarios', asincrono(async (req, res) => {
+rutasAdmin.post('/usuarios', exigirReautenticacion, asincrono(async (req, res) => {
   const v = new Validador(req.body)
   const email = v.texto('email', { obligatorio: true })?.toLowerCase() ?? null
   const nombre = v.texto('nombre_completo', { obligatorio: true })
   const password = typeof req.body?.password === 'string' ? req.body.password : ''
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) v.error('email', 'Correo no válido.')
   const problema = validarClave(password)
+  const rol = req.body?.rol ?? 'consulta'
+  if (!ROLES.includes(rol)) v.error('rol', 'Perfil no válido.')
   if (problema) v.error('password', problema)
   v.finalizar()
 
   const id = nuevoId()
   try {
-    await pool.query('INSERT INTO usuarios (id, email, password_hash, nombre_completo) VALUES (?, ?, ?, ?)',
-      [id, email, await bcrypt.hash(password, 12), nombre])
+    const passwordHash = await bcrypt.hash(password, 12)
+    await conTransaccion(async (conexion) => {
+      await conexion.query('INSERT INTO usuarios (id, email, password_hash, nombre_completo, rol, clave_temporal) VALUES (?, ?, ?, ?, ?, true)',
+        [id, email, passwordHash, nombre, rol])
+      await registrarEvento(req, 'usuario_creado', { usuario_destino: id, rol }, conexion)
+    })
   } catch (error) {
     if (error?.code === 'ER_DUP_ENTRY') throw new ErrorApi(409, 'EMAIL_DUPLICADO', 'Ya existe un usuario con ese correo.')
     throw error
@@ -99,22 +111,43 @@ rutasAdmin.post('/usuarios', asincrono(async (req, res) => {
   res.status(201).json({ id })
 }))
 
-rutasAdmin.patch('/usuarios/:id', asincrono(async (req, res) => {
+rutasAdmin.patch('/usuarios/:id', exigirReautenticacion, asincrono(async (req, res) => {
   const v = new Validador(req.body)
   const tieneActivo = typeof req.body?.activo === 'boolean'
   if (req.body?.activo !== undefined && !tieneActivo) v.error('activo', 'Debe ser verdadero o falso.')
+  const rol = req.body?.rol
+  if (rol !== undefined && !ROLES.includes(rol)) v.error('rol', 'Perfil no válido.')
   v.finalizar()
 
-  const usuario = await una(pool, 'SELECT * FROM usuarios WHERE id = ?', [req.params.id])
-  if (!usuario) throw noEncontrado('No se encontró el usuario.')
+  await conTransaccion(async (conexion) => {
+    // Serializa los cambios: dos peticiones simultáneas tampoco pueden desactivar al último activo.
+    const usuarios = await todas(conexion, 'SELECT id, activo, rol FROM usuarios ORDER BY id FOR UPDATE')
+    const usuario = usuarios.find((u) => u.id === req.params.id)
+    if (!usuario) throw noEncontrado('No se encontró el usuario.')
+    const quedaAdministrador = (tieneActivo ? req.body.activo : usuario.activo) && (rol ?? usuario.rol) === 'administrador'
+    if (usuario.activo && usuario.rol === 'administrador' && !quedaAdministrador
+      && !usuarios.some((u) => u.id !== usuario.id && u.activo && u.rol === 'administrador')) {
+      throw reglaNegocio('Debe quedar al menos un Administrador activo.')
+    }
+    if (tieneActivo) {
+      await conexion.query('UPDATE usuarios SET activo = ? WHERE id = ?', [req.body.activo, usuario.id])
+    }
+    if (rol !== undefined) await conexion.query('UPDATE usuarios SET rol = ? WHERE id = ?', [rol, usuario.id])
+    if (tieneActivo || rol !== undefined) await conexion.query('DELETE FROM sesiones WHERE usuario_id = ?', [usuario.id])
+    await registrarEvento(req, 'usuario_modificado', { usuario_destino: usuario.id,
+      rol_anterior: usuario.rol, rol_nuevo: rol ?? usuario.rol, activo: Boolean(tieneActivo ? req.body.activo : usuario.activo) }, conexion)
+  })
+  res.json({ id: req.params.id })
+}))
 
-  // Si se desactiva al último usuario activo, nadie podría volver a entrar para reactivarlo.
-  if (usuario.activo && tieneActivo && !req.body.activo) {
-    const otro = await una(pool, 'SELECT COUNT(*) AS n FROM usuarios WHERE activo = 1 AND id <> ?', [usuario.id])
-    if (otro.n === 0) throw reglaNegocio('Debe quedar al menos un Administrador activo.')
-  }
-  if (tieneActivo) await pool.query('UPDATE usuarios SET activo = ? WHERE id = ?', [req.body.activo, usuario.id])
-  res.json({ id: usuario.id })
+rutasAdmin.get('/eventos-seguridad', asincrono(async (_req, res) => {
+  res.json(await todas(pool, 'SELECT id, fecha, evento, usuario_id, ip, recurso, detalles FROM eventos_seguridad ORDER BY id DESC LIMIT 200'))
+}))
+rutasAdmin.get('/seguridad/resumen', asincrono(async (_req, res) => {
+  const eventos = await todas(pool, `SELECT evento, COUNT(*) AS total FROM eventos_seguridad
+    WHERE fecha >= DATE_SUB(UTC_TIMESTAMP(), INTERVAL 24 HOUR) GROUP BY evento`)
+  const pendientes = await una(pool, 'SELECT COUNT(*) AS total FROM usuarios WHERE activo = 1 AND (mfa_secret IS NULL OR clave_temporal = true)')
+  res.json({ eventos_24h: eventos, cuentas_pendientes: pendientes.total })
 }))
 
 rutasAdmin.get('/listas/categorias', asincrono(async (_req, res) => {

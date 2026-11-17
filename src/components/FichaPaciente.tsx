@@ -4,6 +4,7 @@ import { ETIQUETAS_ESTADO_MODULO, NOMBRES_MODULOS } from '../lib/modulos'
 import type { EstadoModulo } from '../types/db'
 import { IconoChevronIzquierda } from './iconos'
 import { Tarjeta } from './Tarjeta'
+import { usePermisos } from '../auth/permisos'
 
 export type NumeroModulo = 1 | 2 | 3 | 4 | 5
 
@@ -223,11 +224,19 @@ export function FichaPaciente({
               {estadoActivo && <ChipEstado estado={estadoActivo} />}
             </div>
             <div key={pestanaActiva} className="animate-in fade-in-0 slide-in-from-bottom-1 p-5 duration-300 sm:p-6">
-              {children}
+              <CampoLectura>{children}</CampoLectura>
             </div>
           </Tarjeta>
         </section>
       </div>
     </div>
   )
+}
+
+function CampoLectura({ children }: { children: ReactNode }) {
+  const { escribir } = usePermisos()
+  return <>
+    {!escribir && <p className="mb-4 rounded bg-sky-50 p-3 text-sm">Cuenta de consulta: los campos clínicos son de solo lectura.</p>}
+    <fieldset disabled={!escribir} className="min-w-0 border-0 p-0">{children}</fieldset>
+  </>
 }

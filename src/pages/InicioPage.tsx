@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useState, type ComponentType, type FormEvent, type ReactNode, type SVGProps } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../auth/AuthProvider'
+import { SoloEscritura, usePermisos } from '../auth/permisos'
 import {
   IconoAdultos,
   IconoBajar,
@@ -313,6 +314,8 @@ function Flecha() {
 
 /** Botón sobre el azul de la bienvenida: blanco (acciones de crear) o translúcido (secundario). */
 function BotonHero({ to, principal = false, children }: { to: string; principal?: boolean; children: ReactNode }) {
+  const { escribir } = usePermisos()
+  if (principal && !escribir) return null
   return (
     <Link
       to={to}
@@ -420,7 +423,7 @@ function TarjetaGrupo({ titulo, icono: Icono, acento, lista, nuevo, pacientes, c
           Ver pacientes
           <Flecha />
         </Link>
-        <span aria-hidden className="h-6 w-px bg-slate-200" />
+        <SoloEscritura><span aria-hidden className="h-6 w-px bg-slate-200" />
         <Link
           to={nuevo}
           className="inline-flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm font-semibold text-[var(--pabon-azul-oscuro)] outline-none transition hover:bg-[var(--pabon-azul-oscuro)]/[0.06] focus-visible:ring-3 focus-visible:ring-[var(--pabon-azul-claro)]/40"
@@ -428,6 +431,7 @@ function TarjetaGrupo({ titulo, icono: Icono, acento, lista, nuevo, pacientes, c
           <IconoMas className="h-4 w-4" strokeWidth={2.4} />
           Nuevo paciente
         </Link>
+        </SoloEscritura>
       </div>
     </article>
   )

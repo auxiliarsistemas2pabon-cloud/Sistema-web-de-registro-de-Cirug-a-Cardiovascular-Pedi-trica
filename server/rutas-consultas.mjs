@@ -1,5 +1,7 @@
 // Alertas, indicadores y exportación (solo lectura).
 import { Router } from 'express'
+import { exigirReautenticacion, exigirRoles } from './permisos.mjs'
+import { auditarAcceso } from './auditoria-seguridad.mjs'
 import { hoyBogota, pool, todas, una } from './db.mjs'
 import { asincrono, noEncontrado, validacion } from './errores.mjs'
 import { sqlDiasHospitalizacion, sqlDiasUci } from './servicios.mjs'
@@ -1003,11 +1005,11 @@ async function exportarSeleccion(req, cargar, grupo) {
   return { filas: elegidos.map((f) => porCirugia.get(f.cirugia_id)).filter(Boolean) }
 }
 
-rutasIndicadores.get('/exportar', asincrono(async (req, res) => {
+rutasIndicadores.get('/exportar', exigirRoles('administrador'), exigirReautenticacion, auditarAcceso('exportacion_solicitada'), asincrono(async (req, res) => {
   res.json(await exportarSeleccion(req, cargarPediatricos, 'pediatricos'))
 }))
 
-rutasIndicadores.get('/adultos/exportar', asincrono(async (req, res) => {
+rutasIndicadores.get('/adultos/exportar', exigirRoles('administrador'), exigirReautenticacion, auditarAcceso('exportacion_solicitada'), asincrono(async (req, res) => {
   res.json(await exportarSeleccion(req, cargarAdultos, 'adultos'))
 }))
 

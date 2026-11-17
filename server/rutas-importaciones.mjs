@@ -12,6 +12,7 @@ const TAMANO_MAXIMO_LOTE = 5000
 rutasImportaciones.post('/identificaciones-existentes', asincrono(async (req, res) => {
   const ids = req.body?.identificaciones
   if (!Array.isArray(ids) || ids.some((x) => typeof x !== 'string')) throw validacion('Envíe { "identificaciones": string[] }.')
+  if (ids.length > TAMANO_MAXIMO_LOTE || ids.some((x) => x.length > 255)) throw validacion('Demasiadas identificaciones o longitud no válida.')
   if (ids.length === 0) return res.json({ existentes: [] })
   const filas = await todas(pool, 'SELECT identificacion FROM pacientes WHERE identificacion IN (?)', [ids])
   res.json({ existentes: filas.map((f) => f.identificacion) })

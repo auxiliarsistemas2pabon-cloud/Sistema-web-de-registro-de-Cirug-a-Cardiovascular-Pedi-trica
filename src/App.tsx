@@ -11,6 +11,7 @@ import { PacienteAdultoFichaPage } from './pages/PacienteAdultoFichaPage'
 import { PacienteFichaPage } from './pages/PacienteFichaPage'
 import { PacientesAdultosListaPage } from './pages/PacientesAdultosListaPage'
 import { PacientesListaPage } from './pages/PacientesListaPage'
+import { SeguridadCuentaPage } from './pages/SeguridadCuentaPage'
 
 const ImportacionExportacionPage = lazy(async () => {
   const modulo = await import('./pages/ImportacionExportacionPage')
@@ -28,15 +29,15 @@ function App() {
             <Route path="/" element={<Navigate to="/inicio" replace />} />
             <Route path="/inicio" element={<InicioPage />} />
             <Route path="/pacientes" element={<PacientesListaPage />} />
-            <Route path="/pacientes/nuevo" element={<PacienteFichaPage />} />
+            <Route element={<ProtectedRoute escritura />}><Route path="/pacientes/nuevo" element={<PacienteFichaPage />} /></Route>
             <Route path="/pacientes/:id" element={<PacienteFichaPage />} />
             <Route path="/adultos" element={<PacientesAdultosListaPage />} />
-            <Route path="/adultos/nuevo" element={<PacienteAdultoFichaPage />} />
+            <Route element={<ProtectedRoute escritura />}><Route path="/adultos/nuevo" element={<PacienteAdultoFichaPage />} /></Route>
             <Route path="/adultos/:id" element={<PacienteAdultoFichaPage />} />
             <Route path="/alertas" element={<AlertasPage />} />
             <Route path="/indicadores" element={<IndicadoresPage />} />
 
-            <Route
+            <Route element={<ProtectedRoute administrador />}><Route
               path="/datos"
               element={
                 <Suspense fallback={<p className="text-sm text-slate-500">Cargando…</p>}>
@@ -44,7 +45,8 @@ function App() {
                 </Suspense>
               }
             />
-            <Route path="/administracion" element={<AdministracionPage />} />
+            <Route path="/administracion" element={<AdministracionPage />} /></Route>
+            <Route path="/seguridad" element={<SeguridadCuentaPage />} />
           </Route>
         </Route>
 

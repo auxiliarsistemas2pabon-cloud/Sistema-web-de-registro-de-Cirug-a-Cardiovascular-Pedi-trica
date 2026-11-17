@@ -4,6 +4,7 @@ import { useAuth } from '../auth/AuthProvider'
 import { ErrorApi } from '../lib/api'
 import { IconoCorazon, IconoOjo, IconoOjoCerrado } from '../components/iconos'
 import { MensajeError } from '../components/Estados'
+import { CompletarAcceso } from '../auth/CompletarAcceso'
 
 /** Un trazo tipo electrocardiograma que se repite `tramos` veces a lo ancho: motivo decorativo
     ligado al lema "Trabajamos con el corazón", no un gráfico de datos real. */
@@ -17,7 +18,7 @@ function trazoEcg(tramos: number): string {
 }
 
 export function LoginPage() {
-  const { perfil, cargando, iniciarSesion } = useAuth()
+  const { perfil, paso, cargando, iniciarSesion } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [mostrarPassword, setMostrarPassword] = useState(false)
@@ -29,9 +30,10 @@ export function LoginPage() {
     setBloqMayusculas(e.getModifierState('CapsLock'))
   }
 
-  if (!cargando && perfil) {
+  if (!cargando && perfil && paso === 'completo') {
     return <Navigate to="/inicio" replace />
   }
+  if (!cargando && perfil) return <CompletarAcceso />
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -181,7 +183,7 @@ export function LoginPage() {
 
           <button
             type="submit"
-            disabled={enviando}
+            disabled={enviando || cargando}
             className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-[var(--pabon-azul-oscuro)] px-4 py-2.5 text-sm font-semibold text-white shadow-md transition-all hover:-translate-y-0.5 hover:bg-[var(--pabon-azul-oscuro-2)] hover:shadow-lg active:translate-y-0 disabled:pointer-events-none disabled:opacity-60"
           >
             {enviando && (

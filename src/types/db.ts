@@ -1,11 +1,15 @@
 export type EstadoModulo = 'pendiente' | 'completo' | 'no_aplica'
 
-/** Un usuario del sistema. No hay roles: todos los usuarios son administradores. */
+export type Rol = 'administrador' | 'registrador' | 'consulta'
+export type PasoAuth = 'clave' | 'inscripcion_mfa' | 'mfa' | 'completo'
 export interface Perfil {
   id: string
   email?: string
   nombre_completo: string
   activo: boolean
+  rol: Rol
+  clave_temporal: boolean
+  mfa_activo: boolean
 }
 
 export interface OpcionLista {

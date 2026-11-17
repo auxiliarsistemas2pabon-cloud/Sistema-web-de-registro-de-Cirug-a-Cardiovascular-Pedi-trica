@@ -19,8 +19,41 @@ const tablas = [
     password_hash VARCHAR(255) NOT NULL,
     nombre_completo VARCHAR(255) NOT NULL,
     activo BOOLEAN NOT NULL DEFAULT true,
+    rol ENUM('administrador','registrador','consulta') NOT NULL DEFAULT 'consulta',
+    clave_temporal BOOLEAN NOT NULL DEFAULT true,
+    mfa_secret TEXT NULL,
+    mfa_recuperacion JSON NULL,
+    mfa_ultimo_paso BIGINT NOT NULL DEFAULT -1,
     creado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     actualizado_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS sesiones (
+    token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+    usuario_id CHAR(36) NOT NULL,
+    expira_en DATETIME NOT NULL,
+    limite_en DATETIME NOT NULL,
+    mfa_verificada BOOLEAN NOT NULL DEFAULT false,
+    mfa_pendiente TEXT NULL,
+    mfa_verificada_en DATETIME NULL,
+    INDEX idx_sesiones_expira (expira_en),
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+  )`,
+  `CREATE TABLE IF NOT EXISTS intentos_auth (
+    clave CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+    ventana_en DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    intentos INT UNSIGNED NOT NULL DEFAULT 1
+  )`,
+  `CREATE TABLE IF NOT EXISTS eventos_seguridad (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    fecha DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    evento VARCHAR(60) NOT NULL,
+    usuario_id CHAR(36) NULL,
+    ip VARCHAR(64) NULL,
+    recurso VARCHAR(255) NULL,
+    detalles JSON NULL,
+    INDEX idx_eventos_fecha (fecha),
+    INDEX idx_eventos_usuario (usuario_id, fecha),
+    INDEX idx_eventos_tipo (evento, fecha)
   )`,
   `CREATE TABLE IF NOT EXISTS categorias_lista (
     id CHAR(36) PRIMARY KEY,
@@ -476,13 +509,10 @@ const restriccionesRetiradas = [
   ['ck_cir_fecha3_posterior', 'cirugias'],
 ]
 
-// Columnas que dejaron de usarse. `usuarios.rol` distinguía Administrador, Registrador y Consulta; ya no
-// hay roles (todo usuario es administrador), y como era NOT NULL sin valor por defecto hay que quitarla
-// de las bases que ya existían para poder crear usuarios. Las 4 de complicaciones se retiran porque esa
+// Columnas clínicas que dejaron de usarse. Las 4 de complicaciones se retiran porque esa
 // relación pasó de "una sola opción" a la tabla puente correspondiente (ver `tablas` arriba) — antes de
 // quitarlas, `migrarComplicaciones` copia cualquier valor existente a la tabla puente para no perderlo.
 const columnasRetiradas = [
-  ['usuarios', 'rol'],
   ['cirugias', 'complicacion_intraqx_id'],
   ['postoperatorio', 'complicacion_pop_id'],
   ['cirugias_adultos', 'complicacion_intraqx_id'],
@@ -714,6 +744,22 @@ const EPISODIO_ADULTO_TABLAS = [
 /** Crea las tablas si no existen, siembra las listas y, si no hay usuarios, el primer administrador. */
 export async function inicializarBase(pool, admin) {
   for (const sentencia of tablas) await pool.query(sentencia)
+  for (const [columna, tipo] of [
+    ['rol', "ENUM('administrador','registrador','consulta') NOT NULL DEFAULT 'consulta'"],
+    ['clave_temporal', 'BOOLEAN NOT NULL DEFAULT true'], ['mfa_secret', 'TEXT NULL'],
+    ['mfa_recuperacion', 'JSON NULL'], ['mfa_ultimo_paso', 'BIGINT NOT NULL DEFAULT -1'],
+  ]) await agregarColumnaSiNoExiste(pool, 'usuarios', columna, `ALTER TABLE usuarios ADD COLUMN ${columna} ${tipo}`)
+  await agregarColumnaSiNoExiste(pool, 'sesiones', 'mfa_verificada', 'ALTER TABLE sesiones ADD COLUMN mfa_verificada BOOLEAN NOT NULL DEFAULT false')
+  await agregarColumnaSiNoExiste(pool, 'sesiones', 'mfa_pendiente', 'ALTER TABLE sesiones ADD COLUMN mfa_pendiente TEXT NULL')
+  await agregarColumnaSiNoExiste(pool, 'sesiones', 'mfa_verificada_en', 'ALTER TABLE sesiones ADD COLUMN mfa_verificada_en DATETIME NULL')
+  await migrarUnaVez(pool, 'seguridad_roles_mfa_v1', async (conexion) => {
+    // Solo se conserva un administrador al migrar el modelo anterior de acceso universal.
+    await conexion.query("UPDATE usuarios SET rol = 'consulta', clave_temporal = true")
+    const [activos] = await conexion.query('SELECT id, email FROM usuarios WHERE activo = 1 ORDER BY creado_en, id')
+    const inicial = activos.find((u) => u.email.toLowerCase() === admin.email?.toLowerCase()) ?? activos[0]
+    if (inicial) await conexion.query("UPDATE usuarios SET rol = 'administrador' WHERE id = ?", [inicial.id])
+    await conexion.query('DELETE FROM sesiones')
+  })
   for (const [tabla, columna, sentencia] of alteraciones) await agregarColumnaSiNoExiste(pool, tabla, columna, sentencia)
   for (const [nombre, tabla, definicion] of restricciones) await agregarRestriccionSiNoExiste(pool, nombre, tabla, definicion)
   for (const [nombre, tabla] of restriccionesRetiradas) await quitarRestriccionSiExiste(pool, nombre, tabla)
@@ -773,7 +819,7 @@ export async function inicializarBase(pool, admin) {
   if (usuarios === 0 && admin.email && admin.password) {
     const problema = validarClave(admin.password)
     if (problema) throw new Error(`INITIAL_ADMIN_PASSWORD no es segura: ${problema}`)
-    await pool.query('INSERT INTO usuarios (id, email, password_hash, nombre_completo) VALUES (?, ?, ?, ?)', [
+    await pool.query("INSERT INTO usuarios (id, email, password_hash, nombre_completo, rol) VALUES (?, ?, ?, ?, 'administrador')", [
       nuevoId(), admin.email.toLowerCase(), await bcrypt.hash(admin.password, 12), admin.nombre,
     ])
     console.log(`Primer administrador creado: ${admin.email}`)

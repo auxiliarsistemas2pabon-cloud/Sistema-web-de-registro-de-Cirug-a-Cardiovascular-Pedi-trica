@@ -1,4 +1,5 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { usePermisos } from '../../auth/permisos'
 import { useState } from 'react'
 import { claseBotonSecundarioCompacto } from '../../components/Campo'
 import { Cargando, EstadoVacio, MensajeError } from '../../components/Estados'
@@ -54,6 +55,7 @@ const ENCABEZADO_MOTIVO: Record<IndicadorClave, string> = {
  * Respeta los filtros del tablero y se descarga en Excel con todos los campos.
  */
 export function DetalleIndicador({ grupo, desde, hasta, filtros, indicador, mes, onVolver }: Props) {
+  const { administrar } = usePermisos()
   const adultos = grupo === 'adultos'
   const ruta = adultos ? '/indicadores/adultos' : '/indicadores'
   const consulta = parametros({ desde, hasta, filtros, indicador, mes })
@@ -99,7 +101,7 @@ export function DetalleIndicador({ grupo, desde, hasta, filtros, indicador, mes,
           <IconoChevronIzquierda className="h-3.5 w-3.5" />
           Volver al tablero
         </button>
-        {!!data?.casos.length && (
+        {administrar && !!data?.casos.length && (
           <button type="button" onClick={() => void descargar()} disabled={descargando} className={`${claseBotonSecundarioCompacto} ml-auto`}>
             <IconoBajar />
             {descargando ? 'Generando…' : 'Descargar Excel con todos los datos'}

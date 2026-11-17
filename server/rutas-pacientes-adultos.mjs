@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { exigirReautenticacion, exigirRoles } from './permisos.mjs'
 import { conTransaccion, hoyBogota, pool, todas, una } from './db.mjs'
 import { asincrono, validacion } from './errores.mjs'
 import { filaApi, sqlDiasHospitalizacion, sqlDiasUci } from './servicios.mjs'
@@ -103,7 +104,7 @@ rutasPacientesAdultos.put('/:id', asincrono(async (req, res) => {
   res.json({ id })
 }))
 
-rutasPacientesAdultos.put('/:id/eliminado', asincrono(async (req, res) => {
+rutasPacientesAdultos.put('/:id/eliminado', exigirRoles('administrador'), exigirReautenticacion, asincrono(async (req, res) => {
   if (typeof req.body?.eliminado !== 'boolean') throw validacion('Indique { "eliminado": true|false }.')
   const id = await conTransaccion((conexion) => marcarEliminadoAdulto(conexion, req.usuario, req.params.id, req.body.eliminado))
   res.json({ id })
