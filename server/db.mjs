@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto'
 import mysql from 'mysql2/promise'
 import { config } from './config.mjs'
+import { ErrorApi } from './errores.mjs'
 
 export const pool = mysql.createPool({
   ...config.db,
   waitForConnections: true,
   connectionLimit: 10,
+  queueLimit: 50,
+  connectTimeout: 10_000,
+  enableKeepAlive: true,
+  multipleStatements: false,
   dateStrings: true, // DATE => 'YYYY-MM-DD'
   decimalNumbers: true, // DECIMAL => number
   charset: 'utf8mb4',
@@ -37,6 +42,32 @@ export async function conTransaccion(fn) {
     throw error
   } finally {
     conexion.release()
+  }
+}
+
+/** Serializa importaciones del mismo documento, incluso entre procesos, antes de abrir la transacción. */
+export async function conTransaccionBloqueada(nombre, fn) {
+  const conexion = await pool.getConnection()
+  let bloqueada = false, reutilizable = true
+  try {
+    const [[resultado]] = await conexion.query('SELECT GET_LOCK(?, 10) AS adquirido', [nombre])
+    if (resultado.adquirido !== 1) throw new ErrorApi(409, 'IMPORTACION_OCUPADA', 'Otra importación de este documento está en curso. Intente de nuevo.')
+    bloqueada = true
+    await conexion.beginTransaction()
+    try {
+      const resultado = await fn(conexion)
+      await conexion.commit()
+      return resultado
+    } catch (error) { await conexion.rollback(); throw error }
+  } finally {
+    if (bloqueada) {
+      try {
+        const [[r]] = await conexion.query('SELECT RELEASE_LOCK(?) AS liberado', [nombre])
+        if (r.liberado !== 1) reutilizable = false
+      } catch { reutilizable = false }
+    }
+    if (reutilizable) conexion.release()
+    else conexion.destroy()
   }
 }
 

@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { config } from './config.mjs'
 import { conTransaccion, pool, una } from './db.mjs'
 import { noAutenticado } from './errores.mjs'
@@ -6,6 +6,12 @@ import { noAutenticado } from './errores.mjs'
 const cookieSegura = config.produccion || config.httpsLocal
 export const nombreCookie = cookieSegura ? '__Host-cardio_session' : 'cardio_session'
 const opcionesCookie = { httpOnly: true, secure: cookieSegura, sameSite: 'strict', path: '/' }
+export function nombreDispositivo(userAgent = '') {
+  const ua = String(userAgent).slice(0, 512)
+  const navegador = /Edg\//.test(ua) ? 'Edge' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Navegador'
+  const sistema = /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows' : /Macintosh/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Sistema no identificado'
+  return `${navegador} · ${sistema}`
+}
 export const hashToken = (token) => createHash('sha256').update(token).digest('hex')
 
 function tokenPeticion(req) {
@@ -31,9 +37,9 @@ export async function crearSesion(req, res, credenciales) {
     // Revalida bajo bloqueo: una desactivación durante bcrypt tampoco deja una sesión recuperable.
     const usuario = await una(conexion, 'SELECT activo, password_hash FROM usuarios WHERE id = ? FOR UPDATE', [credenciales.id])
     if (!usuario?.activo || usuario.password_hash !== credenciales.password_hash) throw noAutenticado()
-    await conexion.query(`INSERT INTO sesiones (token_hash, usuario_id, expira_en, limite_en)
-      VALUES (?, ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE))`,
-    [hashToken(token), credenciales.id])
+    await conexion.query(`INSERT INTO sesiones (token_hash, sesion_id, usuario_id, creado_en, actividad_en, dispositivo, expira_en, limite_en)
+      VALUES (?, ?, ?, UTC_TIMESTAMP(), UTC_TIMESTAMP(), ?, DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE), DATE_ADD(UTC_TIMESTAMP(), INTERVAL 5 MINUTE))`,
+    [hashToken(token), randomUUID(), credenciales.id, nombreDispositivo(req.get('User-Agent'))])
   })
   // Cookie de sesión: no se persiste con Max-Age; los dos vencimientos se comprueban en MySQL.
   res.cookie(nombreCookie, token, opcionesCookie)
@@ -51,7 +57,7 @@ export async function leerSesion(req) {
   if (!usuario) return null
   // El UPDATE condicional impide resucitar una sesión vencida o revocada concurrentemente.
   const [resultado] = await pool.query(`UPDATE sesiones
-    SET expira_en = IF(mfa_verificada, LEAST(limite_en, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE)), expira_en)
+    SET actividad_en = UTC_TIMESTAMP(), expira_en = IF(mfa_verificada, LEAST(limite_en, DATE_ADD(UTC_TIMESTAMP(), INTERVAL ? MINUTE)), expira_en)
     WHERE token_hash = ? AND expira_en > UTC_TIMESTAMP() AND limite_en > UTC_TIMESTAMP()`,
   [config.minutosSesion, tokenHash])
   if (!resultado.affectedRows) return null

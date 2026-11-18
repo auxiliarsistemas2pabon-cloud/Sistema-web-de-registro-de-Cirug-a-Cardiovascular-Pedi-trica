@@ -1,0 +1,18 @@
+{
+  "name": "@cirugia/picomatch",
+  "version": "4.0.7-cardio.1",
+  "description": "Picomatch 4.0.7 con protección local contra CVE-2026-112366",
+  "license": "MIT",
+  "author": "Jon Schlinkert (https://github.com/jonschlinkert)",
+  "homepage": "https://github.com/micromatch/picomatch",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "posix.js",
+    "lib"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=12"
+  }
+}

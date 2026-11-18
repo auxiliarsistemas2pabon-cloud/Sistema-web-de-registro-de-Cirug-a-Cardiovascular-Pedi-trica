@@ -6,14 +6,15 @@ import * as OTPAuth from 'otpauth'
 import { chromium } from '@playwright/test'
 if (process.env.SECURITY_TEST_DB !== '1' || process.env.DB_NAME !== 'cardio_pruebas') throw new Error('Use npm run test:security:browser para una base aislada.')
 const { pool } = await import('../db.mjs')
-const { nuevoTotp, cifrarSecreto } = await import('../mfa.mjs')
+const { nuevoTotp, cifrarSecreto, crearRecuperacion } = await import('../mfa.mjs')
 after(async () => pool.end())
 const base = process.env.API_URL
 async function crearCuenta(pendiente = false) {
-  const id = randomUUID(), email = `${id}@example.test`, secreto = nuevoTotp(email).secret.base32
+  const id = randomUUID(), email = `${id}@example.test`, secreto = nuevoTotp(email).secret.base32, codigos = crearRecuperacion()
   await pool.query("INSERT INTO usuarios (id, email, nombre_completo, password_hash, rol, clave_temporal, mfa_secret) VALUES (?, ?, 'Prueba navegador', ?, 'administrador', ?, ?)",
     [id, email, await bcrypt.hash('PruebaSegura123', 4), pendiente, pendiente ? null : cifrarSecreto(secreto)])
-  return { email, secreto }
+  if(!pendiente)await pool.query('UPDATE usuarios SET mfa_recuperacion=? WHERE id=?',[JSON.stringify(codigos.hashes),id])
+  return { email, secreto, codigos:codigos.codigos }
 }
 async function formularioLogin(pagina, email) {
   await Promise.all([pagina.waitForResponse((r) => r.url().endsWith('/api/auth/me')), pagina.goto(`${base}/login`)])
@@ -21,6 +22,29 @@ async function formularioLogin(pagina, email) {
   await pagina.locator('input[autocomplete="current-password"]').fill('PruebaSegura123')
   await pagina.getByRole('button', { name: 'Entrar', exact: true }).click()
 }
+test('la pantalla permite cerrar otra sesión y el equipo revocado pierde acceso',async()=>{
+  const cuenta=await crearCuenta(),navegador=await chromium.launch({headless:true})
+  try{
+    const contexto=await navegador.newContext(),pagina=await contexto.newPage();contexto.setDefaultTimeout(12000)
+    await formularioLogin(pagina,cuenta.email)
+    await pagina.getByLabel('Código de verificación').fill(OTPAuth.TOTP.generate({secret:cuenta.secreto}))
+    await pagina.getByRole('button',{name:'Verificar código'}).click();await pagina.waitForURL('**/inicio')
+    const otro=await navegador.newContext()
+    const post=(path,body)=>otro.request.post(base+'/api/auth/'+path,{headers:{'X-Cardio-Request':'1'},data:body})
+    assert.equal((await post('login',{email:cuenta.email,password:'PruebaSegura123'})).status(),200)
+    assert.equal((await post('mfa/verificar',{codigo:cuenta.codigos[0]})).status(),200)
+    const otraPagina=await otro.newPage();await otraPagina.goto(base+'/inicio')
+    await pagina.goto(base+'/seguridad')
+    await pagina.getByRole('heading',{name:'Sesiones abiertas'}).waitFor()
+    await pagina.getByText(/Este equipo/).waitFor()
+    await pagina.getByRole('button',{name:'Cerrar esta sesión',exact:true}).click()
+    await pagina.getByRole('status').filter({hasText:'Sesión cerrada.'}).waitFor()
+    assert.equal((await otro.request.get(base+'/api/auth/me')).status(),401)
+    await otraPagina.reload();await otraPagina.waitForURL('**/login')
+    assert.equal(await pagina.getByRole('button',{name:'Cerrar esta sesión',exact:true}).count(),0)
+    await contexto.close();await otro.close()
+  }finally{await navegador.close()}
+})
 test('MFA, cookie HttpOnly, cierre entre pestañas y reintento sin conexión funcionan con MySQL real', async () => {
   const cuenta = await crearCuenta(), navegador = await chromium.launch({ headless: true })
   try {

@@ -1,5 +1,8 @@
 import { Router } from 'express'
-import { conTransaccion, nuevoId, pool, todas, una } from './db.mjs'
+import { createHash } from 'node:crypto'
+import { config } from './config.mjs'
+import { conTransaccion, conTransaccionBloqueada, nuevoId, pool, todas, una } from './db.mjs'
+import { esFechaIso } from './validar.mjs'
 import { ErrorApi, asincrono, noEncontrado, validacion } from './errores.mjs'
 import {
   crearPaciente, guardarCirugia, guardarDiagnostico, guardarPostoperatorio, guardarSeguimiento,
@@ -8,6 +11,20 @@ import {
 export const rutasImportaciones = Router()
 
 const TAMANO_MAXIMO_LOTE = 5000
+const esObjeto = (v) => v !== null && typeof v === 'object' && !Array.isArray(v)
+const modulosPermitidos = new Set(['paciente','diagnostico','cirugia','postoperatorio','seguimiento'])
+
+function validarFila(fila) {
+  if (!esObjeto(fila) || !Number.isInteger(fila.numero_fila) || fila.numero_fila < 1 || fila.numero_fila > 1_048_576
+    || !['valido','con_errores'].includes(fila.estado)) throw validacion('Fila de importación no válida.')
+  if (fila.datos_originales !== undefined && (!esObjeto(fila.datos_originales) || Object.keys(fila.datos_originales).length > 150)) throw validacion('Datos originales no válidos.')
+  if (fila.errores !== undefined && (!Array.isArray(fila.errores) || fila.errores.length > 100 || fila.errores.some((e) => typeof e !== 'string' || e.length > 1000))) throw validacion('Errores de fila no válidos.')
+  const d = fila.datos_normalizados
+  if (d != null && (!esObjeto(d) || Object.entries(d).some(([k,v]) => !modulosPermitidos.has(k) || !esObjeto(v)))) throw validacion('Módulos de importación no válidos.')
+  if (fila.estado === 'valido' && (!esObjeto(d?.paciente) || typeof d.paciente.identificacion !== 'string'
+    || !/^[0-9]{1,50}$/.test(d.paciente.identificacion.trim()))) throw validacion('La fila válida requiere una identificación de texto numérico.')
+  if (Buffer.byteLength(JSON.stringify(fila)) > 128*1024) throw validacion('Una fila de importación es demasiado extensa.')
+}
 
 rutasImportaciones.post('/identificaciones-existentes', asincrono(async (req, res) => {
   const ids = req.body?.identificaciones
@@ -20,15 +37,20 @@ rutasImportaciones.post('/identificaciones-existentes', asincrono(async (req, re
 
 rutasImportaciones.post('/lotes', asincrono(async (req, res) => {
   const { archivo_nombre: archivo, filas } = req.body ?? {}
-  if (typeof archivo !== 'string' || !archivo.trim() || !Array.isArray(filas)) throw validacion('Envíe archivo_nombre y filas.')
+  if (typeof archivo !== 'string' || !archivo.trim() || archivo.length > 255 || /[\\/\x00-\x1f\x7f]/.test(archivo) || !Array.isArray(filas)) throw validacion('Envíe un nombre de archivo sin rutas y una lista de filas.')
   if (filas.length > TAMANO_MAXIMO_LOTE) throw validacion(`Un lote admite hasta ${TAMANO_MAXIMO_LOTE} filas.`)
+  const numeros = new Set()
+  for (const fila of filas) {
+    validarFila(fila)
+    if (numeros.has(fila.numero_fila)) throw validacion('El lote contiene números de fila repetidos.')
+    numeros.add(fila.numero_fila)
+  }
 
   const resultado = await conTransaccion(async (conexion) => {
     const loteId = nuevoId()
     await conexion.query('INSERT INTO importaciones_lote (id, archivo_nombre, cargado_por) VALUES (?, ?, ?)', [loteId, archivo.trim().slice(0, 255), req.usuario.id])
     const creadas = []
     for (const fila of filas) {
-      if (!Number.isInteger(fila?.numero_fila) || !['valido', 'con_errores'].includes(fila?.estado)) throw validacion('Fila de importación no válida.')
       const id = nuevoId()
       await conexion.query(
         'INSERT INTO importaciones_filas (id, lote_id, numero_fila, datos_originales, datos_normalizados, errores, estado) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -46,18 +68,27 @@ rutasImportaciones.post('/lotes', asincrono(async (req, res) => {
 rutasImportaciones.post('/filas/:id/aplicar', asincrono(async (req, res) => {
   const fila = await una(pool, 'SELECT * FROM importaciones_filas WHERE id = ?', [req.params.id])
   if (!fila) throw noEncontrado('No se encontró la fila de importación.')
-  if (fila.estado !== 'valido') throw new ErrorApi(409, 'FILA_NO_VALIDA', 'La fila no está validada para importación.')
   const datos = fila.datos_normalizados
+  // Valida los escalares ANTES de usarlos como parámetros de MySQL; un objeto JSON no es un identificador.
+  const identificacion = datos?.paciente?.identificacion
+  const fechaCirugia = datos?.cirugia?.fecha_cirugia ?? null
+  if (typeof identificacion !== 'string' || !/^[0-9]{1,50}$/.test(identificacion.trim())
+    || (fechaCirugia !== null && !esFechaIso(fechaCirugia))) throw validacion('La identificación o la fecha de cirugía de la fila no es válida.')
+  const bloqueo = createHash('sha256').update(`${config.db.database}\0${identificacion.trim()}`).digest('hex')
 
   try {
-    const pacienteId = await conTransaccion(async (conexion) => {
+    const pacienteId = await conTransaccionBloqueada(bloqueo, async (conexion) => {
+      const actual = await una(conexion, 'SELECT estado, paciente_id FROM importaciones_filas WHERE id = ? FOR UPDATE', [fila.id])
+      if (!actual) throw noEncontrado('No se encontró la fila de importación.')
+      // Un reintento tras perder la respuesta devuelve la misma ficha; no la duplica ni degrada la fila.
+      if (actual.estado === 'importado' && actual.paciente_id) return actual.paciente_id
+      if (actual.estado !== 'valido') throw new ErrorApi(409, 'FILA_NO_VALIDA', 'La fila no está validada para importación.')
       // Desde el 30-oct un paciente que vuelve y se opera otra vez es una ficha nueva, aunque su
       // documento ya exista. Lo único que se rechaza es la misma cirugía (mismo documento y misma fecha
       // de cirugía, o los dos sin fecha): eso es el mismo archivo cargado dos veces, no un reingreso.
-      const fechaCirugia = datos.cirugia?.fecha_cirugia ?? null
       const misma = await una(conexion, `
         SELECT p.numero_paciente FROM pacientes p LEFT JOIN cirugias c ON c.paciente_id = p.id
-        WHERE p.identificacion = ? AND p.eliminado = 0 AND c.fecha_cirugia <=> ? LIMIT 1`, [datos.paciente?.identificacion, fechaCirugia])
+        WHERE p.identificacion = ? AND p.eliminado = 0 AND c.fecha_cirugia <=> ? LIMIT 1`, [identificacion.trim(), fechaCirugia])
       if (misma) {
         throw new ErrorApi(409, 'IDENTIFICACION_DUPLICADA',
           `Este paciente ya está registrado con esta misma cirugía (N° ${misma.numero_paciente}). Si es un reingreso, la fecha de cirugía debe ser otra.`)
@@ -84,7 +115,9 @@ rutasImportaciones.post('/filas/:id/aplicar', asincrono(async (req, res) => {
       : error?.code === 'ER_DUP_ENTRY' ? 'Ya existe un paciente con esta identificación.'
       : 'No se pudo importar la fila.'
     const errores = [...(Array.isArray(fila.errores) ? fila.errores : []), mensaje]
-    await pool.query("UPDATE importaciones_filas SET estado = 'con_errores', errores = ? WHERE id = ?", [JSON.stringify(errores), fila.id])
+    if (error?.codigo !== 'IMPORTACION_OCUPADA') {
+      await pool.query("UPDATE importaciones_filas SET estado = 'con_errores', errores = ? WHERE id = ? AND estado = 'valido'", [JSON.stringify(errores), fila.id])
+    }
     if (error instanceof ErrorApi) throw error
     if (error?.code === 'ER_DUP_ENTRY') throw new ErrorApi(409, 'IDENTIFICACION_DUPLICADA', mensaje)
     throw error

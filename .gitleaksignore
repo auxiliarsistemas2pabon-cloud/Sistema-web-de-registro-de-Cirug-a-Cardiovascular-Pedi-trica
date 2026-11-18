@@ -1,0 +1,6 @@
+# Revisado 2026-11-18: contraseñas ficticias de pruebas en estos dos commits concretos.
+# No son credenciales de producción. Las cuentas antiguas reg/con@prueba.local no existen
+# en la base local. La contraseña del primer caso se genera aleatoriamente en el código actual.
+# No se excluyen archivos, reglas completas ni futuras coincidencias.
+f675e8c04e72aa5c3576df8c4ea632c9862da3a8:server/pruebas/seguridad-mysql.test.mjs:generic-api-key:225
+4713c0438e2204abeb1c7d1e09fe8fe88cb831f7:server/pruebas/api.test.mjs:generic-api-key:33

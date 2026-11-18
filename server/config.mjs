@@ -21,6 +21,15 @@ function entero(nombre, defecto, minimo, maximo) {
 }
 
 const produccion = process.env.NODE_ENV === 'production'
+if (process.env.NODE_ENV && !['development', 'test', 'production'].includes(process.env.NODE_ENV)) throw new Error('NODE_ENV no válido.')
+if (produccion && process.env.RUN_MIGRATIONS === 'true') throw new Error('Producción requiere migraciones separadas del servicio web.')
+let origenPublico = null
+if (process.env.APP_ORIGIN) {
+  const url = new URL(process.env.APP_ORIGIN)
+  if (url.protocol !== 'https:' || url.username || url.password || url.origin !== process.env.APP_ORIGIN) throw new Error('APP_ORIGIN debe ser un origen HTTPS, sin ruta ni credenciales.')
+  origenPublico = url.origin
+}
+if (produccion && !origenPublico) throw new Error('Defina APP_ORIGIN para el nombre HTTPS interno de la aplicación.')
 const mfaKey = requerida('MFA_ENCRYPTION_KEY')
 if (!/^[a-f0-9]{64}$/i.test(mfaKey)) throw new Error('MFA_ENCRYPTION_KEY debe contener 32 bytes aleatorios en hexadecimal.')
 const dbHost = process.env.DB_HOST || '127.0.0.1'
@@ -28,7 +37,8 @@ const ssl = process.env.DB_TLS === 'true' ? {
   rejectUnauthorized: true,
   ...(process.env.DB_TLS_CA_FILE ? { ca: readFileSync(process.env.DB_TLS_CA_FILE, 'utf8') } : {}),
 } : undefined
-if (produccion && !['127.0.0.1', 'localhost', 'mysql'].includes(dbHost) && !ssl) {
+const redAislada = dbHost === 'mysql' && process.env.DB_ISOLATED_NETWORK === 'true'
+if (produccion && !['127.0.0.1', 'localhost'].includes(dbHost) && !redAislada && !ssl) {
   throw new Error('Una base de datos remota en producción requiere DB_TLS=true y un certificado válido.')
 }
 
@@ -37,6 +47,8 @@ export const config = {
   host: process.env.HOST || '127.0.0.1',
   trustProxy: entero('TRUST_PROXY', 0, 0, 5),
   produccion,
+  origenPublico,
+  limiteLoginIp: entero('LOGIN_IP_LIMIT', 30, 10, 120),
   httpsLocal: process.env.LOCAL_HTTPS === 'true',
   tls: process.env.LOCAL_HTTPS === 'true' ? {
     pfx: readFileSync(requerida('LOCAL_TLS_PFX_FILE')),

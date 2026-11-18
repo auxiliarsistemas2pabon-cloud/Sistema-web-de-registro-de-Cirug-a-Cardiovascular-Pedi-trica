@@ -25,7 +25,7 @@ try {
   const puerto = info.NetworkSettings.Ports['3306/tcp'][0].HostPort
   Object.assign(process.env, { DB_HOST: '127.0.0.1', DB_PORT: puerto, DB_USER: 'root', DB_PASSWORD: password, DB_NAME: 'cardio_pruebas',
     NODE_ENV: 'development', LOCAL_HTTPS: String(probarTls), TRUST_PROXY: '0', SECURITY_TEST_DB: '1',
-    MFA_ENCRYPTION_KEY: randomBytes(32).toString('hex'), RUN_MIGRATIONS: 'false',
+    MFA_ENCRYPTION_KEY: randomBytes(32).toString('hex'), RUN_MIGRATIONS: 'false', LOGIN_IP_LIMIT: '120',
     INITIAL_ADMIN_EMAIL: 'admin@example.test', INITIAL_ADMIN_PASSWORD: 'PruebaSegura123', INITIAL_ADMIN_NAME: 'Prueba' })
   const { default: mysql } = await import('mysql2/promise')
   for (let i = 0; i < 60; i++) {
@@ -55,7 +55,8 @@ try {
     process.env.NODE_EXTRA_CA_CERTS = ca
   }
   const archivos = process.argv[2] === 'browser' ? ['server/pruebas/navegador-seguridad.test.mjs']
-    : ['server/pruebas/seguridad-mysql.test.mjs', 'server/pruebas/api.test.mjs', 'server/pruebas/navegador-seguridad.test.mjs']
+    : process.argv[2] === 'load' ? ['server/pruebas/carga.test.mjs']
+    : ['server/pruebas/seguridad-mysql.test.mjs', 'server/pruebas/api.test.mjs', 'server/pruebas/importaciones.test.mjs', 'server/pruebas/sesiones.test.mjs', 'server/pruebas/permisos-rutas.test.mjs', 'server/pruebas/navegador-seguridad.test.mjs']
   const pruebas = spawn(process.execPath, ['--test', '--test-concurrency=1', ...archivos], { env: process.env, windowsHide: true, stdio: 'inherit' })
   const [codigo] = await once(pruebas, 'exit')
   process.exitCode = codigo ?? 1

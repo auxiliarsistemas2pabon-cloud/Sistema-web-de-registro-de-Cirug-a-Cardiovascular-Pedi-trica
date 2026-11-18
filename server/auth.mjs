@@ -8,6 +8,7 @@ import { completarSesion, crearSesion, leerSesion, revocarSesion, rotarSesion } 
 import { cifrarSecreto, codigoMfaInvalido, comprobarTotp, consumirRecuperacion, crearRecuperacion, nuevoTotp } from './mfa.mjs'
 import { limpiarIntentos, limitarCuenta } from './limites-auth.mjs'
 import { registrarEvento } from './auditoria-seguridad.mjs'
+import { config } from './config.mjs'
 
 const HASH_FALSO = bcrypt.hashSync('contraseña-inexistente', 12)
 
@@ -43,7 +44,7 @@ export const autenticar = [identificar, (req, _res, next) => {
   next()
 }]
 
-const limitadorLogin = rateLimit({ windowMs: 15 * 60 * 1000, limit: 30, standardHeaders: true, legacyHeaders: false,
+const limitadorLogin = rateLimit({ windowMs: 15 * 60 * 1000, limit: config.limiteLoginIp, standardHeaders: true, legacyHeaders: false,
   handler: (_req, res) => res.status(429).json({ error: { codigo: 'DEMASIADOS_INTENTOS', mensaje: 'Demasiados intentos. Espere 15 minutos.' } }),
 })
 export const rutasAuth = Router()

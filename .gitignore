@@ -18,6 +18,7 @@ dist-ssr
 backups/
 secrets/
 test-results/
+deploy/private/
 
 # Editor directories and files
 .vscode/*

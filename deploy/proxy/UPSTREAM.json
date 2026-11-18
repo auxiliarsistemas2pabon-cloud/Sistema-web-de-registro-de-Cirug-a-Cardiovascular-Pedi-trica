@@ -1,0 +1,9 @@
+{
+  "caddy": "v2.11.9",
+  "dependency_update_source": "https://github.com/caddyserver/caddy/commit/31f9f0cb99491fdd1a27f82793b78d216c5b2a76",
+  "certificates_commit": "6d5a251fbe01",
+  "go_jose": "github.com/go-jose/go-jose/v4 v4.1.9",
+  "x_net": "golang.org/x/net v0.62.0",
+  "fixed_advisories": ["CVE-2026-116587", "CVE-2026-78661"],
+  "note": "Caddy estable con actualización de dependencias del propio upstream; no se modifican algoritmos criptográficos. go.mod/go.sum fijan la resolución completa."
+}

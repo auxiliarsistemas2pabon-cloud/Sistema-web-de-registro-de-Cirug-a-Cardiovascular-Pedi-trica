@@ -29,7 +29,11 @@ const tablas = [
   )`,
   `CREATE TABLE IF NOT EXISTS sesiones (
     token_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin PRIMARY KEY,
+    sesion_id CHAR(36) NULL UNIQUE,
     usuario_id CHAR(36) NOT NULL,
+    creado_en DATETIME NULL,
+    actividad_en DATETIME NULL,
+    dispositivo VARCHAR(80) NOT NULL DEFAULT 'No identificado',
     expira_en DATETIME NOT NULL,
     limite_en DATETIME NOT NULL,
     mfa_verificada BOOLEAN NOT NULL DEFAULT false,
@@ -752,6 +756,11 @@ export async function inicializarBase(pool, admin) {
   await agregarColumnaSiNoExiste(pool, 'sesiones', 'mfa_verificada', 'ALTER TABLE sesiones ADD COLUMN mfa_verificada BOOLEAN NOT NULL DEFAULT false')
   await agregarColumnaSiNoExiste(pool, 'sesiones', 'mfa_pendiente', 'ALTER TABLE sesiones ADD COLUMN mfa_pendiente TEXT NULL')
   await agregarColumnaSiNoExiste(pool, 'sesiones', 'mfa_verificada_en', 'ALTER TABLE sesiones ADD COLUMN mfa_verificada_en DATETIME NULL')
+  await agregarColumnaSiNoExiste(pool, 'sesiones', 'sesion_id', 'ALTER TABLE sesiones ADD COLUMN sesion_id CHAR(36) NULL UNIQUE')
+  await agregarColumnaSiNoExiste(pool, 'sesiones', 'creado_en', 'ALTER TABLE sesiones ADD COLUMN creado_en DATETIME NULL')
+  await agregarColumnaSiNoExiste(pool, 'sesiones', 'actividad_en', 'ALTER TABLE sesiones ADD COLUMN actividad_en DATETIME NULL')
+  await agregarColumnaSiNoExiste(pool, 'sesiones', 'dispositivo', "ALTER TABLE sesiones ADD COLUMN dispositivo VARCHAR(80) NOT NULL DEFAULT 'No identificado'")
+  await pool.query('UPDATE sesiones SET sesion_id = UUID() WHERE sesion_id IS NULL')
   await migrarUnaVez(pool, 'seguridad_roles_mfa_v1', async (conexion) => {
     // Solo se conserva un administrador al migrar el modelo anterior de acceso universal.
     await conexion.query("UPDATE usuarios SET rol = 'consulta', clave_temporal = true")

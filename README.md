@@ -2,6 +2,14 @@
 
 Registro clínico pediátrico y de adultos con React, TypeScript, Express y MySQL 8.4. Interfaz en español; fechas clínicas en `America/Bogota` y marcas de tiempo en UTC.
 
+## Despliegue en la clínica
+
+Se preparó un despliegue Docker para Linux limitado a LAN/VPN institucional, con HTTPS interno, filtro por subredes, secretos por servicio, aplicación sin root y MySQL sin puertos publicados. La instancia `clinica` está preparada en archivos privados y escucha inicialmente en `127.0.0.1`; falta asignar IP/DNS reales y la política de red de TI. No se ha publicado ni trasladado la base clínica.
+
+La [guía de despliegue](docs/despliegue-clinica.md) explica instalación, certificados, mantenimiento, respaldos y recuperación completa en destino vacío. `npm run deploy:check` valida la preparación; `npm run deploy:smoke` comprueba el despliegue con datos ficticios y elimina exclusivamente sus recursos temporales. El Compose de despliegue es independiente del grupo local que conserva PostgreSQL.
+
+Las [sesiones abiertas y controles automáticos](docs/controles-automaticos.md) permiten cerrar accesos de otros equipos y comprobar código, secretos, historial, dependencias e imágenes. El control de commits está instalado localmente; el workflow GitHub está preparado. Los avisos detectados en desarrollo y Caddy se corrigieron mediante una copia local restringida de picomatch y una compilación de Caddy con dependencias corregidas del propio upstream, con pruebas de regresión obligatorias.
+
 ## Uso local ya configurado
 
 1. Inicie Docker Desktop y espere que el grupo `cirugia-cardiovascular` esté saludable. Para iniciarlo completo use `docker compose --env-file .env.docker up -d --wait`; conserva los volúmenes existentes.

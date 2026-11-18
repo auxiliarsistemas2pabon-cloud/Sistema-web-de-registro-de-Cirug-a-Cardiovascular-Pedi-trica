@@ -1,0 +1,20 @@
+[Unit]
+Description=Respaldo cifrado y restauracion de prueba de Cirugia Cardiovascular
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+# Ajustar usuario y ruta antes de instalar. El usuario debe poder operar Docker.
+User=cardio
+Group=cardio
+SupplementaryGroups=docker
+WorkingDirectory=/opt/cirugia
+ExecStart=/usr/bin/node /opt/cirugia/deploy/ops.mjs backup --instance=clinica
+UMask=0077
+TimeoutStartSec=30min
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/cirugia/deploy/private

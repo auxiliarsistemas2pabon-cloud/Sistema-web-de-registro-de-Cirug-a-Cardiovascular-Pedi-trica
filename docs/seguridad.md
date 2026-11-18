@@ -2,6 +2,12 @@
 
 ## Controles implementados
 
+La revisión adicional incorpora [gestión de sesiones, análisis automáticos e importaciones reforzadas](controles-automaticos.md). Consulte ahí el resultado de la carga y las correcciones de dependencias de desarrollo/proxy; cero avisos de npm en producción no describe por sí solo la seguridad de una imagen completa.
+
+La preparación para el servidor interno de la clínica está en [despliegue-clinica.md](despliegue-clinica.md). Las protecciones adicionales incluyen origen HTTPS exacto y nombre de servidor en producción, control de disponibilidad privado, cola de conexiones acotada, límites de tiempo HTTP y cierre ordenado. Producción rechaza migraciones desde el proceso web y comprueba permisos con una lista explícita que también rechaza roles MySQL y privilegios dinámicos/globales.
+
+Las importaciones validan identificación y fecha antes de consultar. Un bloqueo por documento compartido en MySQL serializa solicitudes incluso entre procesos: repetir una fila devuelve la misma ficha y dos archivos concurrentes no crean la misma cirugía dos veces. Una petición fallida no cambia a error una fila ya importada por otra solicitud.
+
 - Roles `administrador`, `registrador` y `consulta` comprobados en el servidor. Denegación de escrituras, exportaciones y administración según perfil; UI de consulta sin edición. La protección incluye rutas de indicadores y de adultos.
 - Doble factor TOTP obligatorio para todas las cuentas. La primera contraseña es temporal. Las sesiones incompletas vencen en cinco minutos y no entregan datos clínicos.
 - QR generado localmente, sin servicios externos. Semillas TOTP cifradas con AES-256-GCM y clave fuera de MySQL. Se comprueba el paso temporal bajo bloqueo para impedir reutilizar códigos, incluidas peticiones simultáneas.
@@ -25,6 +31,8 @@ La migración de permisos conserva un administrador activo, preferentemente el i
 
 ## Pruebas realizadas
 
+Verificación del 18 de noviembre de 2026: 11 pruebas HTTP/criptografía, 38 pruebas con MySQL real y navegador y 4 comprobaciones de configuración/permisos de despliegue aprobadas. Compilación e imagen Docker construidas correctamente; lint sin errores, con advertencias previas de React. La auditoría de dependencias de producción reportó cero avisos. El ensayo `deploy:smoke` comprobó HTTPS con CA válida, MFA, filtros de red frente a cabeceras suplantadas, imagen sin secretos, proceso sin root y archivos de solo lectura, errores del proxy sin búsquedas, rechazo de respaldos alterados y recuperación completa de SQL/MFA/CA en volúmenes nuevos. Después de recuperar se inició sesión y se consultó la API con la cuenta ficticia. Los recursos temporales fueron eliminados; la base clínica local no se usó en esos ensayos.
+
 La revisión adicional corrigió diferencias entre el reconocimiento de rutas de Express y sus controles de permisos: exportar, eliminar y restaurar llevan ahora los controles en la propia ruta, incluidos mayúsculas, barra final y HEAD. Eliminar o restaurar también requiere reautenticación reciente.
 
 Reautenticarse conserva el vencimiento absoluto original. Cambiar contraseña, regenerar códigos o reinscribir MFA rota la cookie; una sesión revocada o vencida durante la operación hace que se reviertan las escrituras. El login vuelve a comprobar el hash bajo bloqueo antes de crear la sesión, para rechazar una contraseña cambiada durante bcrypt. El correo se compara exactamente después de convertirlo a minúsculas, evitando alias con tildes aceptados por la colación de MySQL.
@@ -47,7 +55,7 @@ npm run backup
 npm audit --omit=dev
 ```
 
-La última auditoría no reportó vulnerabilidades en dependencias de producción. Se retiró la CLI shadcn, que no utilizaba la aplicación, conservando su CSS y licencia MIT en `src/styles/`. Persisten cinco avisos de desarrollo vinculados a picomatch y sus dependientes; la última versión disponible consultada seguía afectada. No se aplican retrocesos forzados de versiones principales. Los análisis de dependencias y estas pruebas no constituyen una auditoría independiente ni una garantía de ausencia de vulnerabilidades.
+La auditoría npm completa y la de producción no reportaron avisos tras la corrección de picomatch. Se retiró la CLI shadcn, que no utilizaba la aplicación, conservando su CSS y licencia MIT en `src/styles/`. Como la última versión publicada de picomatch seguía afectada, se utiliza una copia local con rechazo explícito de patrones repetidos inseguros, procedencia documentada y pruebas de regresión. Caddy se construye con las dependencias corregidas por su propio upstream. No se aplican retrocesos forzados de versiones principales ni exclusiones de los avisos. Los análisis de dependencias y estas pruebas no constituyen una auditoría independiente ni una garantía de ausencia de vulnerabilidades.
 
 ## Recuperación de cuentas
 

@@ -17,6 +17,7 @@ export const reglaNegocio = (mensaje) => new ErrorApi(422, 'REGLA_NEGOCIO', mens
 export const asincrono = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
 
 export function manejadorErrores(err, _req, res, _next) {
+  if (res.headersSent) return _next(err)
   if (err instanceof ErrorApi) {
     return res.status(err.estado).json({ error: { codigo: err.codigo, mensaje: err.message, ...(err.campos ? { campos: err.campos } : {}) } })
   }
@@ -28,6 +29,9 @@ export function manejadorErrores(err, _req, res, _next) {
   }
   if (err?.status === 415) {
     return res.status(415).json({ error: { codigo: 'TIPO_NO_ADMITIDO', mensaje: 'Codificación de petición no admitida.' } })
+  }
+  if (err?.message === 'Queue limit reached.') {
+    return res.status(503).json({ error: { codigo: 'SERVICIO_OCUPADO', mensaje: 'El servicio está ocupado. Intente de nuevo en unos segundos.' } })
   }
   if (err?.code === 'ER_DUP_ENTRY' && /identificacion/.test(err.sqlMessage ?? '')) {
     return res.status(409).json({ error: { codigo: 'IDENTIFICACION_DUPLICADA', mensaje: 'Ya existe un paciente con esa identificación.' } })

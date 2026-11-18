@@ -1,0 +1,11 @@
+[Unit]
+Description=Respaldo diario de Cirugia Cardiovascular
+
+[Timer]
+OnCalendar=*-*-* 18:00:00 America/Bogota
+Persistent=true
+RandomizedDelaySec=5min
+Unit=cirugia-backup.service
+
+[Install]
+WantedBy=timers.target

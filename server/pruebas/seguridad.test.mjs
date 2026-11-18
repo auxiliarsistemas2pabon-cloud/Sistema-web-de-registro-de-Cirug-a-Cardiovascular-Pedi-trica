@@ -46,6 +46,14 @@ test('protege caché, marcos, contenido y referente', async () => {
   assert.match(r.headers.get('Content-Security-Policy'), /frame-ancestors 'none'/)
   assert.match(r.headers.get('Content-Security-Policy'), /object-src 'none'/)
 })
+test('rechaza consultas ambiguas y limita la complejidad de búsquedas',async()=>{
+  for(const query of ['busqueda=a&busqueda=b','busqueda[x]=a','busqueda='+encodeURIComponent('a '.repeat(30)), 'busqueda='+'x'.repeat(201)]){
+    const r=await pedir('/pacientes?'+query)
+    assert.equal(r.status,400)
+    assert.equal((await r.json()).error.codigo,'VALIDACION')
+  }
+  assert.equal((await pedir('/pacientes?busqueda=Paciente%20ficticio')).status,401)
+})
 test('cifra semillas con autenticación y rechaza alteraciones', () => {
   const cifrado = cifrarSecreto('SEMILLA-DE-PRUEBA')
   assert.notEqual(cifrado, cifrarSecreto('SEMILLA-DE-PRUEBA'))

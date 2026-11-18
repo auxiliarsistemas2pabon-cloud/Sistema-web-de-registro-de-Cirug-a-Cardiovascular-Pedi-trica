@@ -1,0 +1,42 @@
+name: Controles de seguridad
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: seguridad-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  revisar:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Compilación y análisis de código
+        run: npm run security:test:patches && npm run build && npm run lint && npm run test:security && npm run deploy:test
+      - name: Permisos, sesiones, importaciones y navegador en MySQL aislado
+        run: npm run test:security:mysql
+      - name: Resistencia a sobrecarga en entorno ficticio
+        run: npm run test:security:load
+      - name: Imagen de aplicación
+        run: |
+          docker build --tag cirugia-cardiovascular:preparada .
+          docker build --file deploy/MySQL.Dockerfile --tag cirugia-mysql:segura .
+          docker build --file deploy/Caddy.Dockerfile --tag cirugia-caddy:segura .
+      - name: Despliegue y recuperación con datos ficticios
+        run: npm run deploy:smoke
+      - name: Secretos, análisis estático, dependencias e imágenes
+        if: always() && !cancelled()
+        run: npm run security:test && npm run security:gate -- --images
+      # Los informes quedan privados al job. No se publican código, secretos ni hallazgos como artefactos.

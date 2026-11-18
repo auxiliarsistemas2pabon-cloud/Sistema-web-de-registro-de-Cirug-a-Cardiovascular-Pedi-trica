@@ -219,10 +219,11 @@ test('reautenticarse rota la cookie y conserva el vencimiento absoluto original'
 })
 
 test('cambiar la contraseña revoca también la cookie actual y conserva el límite absoluto', async () => {
+  const nuevaClave = 'Cc1' + randomBytes(16).toString('hex')
   const u = await usuario(), s = await entrar(u), otra = await entrar(u)
   const antes = await una(pool, 'SELECT limite_en FROM sesiones WHERE usuario_id = ? ORDER BY limite_en LIMIT 1', [u.id])
   const r = await pedir('/auth/clave', { method: 'POST', cookie: s.cookie, body: { password_actual: u.password,
-    password_nueva: 'OtraClaveSegura456', codigo: OTPAuth.TOTP.generate({ secret: u.secreto }) } })
+    password_nueva: nuevaClave, codigo: OTPAuth.TOTP.generate({ secret: u.secreto }) } })
   assert.equal(r.status, 200, JSON.stringify(r.datos))
   assert.ok(r.cookie && r.cookie !== s.cookie)
   assert.equal((await pedir('/auth/me', { cookie: s.cookie })).status, 401)
